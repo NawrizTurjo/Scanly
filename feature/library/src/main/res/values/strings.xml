@@ -38,4 +38,54 @@
     <string name="detail_reorder">Hold and drag to reorder</string>
     <string name="detail_reorder_icon" translatable="false">≡</string>
     <string name="detail_error">Couldn’t complete the document action</string>
+    <string name="library_all">All</string>
+    <string name="library_favourites">Favourites</string>
+    <string name="library_folders">Folders</string>
+    <string name="library_search">Search by name, folder, or date</string>
+    <string name="library_grid">Grid</string>
+    <string name="library_list">List</string>
+    <string name="library_sort">Sort</string>
+    <string name="library_by_name">Name</string>
+    <string name="library_by_updated">Last updated</string>
+    <string name="library_by_created">Date created</string>
+    <string name="library_new_folder">New folder</string>
+    <string name="library_new_folder_more">New folder…</string>
+    <string name="library_no_folders">No folders</string>
+    <string name="library_folder_name">Folder name</string>
+    <string name="library_folder_actions">Folder actions</string>
+    <string name="library_delete_folder">Delete folder?</string>
+    <string name="library_delete_folder_message">Documents in this folder will move to the library root. Any subfolders will become top-level folders.</string>
+    <string name="library_root">Library root</string>
+    <string name="library_save">Save</string>
+    <string name="library_select_document">Select document</string>
+    <string name="library_move">Move</string>
+    <string name="library_move_to_folder">Move to folder</string>
+    <string name="library_duplicate">Duplicate</string>
+    <string name="library_duplicate_done">Document duplicated</string>
+    <string name="library_bin">Recycle bin</string>
+    <string name="library_bin_empty">Recycle bin is empty</string>
+    <string name="library_empty_bin">Empty bin</string>
+    <string name="library_empty_bin_message">Permanently delete every document in the recycle bin?</string>
+    <string name="library_delete_forever">Delete forever</string>
+    <string name="library_delete_forever_message">Permanently delete this document and its pages?</string>
+    <string name="library_restore">Restore</string>
+    <string name="library_undo">Undo</string>
+    <string name="library_moved_to_bin">Moved to recycle bin</string>
+    <string name="library_bin_age">%1$s · %2$s</string>
+    <plurals name="library_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="library_document_count">
+        <item quantity="one">%d document</item>
+        <item quantity="other">%d documents</item>
+    </plurals>
+    <plurals name="library_deleted_ago">
+        <item quantity="one">Deleted %d day ago</item>
+        <item quantity="other">Deleted %d days ago</item>
+    </plurals>
+    <plurals name="library_removed_in">
+        <item quantity="one">removed in %d day</item>
+        <item quantity="other">removed in %d days</item>
+    </plurals>
 </resources>

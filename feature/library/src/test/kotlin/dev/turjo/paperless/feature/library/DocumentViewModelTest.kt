@@ -26,7 +26,7 @@ class DocumentViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        model = DocumentViewModel("doc", documents, IdleProcessing, { error("Unexpected thumbnail") }) {
+        model = DocumentViewModel("doc", documents, IdleProcessing, { error("Unexpected thumbnail") }, TestFolders()) {
             error("Unexpected export")
         }
     }

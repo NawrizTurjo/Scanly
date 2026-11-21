@@ -97,6 +97,7 @@ data class ScanSessionEntity(
 )
 abstract class PaperlessDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
+    abstract fun folderDao(): FolderDao
     abstract fun scanSessionDao(): ScanSessionDao
 }
 

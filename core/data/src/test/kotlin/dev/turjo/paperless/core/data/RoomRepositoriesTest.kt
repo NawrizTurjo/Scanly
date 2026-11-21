@@ -6,7 +6,12 @@ import android.graphics.BitmapFactory
 import android.media.ExifInterface
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import dev.turjo.paperless.core.model.LibraryFilter
+import dev.turjo.paperless.core.model.LibrarySort
 import java.io.File
+import java.time.Duration
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -152,6 +157,161 @@ class RoomRepositoriesTest {
         assertEquals(files.thumbFile(first.id).path, documents.observeLibrary().first().first().coverThumbPath)
         documents.restore(deleted)
         assertTrue(documents.observeLibrary().first().any { it.id == deleted })
+    }
+
+    @Test
+    fun foldersCountMovedDocumentsAndDeleteMovesDocumentsToRoot() = runBlocking {
+        val folders = RoomFolderRepository(database)
+        val parent = folders.create("  Receipts  ")
+        val child = folders.create("Travel", parent)
+        assertTrue(runCatching { folders.create("Too deep", child) }.exceptionOrNull() is IllegalArgumentException)
+
+        val first = saved("Hotel")
+        val second = saved("Train")
+        val deleted = saved("Parking")
+        folders.moveDocuments(setOf(first, second, deleted), child)
+        documents.softDelete(deleted)
+        folders.moveDocuments(setOf(first), parent)
+        folders.rename(child, "Trips")
+        val counts = folders.observeFolders().first().associateBy { it.folder.id }
+        assertEquals("Receipts", counts.getValue(parent).folder.name)
+        assertEquals("Trips", counts.getValue(child).folder.name)
+        assertEquals(parent, counts.getValue(child).folder.parentId)
+        assertEquals(1, counts.getValue(parent).documentCount)
+        assertEquals(1, counts.getValue(child).documentCount)
+
+        folders.moveDocuments(setOf(first), null)
+        assertNull(dao.document(first)?.folderId)
+        folders.delete(parent)
+        assertNull(folders.observeFolders().first().single().folder.parentId)
+        folders.delete(child)
+        assertTrue(folders.observeFolders().first().isEmpty())
+        assertNull(dao.document(second)?.folderId)
+        assertNull(dao.document(deleted)?.folderId)
+    }
+
+    @Test
+    fun libraryCombinesFolderFavouriteSearchAndSort() = runBlocking {
+        val folders = RoomFolderRepository(database)
+        val travel = folders.create("Travel Receipts")
+        val other = folders.create("Other")
+        val first = saved("Airport Taxi")
+        val second = saved("Zebra Hotel")
+        val third = saved("Museum")
+        val unfavourited = saved("Bus")
+        val elsewhere = saved("Travel Pass")
+        folders.moveDocuments(setOf(first, second, third, unfavourited), travel)
+        folders.moveDocuments(setOf(elsewhere), other)
+        listOf(first, second, third, elsewhere).forEach { documents.setFavorite(it, true) }
+        val zone = ZoneId.systemDefault()
+        val firstDate = LocalDate.of(2025, 11, 17).atStartOfDay(zone).toInstant().toEpochMilli()
+        val secondDate = LocalDate.of(2025, 11, 18).atStartOfDay(zone).toInstant().toEpochMilli()
+        val thirdDate = LocalDate.of(2025, 11, 19).atStartOfDay(zone).toInstant().toEpochMilli()
+        dao.updateDocument(dao.document(first)!!.copy(createdAt = firstDate, updatedAt = secondDate))
+        dao.updateDocument(dao.document(second)!!.copy(createdAt = secondDate, updatedAt = firstDate))
+        dao.updateDocument(dao.document(third)!!.copy(createdAt = thirdDate, updatedAt = thirdDate))
+
+        val filter = LibraryFilter(folderId = travel, favouritesOnly = true, query = "rEcEiPtS November")
+        suspend fun ids(filter: LibraryFilter) = documents.observeLibrary(filter).first().map { it.id }
+
+        assertEquals(listOf(third, first, second), ids(filter))
+        assertEquals(listOf(first, third, second), ids(filter.copy(sort = LibrarySort.NAME)))
+        assertEquals(listOf(third, second, first), ids(filter.copy(sort = LibrarySort.CREATED_DESC)))
+        assertEquals(listOf(second), ids(filter.copy(query = "hOtEl 2025-11-18")))
+        assertEquals(emptyList<String>(), ids(filter.copy(query = "hotel 2025-11-17")))
+        assertEquals(setOf(first, second, third, elsewhere), ids(filter.copy(folderId = null, query = "Travel")).toSet())
+    }
+
+    @Test
+    fun duplicateRemapsPageIdsCoverAndFilePaths() = runBlocking {
+        val source = saved("Receipt")
+        val first = add(source)
+        val second = add(source)
+        val processed = files.processedFile(second.id).apply { writeText("processed content") }
+        documents.updatePage(second.copy(processedPath = processed.path, processedHash = "processed hash"))
+        dao.updateDocument(dao.document(source)!!.copy(coverPageId = second.id))
+
+        val duplicate = documents.duplicate(source)
+        val copy = documents.observeDocument(duplicate).first()!!
+        assertTrue(duplicate != source)
+        assertEquals("Copy of Receipt", copy.document.title)
+        assertEquals(listOf(0, 1), copy.pages.map { it.index })
+        assertEquals(copy.pages[1].id, copy.document.coverPageId)
+        listOf(first, second).zip(copy.pages).forEach { (original, copied) ->
+            assertTrue(original.id != copied.id)
+            assertEquals(duplicate, copied.documentId)
+            assertEquals(files.originalFile(copied.id).path, copied.originalPath)
+            assertTrue(File(original.originalPath).readBytes().contentEquals(File(copied.originalPath).readBytes()))
+            assertTrue(files.thumbFile(original.id).readBytes().contentEquals(files.thumbFile(copied.id).readBytes()))
+        }
+        assertEquals(files.processedFile(copy.pages[1].id).path, copy.pages[1].processedPath)
+        assertEquals("processed content", files.processedFile(copy.pages[1].id).readText())
+        assertEquals("processed hash", copy.pages[1].processedHash)
+    }
+
+    @Test
+    fun failedDuplicateRollsBackRowsAndCopiedFiles() = runBlocking {
+        val source = saved("Receipt")
+        val first = add(source)
+        val second = add(source)
+        val pagesDirectory = files.pageDir(first.id).parentFile!!
+        val originalDirectories = pagesDirectory.list()!!.toSet()
+        assertTrue(files.originalFile(second.id).delete())
+
+        assertTrue(runCatching { documents.duplicate(source) }.isFailure)
+
+        assertEquals(listOf(source), documents.observeLibrary().first().map { it.id })
+        assertEquals(originalDirectories, pagesDirectory.list()!!.toSet())
+        assertOrder(source, first.id, second.id)
+        assertTrue(files.originalFile(first.id).isFile)
+    }
+
+    @Test
+    fun recycleBinRestoresRecentDocumentsAndPurgesOnlyExpiredDeletedDocuments() = runBlocking {
+        val expired = saved("Expired")
+        val recent = saved("Recent")
+        val live = saved("Live")
+        val expiredPage = add(expired)
+        val recentPage = add(recent)
+        val livePage = add(live)
+        documents.softDelete(expired)
+        documents.softDelete(recent)
+        val now = System.currentTimeMillis()
+        dao.updateDocument(dao.document(expired)!!.copy(deletedAt = now - Duration.ofDays(31).toMillis()))
+        dao.updateDocument(dao.document(recent)!!.copy(deletedAt = now - Duration.ofDays(29).toMillis()))
+        dao.updateDocument(dao.document(live)!!.copy(createdAt = now - Duration.ofDays(35).toMillis()))
+
+        assertEquals(listOf(live), documents.observeLibrary().first().map { it.id })
+        assertEquals(listOf(recent, expired), documents.observeDeleted().first().map { it.id })
+        documents.purgeDeletedOlderThan(30)
+        assertEquals(listOf(recent), documents.observeDeleted().first().map { it.id })
+        assertNull(dao.document(expired))
+        assertNull(dao.page(expiredPage.id))
+        assertFalse(files.pageDir(expiredPage.id).exists())
+        assertTrue(files.originalFile(recentPage.id).isFile)
+        assertTrue(files.originalFile(livePage.id).isFile)
+
+        documents.restore(recent)
+        assertTrue(documents.observeDeleted().first().isEmpty())
+        assertEquals(setOf(live, recent), documents.observeLibrary().first().map { it.id }.toSet())
+        assertTrue(files.originalFile(recentPage.id).isFile)
+    }
+
+    @Test
+    fun deleteForeverRemovesRowsAndAllFilesForEachPage() = runBlocking {
+        val deleted = saved("Delete me")
+        val pages = listOf(add(deleted), add(deleted))
+        pages.forEach { files.processedFile(it.id).writeText("cache") }
+        documents.softDelete(deleted)
+
+        documents.deleteForever(deleted)
+
+        assertNull(dao.document(deleted))
+        assertTrue(documents.observeDeleted().first().isEmpty())
+        pages.forEach { page ->
+            assertNull(dao.page(page.id))
+            assertFalse(files.pageDir(page.id).exists())
+        }
     }
 
     @Test

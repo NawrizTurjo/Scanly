@@ -14,6 +14,8 @@ data class LibraryRow(
     val title: String,
     val pageCount: Int,
     val coverId: String?,
+    val createdAt: Long,
+    val folderName: String?,
     val updatedAt: Long,
     val isFavorite: Boolean,
 )
@@ -27,17 +29,26 @@ data class DocumentPagesRow(
 interface DocumentDao {
     @Query(
         """
-        SELECT d.id, d.title, d.updatedAt, d.isFavorite,
+        SELECT d.id, d.title, d.updatedAt, d.isFavorite, d.createdAt, f.name AS folderName,
             (SELECT COUNT(*) FROM pages p WHERE p.documentId = d.id) AS pageCount,
             COALESCE(
                 (SELECT p.id FROM pages p WHERE p.id = d.coverPageId AND p.documentId = d.id),
                 (SELECT p.id FROM pages p WHERE p.documentId = d.id ORDER BY p.`index` LIMIT 1)
             ) AS coverId
-        FROM documents d WHERE d.isDraft = 0 AND d.deletedAt IS NULL
+        FROM documents d LEFT JOIN folders f ON d.folderId = f.id
+        WHERE d.isDraft = 0 AND d.deletedAt IS NULL
+          AND (:folderId IS NULL OR d.folderId = :folderId)
+          AND (:favouritesOnly = 0 OR d.isFavorite = 1)
         ORDER BY d.updatedAt DESC, d.id
         """,
     )
-    fun observeLibrary(): Flow<List<LibraryRow>>
+    fun observeLibrary(folderId: String?, favouritesOnly: Boolean): Flow<List<LibraryRow>>
+
+    @Query("SELECT id, title, deletedAt FROM documents WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC, id")
+    fun observeDeleted(): Flow<List<dev.turjo.paperless.core.model.DeletedDocument>>
+
+    @Query("SELECT id FROM documents WHERE deletedAt < :cutoff")
+    suspend fun expiredDocuments(cutoff: Long): List<String>
 
     @Transaction
     @Query("SELECT * FROM documents WHERE id = :id")

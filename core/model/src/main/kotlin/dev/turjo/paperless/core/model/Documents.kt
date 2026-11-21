@@ -106,3 +106,16 @@ data class DocumentSummary(
 )
 
 data class DocumentWithPages(val document: Document, val pages: List<Page>)
+
+data class FolderSummary(val folder: Folder, val documentCount: Int)
+
+data class DeletedDocument(val id: String, val title: String, val deletedAt: Long)
+
+enum class LibrarySort { NAME, UPDATED_DESC, CREATED_DESC }
+
+data class LibraryFilter(
+    val folderId: String? = null,
+    val favouritesOnly: Boolean = false,
+    val query: String = "",
+    val sort: LibrarySort = LibrarySort.UPDATED_DESC,
+)

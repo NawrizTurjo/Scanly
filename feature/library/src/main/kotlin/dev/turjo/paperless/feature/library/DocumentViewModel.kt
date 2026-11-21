@@ -9,6 +9,7 @@ import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
+import dev.turjo.paperless.core.data.FolderRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.feature.export.ExportRunner
@@ -16,6 +17,8 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -31,6 +34,7 @@ internal data class DocumentState(
     val sharing: Boolean = false,
     val savingOrder: Boolean = false,
     val orderRevision: Int = 0,
+    val duplicationCount: Int = 0,
 )
 
 @HiltViewModel(assistedFactory = DocumentViewModel.Factory::class)
@@ -39,6 +43,7 @@ internal class DocumentViewModel @AssistedInject constructor(
     private val documents: DocumentRepository,
     private val processing: PageProcessing,
     private val files: Lazy<FileStore>,
+    private val folders: FolderRepository,
     private val exports: Lazy<ExportRunner>,
 ) : ViewModel() {
     @AssistedFactory
@@ -48,6 +53,8 @@ internal class DocumentViewModel @AssistedInject constructor(
 
     private val mutableState = MutableStateFlow(DocumentState())
     val state = mutableState.asStateFlow()
+    val folderList = folders.observeFolders()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val busyPageIds = processing.busyPageIds
     private val mutations = Mutex()
 
@@ -109,6 +116,19 @@ internal class DocumentViewModel @AssistedInject constructor(
         } else {
             mutableState.update { it.copy(error = true) }
         }
+    }
+
+    fun duplicate() = change {
+        val pageIds = state.value.document?.pages?.map { it.id }.orEmpty()
+        processing.awaitIdle(pageIds)
+        documents.duplicate(id)
+        mutableState.update { it.copy(duplicationCount = it.duplicationCount + 1) }
+    }
+
+    fun moveToFolder(folderId: String?) = change { folders.moveDocuments(setOf(id), folderId) }
+
+    fun moveToNewFolder(name: String) = change {
+        folders.moveDocumentsToNewFolder(setOf(id), name)
     }
 
     fun deleteDocument() = change { documents.softDelete(id) }

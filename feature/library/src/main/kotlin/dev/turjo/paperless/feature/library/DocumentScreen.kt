@@ -44,11 +44,21 @@ fun DocumentScreen(
         it.create(documentId)
     }
     val state by model.state.collectAsStateWithLifecycle()
+    val folders by model.folderList.collectAsStateWithLifecycle()
     val busy by model.busyPageIds.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val error = stringResource(R.string.detail_error)
     val document = state.document
+    var move by rememberSaveable(documentId) { mutableStateOf(false) }
+    var shownCopies by rememberSaveable(documentId) { mutableIntStateOf(0) }
+    val duplicateDone = stringResource(R.string.library_duplicate_done)
+    LaunchedEffect(state.duplicationCount) {
+        if (state.duplicationCount > shownCopies) {
+            shownCopies = state.duplicationCount
+            snackbar.showSnackbar(duplicateDone)
+        }
+    }
     var rename by rememberSaveable(documentId) { mutableStateOf(false) }
     var pickPosition by rememberSaveable(documentId) { mutableStateOf(false) }
     var deleteDocument by rememberSaveable(documentId) { mutableStateOf(false) }
@@ -131,6 +141,14 @@ fun DocumentScreen(
                         GlyphButton(R.string.detail_more_icon, stringResource(R.string.detail_more)) { moreMenu = true }
                         DropdownMenu(moreMenu, { moreMenu = false }) {
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.library_duplicate)) },
+                                onClick = { moreMenu = false; model.duplicate() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.library_move_to_folder)) },
+                                onClick = { moreMenu = false; move = true },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.detail_delete_document)) },
                                 onClick = { moreMenu = false; deleteDocument = true },
                             )
@@ -157,6 +175,12 @@ fun DocumentScreen(
             }
         }
     }
+
+    if (move) MoveToFolderDialog(
+        folders, onDismiss = { move = false },
+        onSelect = { move = false; model.moveToFolder(it) },
+        onCreate = { move = false; model.moveToNewFolder(it) },
+    )
 
     if (rename && document != null) {
         var title by rememberSaveable { mutableStateOf(document.document.title) }
@@ -339,7 +363,7 @@ private fun InsertPositionDialog(count: Int, onDismiss: () -> Unit, onSelect: (I
 }
 
 @Composable
-private fun GlyphButton(glyph: Int, label: String, onClick: () -> Unit) {
+internal fun GlyphButton(glyph: Int, label: String, onClick: () -> Unit) {
     IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = label }) {
         Text(stringResource(glyph), Modifier.clearAndSetIconText(), style = MaterialTheme.typography.headlineSmall)
     }
@@ -348,6 +372,6 @@ private fun GlyphButton(glyph: Int, label: String, onClick: () -> Unit) {
 private fun Modifier.clearAndSetIconText() = clearAndSetSemantics {}
 
 @Composable
-private fun CancelButton(onClick: () -> Unit) {
+internal fun CancelButton(onClick: () -> Unit) {
     TextButton(onClick = onClick) { Text(stringResource(R.string.detail_cancel)) }
 }

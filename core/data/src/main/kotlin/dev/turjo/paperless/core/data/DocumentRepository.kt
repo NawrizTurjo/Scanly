@@ -1,13 +1,18 @@
 package dev.turjo.paperless.core.data
 
 import androidx.room.withTransaction
+import dev.turjo.paperless.core.model.DeletedDocument
+import dev.turjo.paperless.core.model.LibraryFilter
+import dev.turjo.paperless.core.model.LibrarySort
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import java.io.File
+import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -21,7 +26,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 interface DocumentRepository {
-    fun observeLibrary(): Flow<List<DocumentSummary>>
+    fun observeLibrary(): Flow<List<DocumentSummary>> = observeLibrary(LibraryFilter())
+    fun observeLibrary(filter: LibraryFilter): Flow<List<DocumentSummary>> =
+        throw UnsupportedOperationException("Filtered library unavailable")
+    fun observeDeleted(): Flow<List<DeletedDocument>> =
+        throw UnsupportedOperationException("Recycle bin unavailable")
+    suspend fun duplicate(id: String): String = throw UnsupportedOperationException("Duplication unavailable")
+    suspend fun deleteForever(id: String): Unit = throw UnsupportedOperationException("Recycle bin unavailable")
+    suspend fun purgeDeletedOlderThan(days: Int): Unit = throw UnsupportedOperationException("Recycle bin unavailable")
+    suspend fun softDelete(ids: Set<String>) = ids.forEach { softDelete(it) }
+    suspend fun restore(ids: Set<String>) = ids.forEach { restore(it) }
+    suspend fun setFavorite(ids: Set<String>, isFavorite: Boolean) = ids.forEach { setFavorite(it, isFavorite) }
     fun observeDocument(id: String): Flow<DocumentWithPages?>
     suspend fun getPage(id: String): Page?
     suspend fun updatePage(page: Page)
@@ -51,12 +66,99 @@ class RoomDocumentRepository @Inject constructor(
     private val files: FileStore,
     private val thumbnails: ThumbnailMaker,
 ) : DocumentRepository {
-    override fun observeLibrary() = dao.observeLibrary().map { rows ->
-        rows.map { row ->
-            val thumb = row.coverId?.let(files::thumbFile)?.takeIf(File::isFile)
-            DocumentSummary(row.id, row.title, row.pageCount, thumb?.path, row.updatedAt, row.isFavorite)
+    override fun observeLibrary(filter: LibraryFilter) = dao.observeLibrary(filter.folderId, filter.favouritesOnly)
+        .map { rows ->
+            val zone = ZoneId.systemDefault()
+            val search = parseLibrarySearch(filter.query, LocalDate.now(zone))
+            val matching = rows.filter { row ->
+                (row.title.contains(search.text, ignoreCase = true) ||
+                    row.folderName?.contains(search.text, ignoreCase = true) == true) &&
+                    search.matchesDate(Instant.ofEpochMilli(row.createdAt).atZone(zone).toLocalDate())
+            }
+            val sorted = when (filter.sort) {
+                LibrarySort.UPDATED_DESC -> matching
+                LibrarySort.NAME -> matching.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: LibraryRow ->
+                    it.title
+                })
+                LibrarySort.CREATED_DESC -> matching.sortedByDescending(LibraryRow::createdAt)
+            }
+            sorted.map { row ->
+                val thumb = row.coverId?.let(files::thumbFile)?.takeIf(File::isFile)
+                DocumentSummary(row.id, row.title, row.pageCount, thumb?.path, row.updatedAt, row.isFavorite)
+            }
+        }.flowOn(Dispatchers.IO)
+
+    override fun observeDeleted() = dao.observeDeleted()
+
+    override suspend fun duplicate(id: String): String = withContext(Dispatchers.IO + NonCancellable) {
+        val copiedIds = mutableListOf<String>()
+        try {
+            database.withTransaction {
+                val source = requireDocument(id)
+                check(!source.isDraft && source.deletedAt == null)
+                val copyId = UUID.randomUUID().toString()
+                val now = System.currentTimeMillis()
+                val copy = source.copy(
+                    id = copyId, title = "Copy of ${source.title}", createdAt = now, updatedAt = now,
+                    coverPageId = null,
+                )
+                dao.insertDocument(copy)
+                var coverId: String? = null
+                for (page in dao.pages(id)) {
+                    val pageId = UUID.randomUUID().toString()
+                    copiedIds.add(pageId)
+                    val original = File(page.originalPath).copyTo(files.originalFile(pageId))
+                    val processed = page.processedPath?.let(::File)?.takeIf(File::isFile)
+                        ?.copyTo(files.processedFile(pageId))
+                    files.thumbFile(page.id).takeIf(File::isFile)?.copyTo(files.thumbFile(pageId))
+                    dao.insertPage(page.copy(
+                        id = pageId, documentId = copyId, originalPath = original.path,
+                        processedPath = processed?.path, processedHash = page.processedHash.takeIf { processed != null },
+                    ))
+                    if (page.id == source.coverPageId) coverId = pageId
+                }
+                dao.updateDocument(copy.copy(coverPageId = coverId))
+                copyId
+            }
+        } catch (error: Exception) {
+            for (pageId in copiedIds) {
+                try {
+                    files.deletePageFiles(pageId)
+                } catch (cleanupError: Exception) {
+                    error.addSuppressed(cleanupError)
+                }
+            }
+            throw error
         }
-    }.flowOn(Dispatchers.IO)
+    }
+
+    override suspend fun deleteForever(id: String) = deleteFromBin(id, null)
+
+    override suspend fun purgeDeletedOlderThan(days: Int) {
+        require(days >= 0)
+        val cutoff = System.currentTimeMillis() - Duration.ofDays(days.toLong()).toMillis()
+        val ids = withContext(Dispatchers.IO) { dao.expiredDocuments(cutoff) }
+        ids.forEach { deleteFromBin(it, cutoff) }
+    }
+
+    private suspend fun deleteFromBin(id: String, cutoff: Long?) = withContext(Dispatchers.IO + NonCancellable) {
+        val pageIds = database.withTransaction {
+            val deletedAt = dao.document(id)?.deletedAt ?: return@withTransaction emptyList()
+            if (cutoff != null && deletedAt >= cutoff) return@withTransaction emptyList()
+            val pages = dao.pages(id).map(PageEntity::id)
+            dao.deleteDocument(id)
+            pages
+        }
+        var failure: java.io.IOException? = null
+        for (pageId in pageIds) {
+            try {
+                files.deletePageFiles(pageId)
+            } catch (error: java.io.IOException) {
+                if (failure == null) failure = error else failure.addSuppressed(error)
+            }
+        }
+        if (failure != null) throw failure
+    }
 
     override fun observeDocument(id: String) = dao.observeDocument(id).map { row ->
         row?.let { DocumentWithPages(it.document.toModel(), it.pages.sortedBy(PageEntity::index).map(PageEntity::toModel)) }
@@ -145,12 +247,32 @@ class RoomDocumentRepository @Inject constructor(
         touch(requireDocument(id).copy(isFavorite = isFavorite))
     }
 
-    override suspend fun softDelete(id: String) = transaction {
-        touch(requireDocument(id).copy(deletedAt = System.currentTimeMillis()))
+    override suspend fun softDelete(id: String) = softDelete(setOf(id))
+
+    override suspend fun softDelete(ids: Set<String>) = transaction {
+        val now = System.currentTimeMillis()
+        ids.forEach { id ->
+            val document = requireDocument(id)
+            if (document.deletedAt == null) touch(document.copy(deletedAt = now))
+        }
     }
 
-    override suspend fun restore(id: String) = transaction {
-        touch(requireDocument(id).copy(deletedAt = null))
+    override suspend fun restore(id: String) = restore(setOf(id))
+
+    override suspend fun restore(ids: Set<String>) = transaction {
+        ids.forEach { id ->
+            val document = dao.document(id)
+            if (document?.deletedAt != null) touch(document.copy(deletedAt = null))
+        }
+    }
+
+    override suspend fun setFavorite(ids: Set<String>, isFavorite: Boolean) = transaction {
+        ids.forEach { id ->
+            val document = requireDocument(id)
+            if (document.deletedAt == null && document.isFavorite != isFavorite) {
+                touch(document.copy(isFavorite = isFavorite))
+            }
+        }
     }
 
     override suspend fun commitDraft(draftId: String, title: String, targetDocumentId: String?, insertAt: Int?) =
