@@ -4,4 +4,12 @@
     <string name="tab_reader">Reader</string>
     <string name="tab_tools">Tools</string>
     <string name="tab_settings">Settings</string>
+    <string name="scan_tile">Scan</string>
+    <string name="batch_scan">Batch scan</string>
+    <string name="single_scan">Single scan</string>
+    <string name="open_last_document">Open last document</string>
+    <string name="unlock">Unlock</string>
+    <string name="unlock_error">Unlock failed. Try again.</string>
+    <string name="pdf_share_pending">Opening PDFs arrives with the Reader (Phase 5)</string>
+    <string name="share_import_error">Some shared images could not be imported.</string>
 </resources>

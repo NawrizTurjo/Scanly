@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.kotlinx.serialization.core)
 
+    testImplementation(libs.junit)
     androidTestImplementation(libs.test.junit)
     androidTestImplementation(libs.espresso.core)
 }

@@ -1,0 +1,24 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="batch_scan"
+        android:icon="@drawable/ic_scan"
+        android:shortcutShortLabel="@string/batch_scan">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="dev.turjo.paperless"
+            android:targetClass="dev.turjo.paperless.MainActivity">
+            <extra android:name="dev.turjo.paperless.ROUTE" android:value="camera_batch" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="single_scan"
+        android:icon="@drawable/ic_scan"
+        android:shortcutShortLabel="@string/single_scan">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="dev.turjo.paperless"
+            android:targetClass="dev.turjo.paperless.MainActivity">
+            <extra android:name="dev.turjo.paperless.ROUTE" android:value="camera_single" />
+        </intent>
+    </shortcut>
+</shortcuts>
