@@ -1,6 +1,8 @@
 plugins { id("paperless.android.library") }
 
 android {
+    defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("test-data/pdf"))
     defaultConfig.consumerProguardFiles("consumer-rules.pro")
     testOptions.unitTests.isIncludeAndroidResources = true
 }
@@ -13,6 +15,9 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    api(project(":core:model"))
+    androidTestImplementation(libs.test.junit)
+    androidTestImplementation(libs.espresso.core)
     implementation(libs.core.ktx)
     implementation(libs.coroutines.android)
     implementation(libs.pdfbox.android)

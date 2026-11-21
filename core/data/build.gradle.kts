@@ -21,6 +21,7 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.test.core)
     api(project(":core:model"))
+    implementation(project(":core:pdf"))
     implementation(project(":core:imaging"))
     implementation(libs.datastore.preferences)
     implementation(libs.coroutines.android)

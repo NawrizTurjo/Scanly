@@ -110,7 +110,7 @@ class RoomDocumentRepository @Inject constructor(
                 val now = System.currentTimeMillis()
                 val copy = source.copy(
                     id = copyId, title = "Copy of ${source.title}", createdAt = now, updatedAt = now,
-                    coverPageId = null,
+                    coverPageId = null, lastOpenedAt = 0, lastPage = 0, pageCount = 0,
                 )
                 dao.insertDocument(copy)
                 var coverId: String? = null
@@ -403,7 +403,7 @@ class RoomDocumentRepository @Inject constructor(
         requireNotNull(dao.document(id)) { "Unknown document $id" }
 
     private suspend fun touch(document: DocumentEntity) {
-        dao.updateDocument(document.copy(updatedAt = System.currentTimeMillis()))
+        dao.updateDocument(document.copy(updatedAt = maxOf(System.currentTimeMillis(), document.updatedAt + 1)))
     }
 
     private fun insertionIndex(at: Int?, count: Int): Int =

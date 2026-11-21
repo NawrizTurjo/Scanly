@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Builds a real v1 database from the exported schema, then lets Room open it with the migrations.
- * Room validates the migrated schema against v2, so a wrong migration fails here.
+ * Room validates the migrated schema against the current schema.
  * (MigrationTestHelper isn't used: under Robolectric on Windows its driver rejects the full database path.)
  */
 @RunWith(RobolectricTestRunner::class)
@@ -25,9 +25,9 @@ class MigrationTest {
     @Test
     fun v1PagesGetDeskewOnAndNoInkRemoval() {
         val file = context.getDatabasePath("migration-test.db").apply { parentFile?.mkdirs(); delete() }
-        createV1(file)
+        createDatabase(file, 1)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -39,8 +39,28 @@ class MigrationTest {
         }
     }
 
-    private fun createV1(file: File) {
-        val schema = JSONObject(File("schemas/dev.turjo.paperless.core.data.PaperlessDatabase/1.json").readText())
+    @Test
+    fun v2DocumentsGetDefaultReadingProgress() = runBlocking {
+        val file = context.getDatabasePath("migration-v2-test.db").apply { parentFile?.mkdirs(); delete() }
+        createDatabase(file, 2)
+        val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
+            .addMigrations(MIGRATION_2_3)
+            .build()
+        try {
+            val document = requireNotNull(db.documentDao().document("d1"))
+            assertEquals(0L, document.lastOpenedAt)
+            assertEquals(0, document.lastPage)
+            assertEquals(0, document.pageCount)
+            assertEquals("p1", db.documentDao().pages("d1").single().id)
+            db.readerDao().insertExternal(ExternalPdfEntity("e1", "content://test/pdf", "PDF", persistedPermission = true))
+            assertEquals("content://test/pdf", db.readerDao().externalUri("e1"))
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createDatabase(file: File, version: Int) {
+        val schema = JSONObject(File("schemas/dev.turjo.paperless.core.data.PaperlessDatabase/$version.json").readText())
             .getJSONObject("database")
         SQLiteDatabase.openOrCreateDatabase(file, null).use { sql ->
             val entities = schema.getJSONArray("entities")
@@ -64,7 +84,7 @@ class MigrationTest {
                     "filter, brightness, contrast, shadowFix, glareFix, processedPath, processedHash, glareWarning, createdAt) " +
                     "VALUES ('p1', 'd1', 0, 'NORMAL', '/o.jpg', 10, 20, 0, 'DOCUMENT', 0, 0, 0, 0, NULL, NULL, 0, 1)",
             )
-            sql.version = 1
+            sql.version = version
         }
     }
 }

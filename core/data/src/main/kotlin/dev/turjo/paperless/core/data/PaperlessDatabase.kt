@@ -37,6 +37,9 @@ data class DocumentEntity(
     val updatedAt: Long,
     val coverPageId: String?,
     val deletedAt: Long?,
+    @ColumnInfo(defaultValue = "0") val lastOpenedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val lastPage: Int = 0,
+    @ColumnInfo(defaultValue = "0") val pageCount: Int = 0,
 )
 
 @Entity(
@@ -91,14 +94,18 @@ data class ScanSessionEntity(
 )
 
 @Database(
-    entities = [FolderEntity::class, DocumentEntity::class, PageEntity::class, ScanSessionEntity::class],
-    version = 2,
+    entities = [
+        FolderEntity::class, DocumentEntity::class, PageEntity::class, ScanSessionEntity::class,
+        ExternalPdfEntity::class, ReaderTabEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
 )
 abstract class PaperlessDatabase : RoomDatabase() {
     abstract fun documentDao(): DocumentDao
     abstract fun folderDao(): FolderDao
     abstract fun scanSessionDao(): ScanSessionDao
+    internal abstract fun readerDao(): ReaderDao
 }
 
 internal fun FolderEntity.toModel() = Folder(id, name, parentId, createdAt, isPrivate)
