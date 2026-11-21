@@ -148,6 +148,11 @@ fun CameraScreen(
     var flash by rememberSaveable { mutableStateOf(CameraFlash.OFF) }
     var controller by remember { mutableStateOf<CaptureController?>(null) }
     var shutterFlash by remember { mutableStateOf(false) }
+    var liveQuad by remember { mutableStateOf<LiveQuadSample?>(null) }
+    val liveQuadSource = model.liveQuadSource
+    val fpsCounter = remember(allowed, liveQuadSource) {
+        if (BuildConfig.DEBUG && allowed && liveQuadSource != null) AnalysisFpsCounter() else null
+    }
     val haptic = LocalHapticFeedback.current
     val snackbar = remember { SnackbarHostState() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -183,12 +188,23 @@ fun CameraScreen(
         if (allowed) {
             CameraPreview(
                 flash = flash,
+                liveQuadSource = liveQuadSource,
+                fpsCounter = fpsCounter,
+                onQuad = { liveQuad = it },
                 onController = { controller = it },
                 onError = { scope.launch { snackbar.showSnackbar(previewError) } },
             )
         }
-        // Live page edges can be drawn here in viewfinder coordinates.
         Box(Modifier.matchParentSize()) {
+            if (allowed && liveQuadSource != null) LiveQuadOverlay(liveQuad, Modifier.matchParentSize())
+            if (BuildConfig.DEBUG && fpsCounter != null) {
+                AnalysisFpsReadout(
+                    fpsCounter,
+                    Modifier.align(Alignment.TopEnd)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                        .padding(top = 58.dp, end = 8.dp),
+                )
+            }
             if (shutterFlash) Box(Modifier.matchParentSize().background(Color.White))
         }
         if (!allowed) {

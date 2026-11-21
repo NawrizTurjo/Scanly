@@ -14,6 +14,7 @@ import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.ScanSession
 import java.io.File
+import java.util.Optional
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,7 @@ internal class CameraViewModel internal constructor(
     private val imageSize: (File) -> PixelSize,
     val thumbnailFile: (String) -> File,
     private val io: CoroutineDispatcher,
+    val liveQuadSource: LiveQuadSource? = null,
 ) : ViewModel() {
     @AssistedInject
     constructor(
@@ -70,9 +72,10 @@ internal class CameraViewModel internal constructor(
         documents: DocumentRepository,
         processing: PageProcessing,
         files: FileStore,
+        liveQuadSource: Optional<LiveQuadSource>,
     ) : this(
         args, sessions, documents, processing, { files.newTempFile(".jpg") },
-        ::readImageSize, files::thumbFile, Dispatchers.IO,
+        ::readImageSize, files::thumbFile, Dispatchers.IO, liveQuadSource.orElse(null),
     )
 
     @AssistedFactory

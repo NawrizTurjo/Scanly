@@ -1,5 +1,7 @@
 plugins { id("paperless.android.feature") }
 
+android { buildFeatures.buildConfig = true }
+
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:data"))
