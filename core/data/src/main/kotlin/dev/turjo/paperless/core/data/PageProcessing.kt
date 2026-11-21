@@ -5,9 +5,14 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.util.Log
+import dev.turjo.paperless.core.imaging.Geometry
+import dev.turjo.paperless.core.imaging.InkColour
+import dev.turjo.paperless.core.imaging.OpenCv
+import dev.turjo.paperless.core.imaging.PageTools
 import dev.turjo.paperless.core.imaging.ProcessParams
 import dev.turjo.paperless.core.imaging.detectOnFile
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.PageBlankInfo
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.paramsHash
@@ -28,6 +33,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgcodecs.Imgcodecs
+import org.opencv.imgproc.Imgproc
 import dev.turjo.paperless.core.imaging.PageProcessor as ImagingPageProcessor
 
 data class PixelSize(val width: Int, val height: Int)
@@ -41,6 +50,9 @@ interface PageProcessing {
     suspend fun originalBitmap(pageId: String, maxSide: Int): Bitmap
     suspend fun previewBitmap(page: Page, maxSide: Int): Bitmap
     suspend fun uprightSize(pageId: String): PixelSize?
+    suspend fun blankInfo(pageIds: List<String>): List<PageBlankInfo> =
+        throw UnsupportedOperationException("Blank-page detection unavailable")
+    suspend fun skewAngle(page: Page): Double? = null
 }
 
 /**
@@ -217,5 +229,51 @@ class QueuedPageProcessing @Inject constructor(
     private companion object {
         const val TAG = "PageProcessing"
         const val PREVIEW_SOURCE_SIDE = 1600
+    }
+
+    override suspend fun blankInfo(pageIds: List<String>): List<PageBlankInfo> = withContext(worker) {
+        awaitIdle(pageIds)
+        OpenCv.ensureLoaded()
+        pageIds.map { id ->
+            val page = documents.getPage(id)
+            val file = page?.processedPath?.let(::File)?.takeIf(File::isFile)
+            if (file == null || page.processedHash != page.paramsHash()) return@map PageBlankInfo(id, false)
+            val bitmap = decodeUpright(file, 800)
+            val image = Mat()
+            try {
+                Utils.bitmapToMat(bitmap, image)
+                Imgproc.cvtColor(image, image, Imgproc.COLOR_RGBA2BGR)
+                PageBlankInfo(id, PageTools.inkFraction(image) < 0.001)
+            } finally {
+                image.release()
+                bitmap.recycle()
+            }
+        }
+    }
+
+    override suspend fun skewAngle(page: Page): Double? = previewLock.withLock {
+        withContext(Dispatchers.Default) {
+            OpenCv.ensureLoaded()
+            val source = previewSource(page)
+            val scale = source.second.width.toFloat() / uprightSizeOf(page).width
+            var image = Imgcodecs.imread(source.first.path, Imgcodecs.IMREAD_COLOR)
+            try {
+                if (image.empty()) return@withContext null
+                page.toParams(scale).quad?.let { quad ->
+                    val warped = Geometry.warp(image, quad)
+                    image.release()
+                    image = warped
+                }
+                page.inkRemoval?.let { ink ->
+                    val cleaned = PageTools.removeInk(image, InkColour.valueOf(ink.name))
+                    image.release()
+                    image = cleaned
+                }
+                val (angle, confidence) = PageTools.estimateSkew(image)
+                angle.takeIf { confidence >= 0.25 && kotlin.math.abs(it) >= 0.3 }
+            } finally {
+                image.release()
+            }
+        }
     }
 }

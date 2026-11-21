@@ -48,6 +48,8 @@ interface DocumentRepository {
     suspend fun setFavorite(id: String, isFavorite: Boolean)
     suspend fun softDelete(id: String)
     suspend fun restore(id: String)
+    suspend fun splitOff(draftId: String, pageIds: List<String>, title: String): String =
+        throw UnsupportedOperationException("Splitting unavailable")
     suspend fun commitDraft(
         draftId: String,
         title: String,
@@ -296,6 +298,25 @@ class RoomDocumentRepository @Inject constructor(
                 target.id
             }
         }
+
+    override suspend fun splitOff(draftId: String, pageIds: List<String>, title: String): String = transaction {
+        val draft = requireDocument(draftId)
+        check(draft.isDraft && draft.deletedAt == null)
+        val pages = dao.pages(draftId)
+        val moved = pageIds.toSet()
+        require(pageIds.isNotEmpty() && moved.size == pageIds.size && pages.map { it.id }.containsAll(moved))
+        val remaining = pages.filterNot { it.id in moved }
+        require(remaining.isNotEmpty())
+        val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        dao.insertDocument(draft.copy(
+            id = id, title = title, isDraft = false, createdAt = now, updatedAt = now, coverPageId = pageIds.first(),
+        ))
+        pageIds.forEachIndexed { index, pageId -> dao.setPagePosition(pageId, id, index) }
+        remaining.forEachIndexed { index, page -> dao.setPagePosition(page.id, draftId, index) }
+        touch(draft.copy(coverPageId = draft.coverPageId?.takeUnless { it in moved }))
+        id
+    }
 
     private suspend fun <T> transaction(block: suspend () -> T): T =
         withContext(Dispatchers.IO) { database.withTransaction(block) }

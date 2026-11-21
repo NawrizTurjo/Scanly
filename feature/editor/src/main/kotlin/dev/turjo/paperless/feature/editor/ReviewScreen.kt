@@ -6,19 +6,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -43,11 +47,16 @@ fun ReviewScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var overflow by remember { mutableStateOf(false) }
+    var split by rememberSaveable { mutableStateOf(false) }
+    var twoSided by rememberSaveable { mutableStateOf(state.duplex) }
     var discard by rememberSaveable { mutableStateOf(false) }
     var save by rememberSaveable { mutableStateOf(false) }
     var filters by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
     val canAct = !state.loading && !state.changing && state.session != null && !state.finishPending
+
+    val firstGroupCount = state.groups.firstOrNull()?.kept?.size ?: state.pages.size
+    val groupNamesValid = state.groups.all { it.title.isNotBlank() }
 
     LaunchedEffect(state.savedId, state.discarded) {
         state.savedId?.let(onSaved)
@@ -65,6 +74,15 @@ fun ReviewScreen(
                     Box {
                         SymbolButton("⋮", R.string.review_options, canAct) { overflow = true }
                         DropdownMenu(overflow, { overflow = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.review_split_at_blanks)) },
+                                enabled = state.pages.isNotEmpty(),
+                                onClick = {
+                                    overflow = false
+                                    twoSided = state.duplex
+                                    split = true
+                                },
+                            )
                             DropdownMenuItem(text = { Text(stringResource(R.string.review_discard_all)) }, onClick = {
                                 overflow = false
                                 discard = true
@@ -85,10 +103,14 @@ fun ReviewScreen(
                 Spacer(Modifier.weight(1f))
                 Button(
                     onClick = {
-                        title = defaultTitle(System.currentTimeMillis())
-                        save = true
+                        if (state.finishPending || (state.groups.isNotEmpty() && state.session?.targetDocumentId == null)) {
+                            vm.save("")
+                        } else {
+                            title = defaultTitle(System.currentTimeMillis())
+                            save = true
+                        }
                     },
-                    enabled = !state.changing && state.finishPending || canAct && state.pages.isNotEmpty(),
+                    enabled = !state.changing && state.finishPending || canAct && state.pages.isNotEmpty() && groupNamesValid,
                 ) { Text(stringResource(R.string.review_save)) }
             }
         },
@@ -96,7 +118,8 @@ fun ReviewScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             ReviewGrid(
-                state.pages, canAct, onEditPage, vm::reorder, vm::rotate, vm::delete,
+                state.pages, state.groups, canAct, onEditPage, vm::reorder, vm::rotate, vm::delete,
+                vm::splitHere, vm::join, vm::renameGroup, vm::restoreSeparator,
             )
             if (state.loading || state.changing) {
                 Box(Modifier.align(Alignment.Center)) { EditorProgress() }
@@ -104,6 +127,37 @@ fun ReviewScreen(
         }
     }
 
+    if (split) {
+        AlertDialog(
+            onDismissRequest = { split = false },
+            title = { Text(stringResource(R.string.review_split_at_blanks)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.review_split_body))
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+                            value = twoSided, role = Role.Checkbox, onValueChange = { twoSided = it },
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Checkbox(checked = twoSided, onCheckedChange = null)
+                        Text(stringResource(R.string.review_two_sided))
+                    }
+                }
+            },
+            dismissButton = { TextButton({ split = false }) { Text(stringResource(R.string.editor_cancel)) } },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        split = false
+                        vm.splitAtBlanks(twoSided)
+                    },
+                    enabled = canAct,
+                ) { Text(stringResource(R.string.review_split)) }
+            },
+        )
+    }
     if (discard) {
         ConfirmDialog(
             R.string.review_discard_all, R.string.review_discard_body, R.string.editor_discard,
@@ -121,7 +175,7 @@ fun ReviewScreen(
             text = {
                 if (append) {
                     Text(pluralStringResource(
-                        R.plurals.review_append, state.pages.size, state.pages.size, state.targetTitle.orEmpty(),
+                        R.plurals.review_append, firstGroupCount, firstGroupCount, state.targetTitle.orEmpty(),
                     ))
                 } else {
                     OutlinedTextField(
@@ -142,7 +196,9 @@ fun ReviewScreen(
             },
         )
     }
-    val firstPage = state.pages.firstOrNull()?.page
+    val dropped = state.groups.flatMap { it.dropped }.toSet()
+    val keptPages = state.pages.filterNot { it.page.id in dropped }
+    val firstPage = keptPages.firstOrNull()?.page
     if (filters && firstPage != null) {
         ModalBottomSheet(onDismissRequest = { filters = false }) {
             Text(
@@ -150,7 +206,7 @@ fun ReviewScreen(
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleLarge,
             )
-            val selected = firstPage.filter.takeIf { filter -> state.pages.all { it.page.filter == filter } }
+            val selected = firstPage.filter.takeIf { filter -> keptPages.all { it.page.filter == filter } }
             PresetCarousel(firstPage, selected, canAct, vm::presetPreview) {
                 filters = false
                 vm.filterAll(it)
@@ -163,13 +219,20 @@ fun ReviewScreen(
 @Composable
 private fun ReviewGrid(
     pages: List<ReviewPage>,
+    groups: List<ReviewGroup>,
     enabled: Boolean,
     onEdit: (String) -> Unit,
     onReorder: (List<String>) -> Unit,
     onRotate: (String, Int) -> Unit,
     onDelete: (String) -> Unit,
+    onSplit: (String) -> Unit,
+    onJoin: (Int) -> Unit,
+    onRename: (Int, String) -> Unit,
+    onRestore: (String) -> Unit,
 ) {
-    val repositoryIds = pages.map { it.page.id }
+    val sections = groups.ifEmpty { listOf(ReviewGroup("", pages.map { it.page.id })) }
+    val repositoryIds = sections.flatMap { it.kept }
+    val sectionById = sections.flatMapIndexed { index, group -> group.kept.map { it to index } }.toMap()
     var draggedIds by remember { mutableStateOf<List<String>?>(null) }
     var awaitingIds by remember { mutableStateOf<List<String>?>(null) }
     LaunchedEffect(repositoryIds, enabled) {
@@ -179,10 +242,13 @@ private fun ReviewGrid(
     val byId = pages.associateBy { it.page.id }
     val grid = rememberLazyGridState()
     val reorder = rememberReorderableLazyGridState(grid) { from, to ->
-        draggedIds = (draggedIds ?: repositoryIds).toMutableList().apply {
-            val source = indexOf(from.key)
-            val destination = indexOf(to.key)
-            if (source >= 0 && destination >= 0) add(destination, removeAt(source))
+        val sourceSection = sectionById[from.key]
+        if (sourceSection != null && sourceSection == sectionById[to.key]) {
+            draggedIds = (draggedIds ?: repositoryIds).toMutableList().apply {
+                val source = indexOf(from.key)
+                val destination = indexOf(to.key)
+                if (source >= 0 && destination >= 0) add(destination, removeAt(source))
+            }
         }
     }
     LazyVerticalGrid(
@@ -191,31 +257,76 @@ private fun ReviewGrid(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(ids.mapNotNull(byId::get), key = { it.page.id }) { item ->
-            val id = item.page.id
-            ReorderableItem(reorder, id) { _ ->
-                val handle = Modifier.longPressDraggableHandle(
-                    enabled = enabled,
-                    onDragStarted = { draggedIds = repositoryIds },
-                    onDragStopped = {
-                        draggedIds?.takeIf { it != repositoryIds }?.let {
-                            awaitingIds = it
-                            onReorder(it)
+        sections.forEachIndexed { index, group ->
+            if (groups.isNotEmpty()) {
+                item(key = "group-$index", span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                pluralStringResource(
+                                    R.plurals.review_group_header, group.kept.size, index + 1, group.kept.size,
+                                ),
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (index > 0) {
+                                TextButton({ onJoin(index) }, enabled = enabled) {
+                                    Text(stringResource(R.string.review_join))
+                                }
+                            }
                         }
-                        draggedIds = null
-                    },
-                )
-                ReviewTile(
-                    item, ids.indexOf(id) + 1, enabled,
-                    edit = { onEdit(id) }, rotate = { onRotate(id, it) }, delete = { onDelete(id) },
-                    dragHandle = {
-                        val dragLabel = stringResource(R.string.review_reorder)
-                        Box(
-                            handle.size(48.dp).semantics { contentDescription = dragLabel },
-                            contentAlignment = Alignment.Center,
-                        ) { Text("⠿") }
-                    },
-                )
+                        OutlinedTextField(
+                            value = group.title,
+                            onValueChange = { onRename(index, it) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = enabled,
+                            label = { Text(stringResource(R.string.review_title_field)) },
+                        )
+                    }
+                }
+            }
+            val kept = ids.filter { sectionById[it] == index }
+            items(kept.mapNotNull(byId::get), key = { it.page.id }) { item ->
+                val id = item.page.id
+                ReorderableItem(reorder, id) { _ ->
+                    val handle = Modifier.longPressDraggableHandle(
+                        enabled = enabled,
+                        onDragStarted = { draggedIds = repositoryIds },
+                        onDragStopped = {
+                            draggedIds?.takeIf { it != repositoryIds }?.let {
+                                awaitingIds = it
+                                onReorder(it)
+                            }
+                            draggedIds = null
+                        },
+                    )
+                    ReviewTile(
+                        item, ids.indexOf(id) + 1, enabled,
+                        edit = { onEdit(id) }, rotate = { onRotate(id, it) }, delete = { onDelete(id) },
+                        split = { onSplit(id) }.takeIf { id != kept.firstOrNull() },
+                        dragHandle = {
+                            val dragLabel = stringResource(R.string.review_reorder)
+                            Box(
+                                handle.size(48.dp).semantics { contentDescription = dragLabel },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("⠿") }
+                        },
+                    )
+                }
+            }
+            items(group.dropped.mapNotNull(byId::get), key = { it.page.id }) { item ->
+                Column {
+                    AsyncImage(
+                        item.thumbnail,
+                        stringResource(R.string.review_blank_separator),
+                        Modifier.fillMaxWidth().aspectRatio(0.78f).padding(6.dp).alpha(0.45f),
+                        contentScale = ContentScale.Fit,
+                    )
+                    TextButton({ onRestore(item.page.id) }, enabled = enabled) {
+                        Text(stringResource(R.string.review_restore))
+                    }
+                }
             }
         }
     }
@@ -230,6 +341,7 @@ private fun ReviewTile(
     edit: () -> Unit,
     rotate: (Int) -> Unit,
     delete: () -> Unit,
+    split: (() -> Unit)?,
 ) {
     val context = LocalContext.current
     val request = remember(context, item.thumbnail, item.modified) {
@@ -276,6 +388,12 @@ private fun ReviewTile(
                         menu = false
                         rotate(90)
                     })
+                    if (split != null) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.review_split_here)) }, onClick = {
+                            menu = false
+                            split()
+                        })
+                    }
                     DropdownMenuItem(text = { Text(stringResource(R.string.editor_delete)) }, onClick = {
                         menu = false
                         delete()

@@ -1,6 +1,7 @@
 package dev.turjo.paperless.feature.editor
 
 import android.graphics.Bitmap
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
@@ -9,10 +10,13 @@ import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.Document
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.DocumentWithPages
+import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.PageBlankInfo
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
+import dev.turjo.paperless.core.model.splitGroups
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -155,8 +159,159 @@ class EditorViewModelTest {
         assertFalse(vm.state.value.dirty)
     }
 
-    private fun review() = ReviewViewModel(
-        "draft", documents, sessions, processing, { id -> File("$id.webp") }, dispatcher,
+    @Test
+    fun duplexSplitMatchesModelAndRestoresBlankBackInScanOrder() = runTest(dispatcher) {
+        val ids = listOf("front", "blank-back", "next-front", "next-back", "sep-front", "sep-back", "last-front")
+        documents.setDraftPages(ids)
+        processing.blanks = setOf("blank-back", "sep-front", "sep-back")
+        val vm = review()
+        runCurrent()
+
+        vm.splitAtBlanks(duplex = true)
+        runCurrent()
+
+        val expected = splitGroups(ids.map { PageBlankInfo(it, it in processing.blanks) }, duplex = true)
+        assertEquals(expected.map { it.pageIds }, vm.state.value.groups.map { it.kept })
+        assertEquals(expected.map { it.droppedSeparatorIds }, vm.state.value.groups.map { it.dropped })
+        vm.restoreSeparator("blank-back")
+        assertEquals(listOf("front", "blank-back", "next-front", "next-back"), vm.state.value.groups.first().kept)
+        assertEquals(listOf("sep-front", "sep-back"), vm.state.value.groups.first().dropped)
+    }
+
+    @Test
+    fun manualSplitRenameAndJoinRetainPageOrderAcrossStateRestoration() = runTest(dispatcher) {
+        val savedState = SavedStateHandle()
+        val vm = review(savedState)
+        runCurrent()
+
+        vm.splitHere("second")
+        vm.renameGroup(1, "Second document")
+        val restored = review(savedState)
+        runCurrent()
+
+        assertEquals(
+            listOf(ReviewGroup("Draft (1)", listOf("first")), ReviewGroup("Second document", listOf("second"))),
+            restored.state.value.groups,
+        )
+        restored.join(1)
+        assertEquals(listOf(ReviewGroup("Draft (1)", listOf("first", "second"))), restored.state.value.groups)
+    }
+
+    @Test
+    fun groupedSaveMovesPagesInOrderAndDeletesOnlyUnrestoredSeparators() = runTest(dispatcher) {
+        documents.setDraftPages(listOf("a", "b", "sep1", "c", "d", "sep2", "e"))
+        processing.blanks = setOf("sep1", "sep2")
+        val vm = review()
+        runCurrent()
+        vm.splitAtBlanks(duplex = false)
+        runCurrent()
+        vm.restoreSeparator("sep1")
+        vm.renameGroup(1, "Middle pages")
+        vm.reorder(listOf("b", "a", "sep1", "d", "c", "e"))
+        runCurrent()
+
+        vm.save("")
+        runCurrent()
+
+        val saved = listOf(documents.draft) + documents.splitDocuments
+        assertEquals(listOf("Draft (1)", "Middle pages", "Draft (3)"), saved.map { it.document.title })
+        assertTrue(saved.none { it.document.isDraft })
+        assertEquals(listOf(listOf("b", "a", "sep1"), listOf("d", "c"), listOf("e")), saved.map { doc ->
+            doc.pages.map { it.id }
+        })
+        assertEquals(listOf("sep2"), documents.deletedIds)
+        assertEquals("draft", vm.state.value.savedId)
+    }
+
+    @Test
+    fun groupedAppendAddsOnlyFirstGroupToSessionTarget() = runTest(dispatcher) {
+        sessions.current.value = sessions.current.value?.copy(targetDocumentId = "target", insertAt = 0)
+        val vm = review()
+        runCurrent()
+        vm.splitHere("second")
+
+        vm.save("")
+        runCurrent()
+
+        assertEquals(listOf("first", "existing"), documents.target.pages.map { it.id })
+        assertEquals(listOf("second"), documents.splitDocuments.single().pages.map { it.id })
+        assertEquals("target", vm.state.value.savedId)
+    }
+
+    @Test
+    fun groupedSaveRetryContinuesAfterLastSuccessfulMove() = runTest(dispatcher) {
+        documents.setDraftPages(listOf("leading", "a", "sep1", "b", "sep2", "c", "trailing"))
+        processing.blanks = setOf("leading", "sep1", "sep2", "trailing")
+        val vm = review()
+        runCurrent()
+        vm.splitAtBlanks(duplex = false)
+        runCurrent()
+        documents.failNextSplitAt = 1
+
+        vm.save("")
+        runCurrent()
+        assertTrue(vm.state.value.finishPending)
+        assertEquals(1, documents.splitDocuments.size)
+        assertTrue(documents.deletedIds.isEmpty())
+
+        vm.save("")
+        runCurrent()
+        assertEquals("draft", vm.state.value.savedId)
+        assertEquals(listOf("leading", "a"), documents.draft.pages.map { it.id })
+        assertEquals(listOf(listOf("b"), listOf("c", "trailing")), documents.splitDocuments.map { doc ->
+            doc.pages.map { it.id }
+        })
+        assertEquals(listOf("sep1", "sep2"), documents.deletedIds)
+    }
+
+    @Test
+    fun changedSeparatorBlocksSaveAndKeepsAllPages() = runTest(dispatcher) {
+        val ids = listOf("first", "sep", "second")
+        documents.setDraftPages(ids)
+        processing.blanks = setOf("sep")
+        val vm = review()
+        runCurrent()
+        vm.splitAtBlanks(duplex = false)
+        runCurrent()
+        processing.blanks = emptySet()
+
+        vm.save("")
+        runCurrent()
+
+        assertEquals(ids, documents.draft.pages.map { it.id })
+        assertTrue(documents.splitDocuments.isEmpty())
+        assertTrue(documents.deletedIds.isEmpty())
+        assertEquals(R.string.review_separators_changed, vm.state.value.message)
+    }
+
+    @Test
+    fun deskewAndInkRemovalArePreviewEditsThatUndoRedoAndSave() = runTest(dispatcher) {
+        val vm = editor()
+        runCurrent()
+        assertTrue(requireNotNull(vm.state.value.edits).deskew)
+
+        vm.edit { it.copy(deskew = false) }
+        vm.edit { it.copy(inkRemoval = InkRemoval.BLUE) }
+        vm.undo()
+        assertEquals(null, vm.state.value.edits?.inkRemoval)
+        vm.undo()
+        assertFalse(vm.state.value.dirty)
+
+        vm.redo()
+        vm.redo()
+        val working = requireNotNull(vm.state.value.edits).applyTo(requireNotNull(vm.state.value.page))
+        vm.preview(working, 1200)
+        assertEquals(working, processing.previewed)
+        vm.done()
+        runCurrent()
+
+        assertFalse(documents.updates.single().deskew)
+        assertEquals(InkRemoval.BLUE, documents.updates.single().inkRemoval)
+        assertEquals(listOf("first"), processing.renderedIds)
+    }
+
+    private fun review(savedState: SavedStateHandle = SavedStateHandle()) = ReviewViewModel(
+        "draft", documents, sessions, processing, { id -> File("$id.webp") }, dispatcher, savedState,
     ).also(viewModels::add)
 
     private fun editor() = PageEditorViewModel("first", documents, processing).also(viewModels::add)
@@ -174,6 +329,13 @@ class EditorViewModelTest {
         val target: DocumentWithPages get() = targetFlow.value
         val updates = mutableListOf<Page>()
         val commits = mutableListOf<Commit>()
+        val splitDocuments = mutableListOf<DocumentWithPages>()
+        val deletedIds = mutableListOf<String>()
+        var failNextSplitAt: Int? = null
+
+        fun setDraftPages(ids: List<String>) {
+            draftFlow.value = draft.copy(pages = ids.mapIndexed { index, id -> page(id, index) })
+        }
 
         override fun observeDocument(id: String) = when (id) {
             "draft" -> draftFlow
@@ -217,7 +379,29 @@ class EditorViewModelTest {
         override fun observeLibrary() = draftFlow.map { emptyList<DocumentSummary>() }
         override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Nothing =
             unexpected()
-        override suspend fun deletePage(pageId: String): Nothing = unexpected()
+        override suspend fun splitOff(draftId: String, pageIds: List<String>, title: String): String {
+            require(draftId == draft.document.id)
+            if (splitDocuments.size == failNextSplitAt) {
+                failNextSplitAt = null
+                error("Simulated split failure")
+            }
+            val id = "split-${splitDocuments.size}"
+            val moved = pageIds.mapIndexed { index, pageId ->
+                draft.pages.first { it.id == pageId }.copy(documentId = id, index = index)
+            }
+            splitDocuments += DocumentWithPages(document(id, title, false), moved)
+            keepDraftPages(draft.pages.filterNot { it.id in pageIds })
+            return id
+        }
+
+        override suspend fun deletePage(pageId: String) {
+            deletedIds += pageId
+            keepDraftPages(draft.pages.filterNot { it.id == pageId })
+        }
+
+        private fun keepDraftPages(pages: List<Page>) {
+            draftFlow.value = draft.copy(pages = pages.mapIndexed { index, page -> page.copy(index = index) })
+        }
         override suspend fun rotatePage(pageId: String, delta: Int): Nothing = unexpected()
         override suspend fun rename(id: String, title: String): Nothing = unexpected()
         override suspend fun setFavorite(id: String, isFavorite: Boolean): Nothing = unexpected()
@@ -244,6 +428,10 @@ class EditorViewModelTest {
         override val busyPageIds = MutableStateFlow<Set<String>>(emptySet())
         val renderedIds = mutableListOf<String>()
         val waits = mutableListOf<List<String>>()
+        var blanks = emptySet<String>()
+        var previewed: Page? = null
+
+        override suspend fun blankInfo(pageIds: List<String>) = pageIds.map { PageBlankInfo(it, it in blanks) }
 
         override fun enqueueRender(pageId: String) {
             renderedIds += pageId
@@ -257,7 +445,10 @@ class EditorViewModelTest {
         override fun enqueueNewPage(pageId: String, filter: PageFilter): Nothing = unexpected()
         override suspend fun detectQuad(pageId: String): Nothing = unexpected()
         override suspend fun originalBitmap(pageId: String, maxSide: Int): Bitmap = unexpected()
-        override suspend fun previewBitmap(page: Page, maxSide: Int): Bitmap = unexpected()
+        override suspend fun previewBitmap(page: Page, maxSide: Int): Bitmap {
+            previewed = page
+            error("No bitmap in the JVM test")
+        }
     }
 
     private companion object {

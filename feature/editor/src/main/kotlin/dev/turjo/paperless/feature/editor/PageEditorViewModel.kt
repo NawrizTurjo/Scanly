@@ -78,6 +78,14 @@ internal class PageEditorViewModel @AssistedInject constructor(
         null
     }
 
+    suspend fun skewAngle(page: Page): Double? = try {
+        processing.skewAngle(page)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
+    }
+
     fun message(resource: Int?) = mutable.update { it.copy(message = resource) }
 
     fun beginGesture() {
@@ -176,4 +184,5 @@ internal class PageEditorViewModel @AssistedInject constructor(
 
 internal fun Page.originalComparison() = copy(
     filter = PageFilter.ORIGINAL, brightness = 0f, contrast = 0f, shadowFix = false, glareFix = false,
+    deskew = false, inkRemoval = null,
 )

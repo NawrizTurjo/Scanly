@@ -56,4 +56,26 @@
         <item quantity="one">Add %1$d page to %2$s</item>
         <item quantity="other">Add %1$d pages to %2$s</item>
     </plurals>
+    <string name="editor_deskew">Auto-deskew</string>
+    <string name="editor_straightened">Straightened by %1$.1f°</string>
+    <string name="editor_ink_removal">Ink removal</string>
+    <string name="editor_ink_none">None</string>
+    <string name="editor_ink_blue">Blue</string>
+    <string name="editor_ink_red">Red</string>
+    <string name="editor_ink_green">Green</string>
+    <string name="editor_ink_caption">Removes coloured pen — can\'t tell black pen from black print</string>
+    <string name="review_split_at_blanks">Split at blank pages</string>
+    <string name="review_split_body">Scan for blank separators and review the proposed documents before saving.</string>
+    <string name="review_two_sided">Two-sided scan</string>
+    <string name="review_split">Split</string>
+    <string name="review_split_here">Start new document here</string>
+    <string name="review_join">Join</string>
+    <string name="review_restore">Restore</string>
+    <string name="review_blank_separator">Blank separator</string>
+    <string name="review_no_split">No documents found when splitting at blank pages</string>
+    <string name="review_separators_changed">Scan for blank pages again or restore the separators before saving</string>
+    <plurals name="review_group_header">
+        <item quantity="one">Document %1$d · %2$d page</item>
+        <item quantity="other">Document %1$d · %2$d pages</item>
+    </plurals>
 </resources>

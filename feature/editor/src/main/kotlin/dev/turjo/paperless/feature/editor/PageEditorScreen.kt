@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.turjo.paperless.core.model.InkRemoval
 import kotlinx.coroutines.delay
 
 private enum class EditorTab(val label: Int) {
@@ -188,10 +189,16 @@ private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, e
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun FilterPanel(state: EditorState, vm: PageEditorViewModel, enabled: Boolean) {
     val page = requireNotNull(state.page)
     val edits = requireNotNull(state.edits)
-    val presetPage = page.originalComparison().copy(quad = edits.quad, rotation = edits.rotation)
+    val presetPage = edits.applyTo(page).copy(brightness = 0f, contrast = 0f, shadowFix = false, glareFix = false)
+    val skewPage = page.originalComparison().copy(quad = edits.quad, deskew = edits.deskew, inkRemoval = edits.inkRemoval)
+    val angle by produceState<Double?>(null, skewPage) {
+        value = null
+        if (skewPage.deskew) value = vm.skewAngle(skewPage)
+    }
 
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         PresetCarousel(
@@ -220,6 +227,27 @@ private fun FilterPanel(state: EditorState, vm: PageEditorViewModel, enabled: Bo
             AdjustmentSwitch(R.string.editor_shadow_fix, edits.shadowFix, enabled) { checked ->
                 vm.edit { it.copy(shadowFix = checked) }
             }
+            AdjustmentSwitch(R.string.editor_deskew, edits.deskew, enabled) { checked ->
+                vm.edit { it.copy(deskew = checked) }
+            }
+            angle?.let { Text(stringResource(R.string.editor_straightened, kotlin.math.abs(it))) }
+            Text(stringResource(R.string.editor_ink_removal))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    null to R.string.editor_ink_none,
+                    InkRemoval.BLUE to R.string.editor_ink_blue,
+                    InkRemoval.RED to R.string.editor_ink_red,
+                    InkRemoval.GREEN to R.string.editor_ink_green,
+                ).forEach { (ink, label) ->
+                    FilterChip(
+                        selected = edits.inkRemoval == ink,
+                        onClick = { vm.edit { it.copy(inkRemoval = ink) } },
+                        label = { Text(stringResource(label)) },
+                        enabled = enabled,
+                    )
+                }
+            }
+            Text(stringResource(R.string.editor_ink_caption), style = MaterialTheme.typography.bodySmall)
             AdjustmentSwitch(R.string.editor_glare_fix, edits.glareFix, enabled) { checked ->
                 vm.edit { it.copy(glareFix = checked) }
             }
