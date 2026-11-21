@@ -55,7 +55,7 @@ class QuadDetector {
         return Detection(Geometry.orderQuad(quad), minOf(1.0, best.score).toFloat())
     }
 
-    private data class Candidate(val quad: FloatArray, val score: Double, val area: Double)
+    internal data class Candidate(val quad: FloatArray, val score: Double, val area: Double)
 
     private fun scoreCandidates(small: Mat): List<Candidate> {
         val width = small.cols()
@@ -63,8 +63,18 @@ class QuadDetector {
         val gradient = newMat { colourGradient(small, it) }.useMat { mag ->
             FloatArray(width * height).also { mag.get(0, 0, it) }
         }
-        val threshold = maxOf(12.0, Percentiles.ofFloats(gradient, 85.0))
-        return candidates(small).mapNotNull { quad ->
+        return scoreCandidates(candidates(small), gradient, width, height)
+    }
+
+    internal fun scoreCandidates(
+        quads: List<FloatArray>,
+        gradient: FloatArray,
+        width: Int,
+        height: Int,
+        percentileScratch: FloatArray = FloatArray(gradient.size),
+    ): List<Candidate> {
+        val threshold = maxOf(12.0, Percentiles.ofFloats(gradient, 85.0, percentileScratch))
+        return quads.mapNotNull { quad ->
             val area = quad.pointMat().useMat { CvGeometry.contourArea(it) }
             val fraction = area / (width.toDouble() * height)
             if (fraction !in 0.08..0.985 || !anglesOk(quad)) return@mapNotNull null
@@ -75,7 +85,7 @@ class QuadDetector {
     }
 
     private fun candidates(small: Mat): List<FloatArray> {
-        val size = maxOf(5, round(maxOf(small.rows(), small.cols()) / 90.0).toInt() or 1).toDouble()
+        val size = closingSize(small).toDouble()
         val result = mutableListOf<FloatArray>()
         Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(size, size)).useMat { closing ->
             Mat.ones(3, 3, CvType.CV_8UC1).useMat { dilation ->
@@ -85,21 +95,17 @@ class QuadDetector {
                             fun collect(source: Mat, channel: Int, invert: Boolean = false) {
                                 Core.extractChannel(source, map, channel)
                                 if (invert) Core.bitwise_not(map, map)
-                                Imgproc.morphologyEx(map, map, Imgproc.MORPH_CLOSE, closing, Point(-1.0, -1.0), 2)
-                                Imgproc.GaussianBlur(map, map, Size(5.0, 5.0), 0.0)
-                                val median = Percentiles.ofHistogram(histogram(map), 50.0)
-                                val low = maxOf(5.0, (1.0 - 0.33) * median * 0.5).toInt()
-                                val high = maxOf(low + 10.0, minOf(255.0, (1.0 + 0.33) * median * 0.5)).toInt()
-                                newMat { Imgproc.Canny(map, it, low.toDouble(), high.toDouble(), 3, true) }.useMat {
+                                closeAndBlur(map, map, closing)
+                                newMat { autoCanny(map, it) }.useMat {
                                     Imgproc.dilate(it, it, dilation)
-                                    collectContours(it, Imgproc.RETR_LIST, 6, result)
+                                    Mat().useMat { hierarchy -> collectContours(it, Imgproc.RETR_LIST, 6, result, hierarchy) }
                                 }
                                 Imgproc.threshold(map, map, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
                                 map.clone().useMat { inverse ->
                                     Core.bitwise_not(inverse, inverse)
                                     for (mask in listOf(map, inverse)) {
                                         Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, opening)
-                                        collectContours(mask, Imgproc.RETR_EXTERNAL, 3, result)
+                                        Mat().useMat { hierarchy -> collectContours(mask, Imgproc.RETR_EXTERNAL, 3, result, hierarchy) }
                                     }
                                 }
                             }
@@ -117,10 +123,12 @@ class QuadDetector {
         return result
     }
 
-    private fun collectContours(mask: Mat, mode: Int, limit: Int, result: MutableList<FloatArray>) {
+    internal fun collectContours(
+        mask: Mat, mode: Int, limit: Int, result: MutableList<FloatArray>, hierarchy: Mat,
+    ) {
         val contours = mutableListOf<MatOfPoint>()
         try {
-            Mat().useMat { Imgproc.findContours(mask, contours, it, mode, Imgproc.CHAIN_APPROX_SIMPLE) }
+            Imgproc.findContours(mask, contours, hierarchy, mode, Imgproc.CHAIN_APPROX_SIMPLE)
             contours.map { it to CvGeometry.contourArea(it) }.sortedByDescending { it.second }
                 .take(limit).mapNotNullTo(result) { contourQuad(it.first) }
         } finally {
@@ -223,13 +231,11 @@ class QuadDetector {
     }
 
     private fun magnitude(gray: Mat): Mat =
-        newMat { Imgproc.Sobel(gray, it, CvType.CV_32F, 1, 0, 3) }.useMat { gx ->
-            newMat { Imgproc.Sobel(gray, it, CvType.CV_32F, 0, 1, 3) }.useMat { gy ->
-                newMat { Core.magnitude(gx, gy, it) }
-            }
+        Mat().useMat { gx ->
+            Mat().useMat { gy -> newMat { lumaGradient(gray, it, gx, gy) } }
         }
 
-    private fun preferEnclosing(best: Candidate, scored: List<Candidate>, width: Int, height: Int): Candidate {
+    internal fun preferEnclosing(best: Candidate, scored: List<Candidate>, width: Int, height: Int): Candidate {
         var chosen = best
         val margin = 0.01 * maxOf(width, height)
         val points = best.quad.points()
@@ -335,3 +341,24 @@ internal inline fun <T> withResized(m: Mat, scale: Double, block: (Mat) -> T): T
     return newMat { Imgproc.resize(m, it, size, 0.0, 0.0, Imgproc.INTER_AREA) }.useMat(block)
 }
 
+
+internal fun closingSize(gray: Mat): Int =
+    maxOf(5, round(maxOf(gray.rows(), gray.cols()) / 90.0).toInt() or 1)
+
+internal fun closeAndBlur(gray: Mat, out: Mat, kernel: Mat) {
+    Imgproc.morphologyEx(gray, out, Imgproc.MORPH_CLOSE, kernel, Point(-1.0, -1.0), 2)
+    Imgproc.GaussianBlur(out, out, Size(5.0, 5.0), 0.0)
+}
+
+internal fun autoCanny(gray: Mat, out: Mat) {
+    val median = Percentiles.ofHistogram(histogram(gray), 50.0)
+    val low = maxOf(5.0, (1.0 - 0.33) * median * 0.5).toInt()
+    val high = maxOf(low + 10.0, minOf(255.0, (1.0 + 0.33) * median * 0.5)).toInt()
+    Imgproc.Canny(gray, out, low.toDouble(), high.toDouble(), 3, true)
+}
+
+internal fun lumaGradient(gray: Mat, out: Mat, gx: Mat, gy: Mat) {
+    Imgproc.Sobel(gray, gx, CvType.CV_32F, 1, 0, 3)
+    Imgproc.Sobel(gray, gy, CvType.CV_32F, 0, 1, 3)
+    Core.magnitude(gx, gy, out)
+}

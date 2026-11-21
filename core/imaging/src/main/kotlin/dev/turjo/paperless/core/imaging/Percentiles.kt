@@ -19,9 +19,11 @@ internal object Percentiles {
         }
     }
 
-    fun ofFloats(samples: FloatArray, percent: Double): Double {
-        val sorted = samples.sortedArray()
-        return interpolate(sorted.size, percent) { sorted[it].toDouble() }
+    fun ofFloats(samples: FloatArray, percent: Double, scratch: FloatArray = FloatArray(samples.size)): Double {
+        require(scratch.size == samples.size)
+        samples.copyInto(scratch)
+        scratch.sort()
+        return interpolate(scratch.size, percent) { scratch[it].toDouble() }
     }
 
     private inline fun interpolate(count: Int, percent: Double, at: (Int) -> Double): Double {

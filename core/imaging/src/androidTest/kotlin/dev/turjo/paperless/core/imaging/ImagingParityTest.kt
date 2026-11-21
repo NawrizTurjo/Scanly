@@ -14,7 +14,10 @@ import org.opencv.core.Mat
 import org.opencv.core.MatOfByte
 import org.opencv.core.Size
 import org.opencv.imgcodecs.Imgcodecs
+import java.nio.ByteBuffer
 import java.util.Locale
+import kotlin.math.ceil
+import kotlin.math.hypot
 
 @RunWith(AndroidJUnit4::class)
 class ImagingParityTest {
@@ -80,10 +83,85 @@ class ImagingParityTest {
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
-    private fun AssetManager.image(path: String): Mat {
+    @Test
+    fun liveDetectorMatchesPythonGoldens() {
+        OpenCv.ensureLoaded()
+        val metadata = assets.open("goldens.json").bufferedReader().use { JSONObject(it.readText()) }
+        val tolerance = metadata.getJSONObject("tolerances").getDouble("live_quad_px")
+        val items = metadata.getJSONObject("items")
+        val times = mutableListOf<Double>()
+        val failures = mutableListOf<String>()
+        val detector = LiveQuadDetector()
+        try {
+            for (name in items.keys()) {
+                val live = items.getJSONObject(name).getJSONObject("live")
+                val corners = live.getJSONArray("quad")
+                val expected = FloatArray(8) { corners.getJSONArray(it / 2).getDouble(it % 2).toFloat() }
+                assets.image(live.getString("frame"), Imgcodecs.IMREAD_GRAYSCALE).useMat { gray ->
+                    fun compare(variant: String, input: LumaFrame): LiveQuad? {
+                        val start = SystemClock.elapsedRealtimeNanos()
+                        val actual = detector.detect(input)
+                        val elapsed = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
+                        if (variant == "upright") times.add(elapsed)
+                        val error = actual?.let {
+                            (0 until 8 step 2).maxOf { i ->
+                                hypot(
+                                    it.points[i] * gray.cols() - expected[i],
+                                    it.points[i + 1] * gray.rows() - expected[i + 1],
+                                ).toDouble()
+                            }
+                        }
+                        Log.i(TAG, "live $name/$variant | ${elapsed.formatted()} ms | ${error?.formatted()} px")
+                        if (error == null || error > tolerance) failures.add("$name/$variant: $error px")
+                        return actual
+                    }
+
+                    val upright = compare("upright", gray.lumaFrame())
+                    newMat { Core.rotate(gray, it, Core.ROTATE_90_COUNTERCLOCKWISE) }.useMat { sensor ->
+                        val rotated = compare("rotated", sensor.lumaFrame(rotation = 90))
+                        if (upright == null || rotated == null ||
+                            !upright.points.contentEquals(rotated.points) || upright.confidence != rotated.confidence
+                        ) failures.add("$name rotated detection differed from upright")
+                    }
+                    if (times.size == 1) {
+                        val padded = gray.lumaFrame(padding = 13, offset = 7)
+                        val found = compare("padded", padded)
+                        if (upright == null || found == null || !upright.points.contentEquals(found.points) ||
+                            upright.confidence != found.confidence
+                        ) failures.add("$name padded detection differed from upright")
+                        if (padded.data.position() != 7) failures.add("$name padded buffer position changed")
+                    }
+                }
+            }
+        } finally {
+            detector.release()
+        }
+        val sorted = times.sorted()
+        val median = (sorted[(sorted.size - 1) / 2] + sorted[sorted.size / 2]) / 2
+        val p95 = sorted[ceil(0.95 * sorted.size).toInt() - 1]
+        Log.i(TAG, "live upright timings (n=${sorted.size}) | median ${median.formatted()} ms | p95 ${p95.formatted()} ms")
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
+    private fun Mat.lumaFrame(rotation: Int = 0, padding: Int = 0, offset: Int = 0): LumaFrame {
+        val width = cols()
+        val height = rows()
+        val stride = width + padding
+        val bytes = ByteBuffer.allocateDirect(offset + (height - 1) * stride + width)
+        val row = ByteArray(width)
+        for (y in 0 until height) {
+            get(y, 0, row)
+            bytes.position(offset + y * stride)
+            bytes.put(row)
+        }
+        bytes.position(offset)
+        return LumaFrame(bytes, width, height, stride, rotation)
+    }
+
+    private fun AssetManager.image(path: String, mode: Int = Imgcodecs.IMREAD_COLOR): Mat {
         val bytes = open(path).use { it.readBytes() }
         return MatOfByte(*bytes).useMat {
-            Imgcodecs.imdecode(it, Imgcodecs.IMREAD_COLOR).also { decoded ->
+            Imgcodecs.imdecode(it, mode).also { decoded ->
                 if (decoded.empty()) {
                     decoded.release()
                     error("Could not decode $path")
