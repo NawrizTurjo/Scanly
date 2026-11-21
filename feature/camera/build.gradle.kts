@@ -3,6 +3,7 @@ plugins { id("paperless.android.feature") }
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:data"))
+    implementation(libs.activity.compose)
     implementation(libs.camera.core)
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
