@@ -159,6 +159,81 @@ class CameraViewModelTest {
         assertEquals(CameraEvent.Close, model.events.first())
     }
 
+    @Test fun duplexTracksSidesAndReordersDraftBeforeReview() = runTest {
+        createModel()
+        runCurrent()
+        model.toggleDuplex()
+        model.scanBacks()
+        assertEquals(DuplexPhase.FRONTS, model.state.value.duplexPhase)
+        model.importImages(listOf("front1", "front2")) { image, file -> file.writeText(image) }
+        model.scanBacks()
+        assertEquals(DuplexPhase.FRONTS, model.state.value.duplexPhase)
+        runCurrent()
+        assertEquals(2, model.state.value.frontCount)
+
+        model.scanBacks()
+        assertEquals(DuplexPhase.BACKS, model.state.value.duplexPhase)
+        model.capture { it.writeText("back2") }
+        runCurrent()
+        model.capture { it.writeText("back1") }
+        runCurrent()
+        assertEquals(2, model.state.value.backCount)
+
+        model.review()
+        runCurrent()
+        val interleaved = listOf("page-0", "page-3", "page-1", "page-2")
+        assertEquals(listOf(interleaved), documents.reorders)
+        assertEquals(interleaved, model.state.value.pageIds)
+        assertEquals(CameraEvent.Captured, model.events.first())
+        assertEquals(CameraEvent.Captured, model.events.first())
+        assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
+    }
+
+    @Test fun duplexMismatchCanReturnToCameraOrKeepScanOrder() = runTest {
+        createModel()
+        runCurrent()
+        model.toggleDuplex()
+        model.importImages(listOf("front1", "front2")) { image, file -> file.writeText(image) }
+        runCurrent()
+        model.scanBacks()
+        model.importImages(listOf("back2")) { image, file -> file.writeText(image) }
+        runCurrent()
+
+        model.review()
+        runCurrent()
+        assertTrue(model.state.value.confirmDuplexMismatch)
+        assertFalse(model.state.value.canEdit)
+        model.dismissDuplexMismatch()
+        assertEquals(DuplexPhase.BACKS, model.state.value.duplexPhase)
+        assertTrue(model.state.value.canEdit)
+
+        model.review()
+        runCurrent()
+        model.keepDuplexOrder()
+        assertTrue(documents.reorders.isEmpty())
+        assertEquals(listOf("page-0", "page-1", "page-2"), model.state.value.pageIds)
+        assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
+    }
+
+    @Test fun autoCaptureIsOffInitiallyAndUsesExistingCapturePipeline() = runTest {
+        createModel()
+        runCurrent()
+        val shutter = CaptureController { it.writeText("capture") }
+        fun overlay(stable: Long) = OverlayQuad(FloatArray(8), 1f, stable, 10f, FloatArray(256) { 0.2f })
+        model.onOverlay(overlay(0), 0, shutter)
+        model.onOverlay(overlay(700), 700, shutter)
+        assertFalse(model.state.value.capturing)
+
+        model.toggleAutoCapture()
+        model.onOverlay(overlay(800), 800, shutter)
+        model.onOverlay(overlay(1500), 1500, shutter)
+        assertTrue(model.state.value.capturing)
+        runCurrent()
+        model.onOverlay(overlay(2300), 2300, shutter)
+        assertFalse(model.state.value.capturing)
+        assertEquals(listOf("page-0"), model.state.value.pageIds)
+    }
+
     @Test fun keepingPagesOpensReviewWithoutDiscarding() = runTest {
         documents.addExistingPage()
         createModel()
@@ -225,6 +300,7 @@ class CameraViewModelTest {
             DocumentWithPages(Document("draft", "", null, false, true, 0, 0, null, null), emptyList()),
         )
         var onAdd = {}
+        val reorders = mutableListOf<List<String>>()
 
         override fun observeDocument(id: String) = draft
         override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Page {
@@ -249,7 +325,14 @@ class CameraViewModelTest {
         override fun observeLibrary(): MutableStateFlow<List<DocumentSummary>> = unused()
         override suspend fun getPage(id: String): Page? = unused()
         override suspend fun updatePage(page: Page): Unit = unused()
-        override suspend fun reorderPages(documentId: String, orderedPageIds: List<String>): Unit = unused()
+        override suspend fun reorderPages(documentId: String, orderedPageIds: List<String>) {
+            assertEquals("draft", documentId)
+            reorders.add(orderedPageIds)
+            val pages = draft.value.pages.associateBy { it.id }
+            draft.value = draft.value.copy(pages = orderedPageIds.mapIndexed { index, id ->
+                pages.getValue(id).copy(index = index)
+            })
+        }
         override suspend fun deletePage(pageId: String): Unit = unused()
         override suspend fun rotatePage(pageId: String, delta: Int): Unit = unused()
         override suspend fun rename(id: String, title: String): Unit = unused()
