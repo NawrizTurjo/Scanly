@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Scanly" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F8F9FF</item>
+    </style>
+</resources>
