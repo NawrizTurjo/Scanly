@@ -20,7 +20,9 @@ object LiveDetectionModule {
         val smoother = QuadSmoother()
         return LiveQuadSource { frame ->
             val quad = detector.detect(LumaFrame(frame.y, frame.width, frame.height, frame.rowStride, frame.rotationDegrees))
-            smoother.update(quad, frame.timestampNanos)?.let { OverlayQuad(it.points, it.confidence, it.stableForMillis) }
+            smoother.update(quad, frame.timestampNanos)?.let {
+                OverlayQuad(it.points, it.confidence, it.stableForMillis, it.sharpness, it.fingerprint)
+            }
         }
     }
 }

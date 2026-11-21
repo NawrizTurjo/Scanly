@@ -3,6 +3,12 @@ plugins {
     id("paperless.hilt")
 }
 
+android {
+    // Room exports schemas here; migration tests read them as test assets.
+    sourceSets["test"].assets.srcDir(file("schemas"))
+    testOptions.unitTests.isIncludeAndroidResources = true
+}
+
 ksp {
     arg("room.schemaLocation", file("schemas").path)
 }

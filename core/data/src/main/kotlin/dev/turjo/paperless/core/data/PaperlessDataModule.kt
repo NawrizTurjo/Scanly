@@ -29,7 +29,9 @@ abstract class PaperlessDataModule {
         @Provides
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): PaperlessDatabase =
-            Room.databaseBuilder(context, PaperlessDatabase::class.java, "paperless.db").build()
+            Room.databaseBuilder(context, PaperlessDatabase::class.java, "paperless.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
 
         @Provides
         fun provideDocumentDao(database: PaperlessDatabase): DocumentDao = database.documentDao()

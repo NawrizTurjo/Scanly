@@ -2,6 +2,7 @@ package dev.turjo.paperless.core.data
 
 import androidx.room.Database
 import androidx.room.Embedded
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -9,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.RoomDatabase
 import dev.turjo.paperless.core.model.Document
 import dev.turjo.paperless.core.model.Folder
+import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
@@ -66,6 +68,8 @@ data class PageEntity(
     val processedHash: String?,
     val glareWarning: Boolean,
     val createdAt: Long,
+    @ColumnInfo(defaultValue = "1") val deskew: Boolean = true,
+    val inkRemoval: InkRemoval? = null,
 )
 
 @Entity(
@@ -88,7 +92,7 @@ data class ScanSessionEntity(
 
 @Database(
     entities = [FolderEntity::class, DocumentEntity::class, PageEntity::class, ScanSessionEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class PaperlessDatabase : RoomDatabase() {
@@ -108,12 +112,13 @@ internal fun Document.toEntity() =
 internal fun PageEntity.toModel() = Page(
     id, documentId, index, mode, originalPath, originalWidth, originalHeight, quad, rotation, filter,
     brightness, contrast, shadowFix, glareFix, processedPath, processedHash, glareWarning, createdAt,
+    deskew, inkRemoval,
 )
 
 internal fun Page.toEntity() = PageEntity(
     id, documentId, index, mode, originalPath, originalWidth, originalHeight,
     quad?.takeUnless { it == Quad.FULL }, rotation, filter, brightness, contrast, shadowFix, glareFix,
-    processedPath, processedHash, glareWarning, createdAt,
+    processedPath, processedHash, glareWarning, createdAt, deskew, inkRemoval,
 )
 
 internal fun ScanSessionEntity.toModel() =
@@ -121,3 +126,11 @@ internal fun ScanSessionEntity.toModel() =
 
 internal fun ScanSession.toEntity() =
     ScanSessionEntity(id, draftDocumentId, startedAt, targetDocumentId, insertAt)
+
+/** v2: per-page auto-deskew (on by default, SC-16) and coloured-ink removal (SC-15). */
+val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE pages ADD COLUMN deskew INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE pages ADD COLUMN inkRemoval TEXT")
+    }
+}

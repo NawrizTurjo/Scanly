@@ -1,0 +1,380 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "64364ac8c2a1513f115d5333916d9249",
+    "entities": [
+      {
+        "tableName": "folders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `parentId` TEXT, `createdAt` INTEGER NOT NULL, `isPrivate` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parentId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isPrivate",
+            "columnName": "isPrivate",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "documents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `folderId` TEXT, `isFavorite` INTEGER NOT NULL, `isDraft` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `coverPageId` TEXT, `deletedAt` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folderId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isFavorite",
+            "columnName": "isFavorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDraft",
+            "columnName": "isDraft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coverPageId",
+            "columnName": "coverPageId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_documents_folderId",
+            "unique": false,
+            "columnNames": [
+              "folderId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_documents_folderId` ON `${TABLE_NAME}` (`folderId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `documentId` TEXT NOT NULL, `index` INTEGER NOT NULL, `mode` TEXT NOT NULL, `originalPath` TEXT NOT NULL, `originalWidth` INTEGER NOT NULL, `originalHeight` INTEGER NOT NULL, `rotation` INTEGER NOT NULL, `filter` TEXT NOT NULL, `brightness` REAL NOT NULL, `contrast` REAL NOT NULL, `shadowFix` INTEGER NOT NULL, `glareFix` INTEGER NOT NULL, `processedPath` TEXT, `processedHash` TEXT, `glareWarning` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `deskew` INTEGER NOT NULL DEFAULT 1, `inkRemoval` TEXT, `quad_tlx` REAL, `quad_tly` REAL, `quad_trx` REAL, `quad_try_` REAL, `quad_brx` REAL, `quad_bry` REAL, `quad_blx` REAL, `quad_bly` REAL, PRIMARY KEY(`id`), FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentId",
+            "columnName": "documentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "index",
+            "columnName": "index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalPath",
+            "columnName": "originalPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalWidth",
+            "columnName": "originalWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalHeight",
+            "columnName": "originalHeight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rotation",
+            "columnName": "rotation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "filter",
+            "columnName": "filter",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "brightness",
+            "columnName": "brightness",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contrast",
+            "columnName": "contrast",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shadowFix",
+            "columnName": "shadowFix",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "glareFix",
+            "columnName": "glareFix",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "processedPath",
+            "columnName": "processedPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "processedHash",
+            "columnName": "processedHash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "glareWarning",
+            "columnName": "glareWarning",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deskew",
+            "columnName": "deskew",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "inkRemoval",
+            "columnName": "inkRemoval",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "quad.tlx",
+            "columnName": "quad_tlx",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.tly",
+            "columnName": "quad_tly",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.trx",
+            "columnName": "quad_trx",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.try_",
+            "columnName": "quad_try_",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.brx",
+            "columnName": "quad_brx",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.bry",
+            "columnName": "quad_bry",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.blx",
+            "columnName": "quad_blx",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "quad.bly",
+            "columnName": "quad_bly",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pages_documentId",
+            "unique": false,
+            "columnNames": [
+              "documentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pages_documentId` ON `${TABLE_NAME}` (`documentId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "documents",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "documentId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "scan_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `draftDocumentId` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `targetDocumentId` TEXT, `insertAt` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`draftDocumentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "draftDocumentId",
+            "columnName": "draftDocumentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetDocumentId",
+            "columnName": "targetDocumentId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "insertAt",
+            "columnName": "insertAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scan_sessions_draftDocumentId",
+            "unique": false,
+            "columnNames": [
+              "draftDocumentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scan_sessions_draftDocumentId` ON `${TABLE_NAME}` (`draftDocumentId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "documents",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "draftDocumentId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '64364ac8c2a1513f115d5333916d9249')"
+    ]
+  }
+}

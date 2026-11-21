@@ -26,6 +26,7 @@ data class Quad(
 
 enum class PageFilter { ORIGINAL, AUTO, DOCUMENT, BW, GRAY, WHITEBOARD }
 enum class PageMode { NORMAL, ID_FRONT, ID_BACK, BOOK_L, BOOK_R, WHITEBOARD }
+enum class InkRemoval { BLUE, RED, GREEN }
 
 data class Page(
     val id: String,
@@ -46,10 +47,12 @@ data class Page(
     val processedHash: String?,
     val glareWarning: Boolean,
     val createdAt: Long,
+    val deskew: Boolean = true,
+    val inkRemoval: InkRemoval? = null,
 )
 
 fun Page.paramsHash(): String {
-    val bytes = ByteBuffer.allocate(8 * Float.SIZE_BYTES + 3 * Int.SIZE_BYTES + 3)
+    val bytes = ByteBuffer.allocate(8 * Float.SIZE_BYTES + 3 * Int.SIZE_BYTES + 5)
     val crop = quad?.takeUnless { it == Quad.FULL }
     bytes.put(if (crop == null) 0.toByte() else 1.toByte())
     crop?.toArray()?.forEach { bytes.putFloat(it) }
@@ -58,6 +61,8 @@ fun Page.paramsHash(): String {
     bytes.putInt(contrast.toBits())
     bytes.put(if (shadowFix) 1.toByte() else 0.toByte())
     bytes.put(if (glareFix) 1.toByte() else 0.toByte())
+    bytes.put(if (deskew) 1.toByte() else 0.toByte())
+    bytes.put((inkRemoval?.ordinal?.plus(1) ?: 0).toByte())
     val digest = MessageDigest.getInstance("SHA-256")
     digest.update(bytes.array(), 0, bytes.position())
     return digest.digest(filter.name.toByteArray(Charsets.UTF_8)).toHexString()

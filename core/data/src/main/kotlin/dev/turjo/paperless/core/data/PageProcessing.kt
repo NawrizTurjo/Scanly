@@ -152,6 +152,8 @@ class QueuedPageProcessing @Inject constructor(
         contrast = contrast,
         shadowFix = shadowFix,
         glareFix = glareFix,
+        deskew = deskew,
+        inkRemoval = inkRemoval?.name,
     )
 
     /** An upright (EXIF applied, tag removed) copy of the original, long side ≤ PREVIEW_SOURCE_SIDE. */
