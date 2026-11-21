@@ -10,6 +10,8 @@ Usage: python tools/imaging-lab/make_goldens.py
 import json
 import shutil
 import sys
+
+import numpy as np
 from pathlib import Path
 
 import cv2
@@ -78,5 +80,62 @@ def main():
     print(f"{len(goldens)} goldens, {total / 1e6:.1f} MB -> {OUT}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and "--pagetools" not in sys.argv:
     main()
+
+
+def page_tool_goldens():
+    """Deskew / blank / ink-removal / gutter references for the Kotlin port (written into the same folder)."""
+    from lab.pagetools import estimate_skew, find_gutter, ink_fraction, remove_ink
+    out = OUT / "pagetools"
+    out.mkdir(exist_ok=True)
+    items = {}
+    pages = sorted((SYN / "_pages").glob("print_0[1-3].png"))
+    for p in pages:
+        page = cv2.imread(str(p))
+        page = cv2.resize(page, (620, 877), interpolation=cv2.INTER_AREA)
+        for angle in (-3.2, 1.7):
+            m = cv2.getRotationMatrix2D((310, 438.5), angle, 1.0)
+            rot = cv2.warpAffine(page, m, (620, 877), flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+            name = f"skew_{p.stem}_{angle:+.1f}.png"
+            cv2.imwrite(str(out / name), rot)
+            est, conf = estimate_skew(rot)
+            items[name] = {"tool": "skew", "applied": angle, "angle": round(est, 3), "confidence": round(conf, 3)}
+        name = f"ink_{p.stem}.png"
+        cv2.imwrite(str(out / name), page)
+        items[name] = {"tool": "ink_fraction", "value": round(ink_fraction(page), 6)}
+    blank = np.full((877, 620, 3), 246, np.uint8)
+    cv2.imwrite(str(out / "ink_blank.png"), blank)
+    items["ink_blank.png"] = {"tool": "ink_fraction", "value": round(ink_fraction(blank), 6)}
+    marked = cv2.resize(cv2.imread(str(pages[0])), (620, 877), interpolation=cv2.INTER_AREA)
+    rng = np.random.default_rng(3)
+    for k in range(8):
+        pts = rng.integers([40, 80], [580, 820], size=(4, 2)).reshape(-1, 1, 2)
+        cv2.polylines(marked, [pts], False, (200, 60, 30) if k % 2 else (40, 40, 210), 3, cv2.LINE_AA)
+    cv2.imwrite(str(out / "pen_marked.png"), marked)
+    for colour in ("blue", "red"):
+        res, _ = remove_ink(marked, colour)
+        cv2.imwrite(str(out / f"pen_removed_{colour}.png"), res)
+        items[f"pen_removed_{colour}.png"] = {"tool": "remove_ink", "input": "pen_marked.png", "colour": colour}
+    special = ROOT / "test-data" / "special"
+    truth = json.loads((special / "truth.json").read_text())["images"]
+    for rel, e in sorted(truth.items()):
+        if e["category"] != "books":
+            continue
+        img = cv2.imread(str(special / rel))
+        q = np.float32(e["corners"])
+        w, h = output_size(q, snap=False)
+        s = 900.0 / max(w, h)
+        spread = warp(img, q, size=(round(w * s), round(h * s)), snap=False)
+        name = f"spread_{Path(rel).stem}.png"
+        cv2.imwrite(str(out / name), spread)
+        x, conf = find_gutter(spread)
+        items[name] = {"tool": "gutter", "x": x, "confidence": round(conf, 3)}
+    (out / "pagetools.json").write_text(json.dumps({
+        "tolerances": {"angle_deg": 0.05, "ink_fraction_abs": 0.0005, "pixel_mean_abs": 3.0, "gutter_px": 2},
+        "items": items}, indent=2))
+    print(f"page tools: {len(items)} items -> {out}")
+
+
+if __name__ == "__main__" and "--pagetools" in sys.argv:
+    page_tool_goldens()

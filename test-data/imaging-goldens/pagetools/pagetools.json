@@ -1,0 +1,87 @@
+{
+  "tolerances": {
+    "angle_deg": 0.05,
+    "ink_fraction_abs": 0.0005,
+    "pixel_mean_abs": 3.0,
+    "gutter_px": 2
+  },
+  "items": {
+    "skew_print_01_-3.2.png": {
+      "tool": "skew",
+      "applied": -3.2,
+      "angle": 3.175,
+      "confidence": 0.743
+    },
+    "skew_print_01_+1.7.png": {
+      "tool": "skew",
+      "applied": 1.7,
+      "angle": -1.675,
+      "confidence": 0.662
+    },
+    "ink_print_01.png": {
+      "tool": "ink_fraction",
+      "value": 0.041159
+    },
+    "skew_print_02_-3.2.png": {
+      "tool": "skew",
+      "applied": -3.2,
+      "angle": 3.2,
+      "confidence": 0.714
+    },
+    "skew_print_02_+1.7.png": {
+      "tool": "skew",
+      "applied": 1.7,
+      "angle": -1.7,
+      "confidence": 0.627
+    },
+    "ink_print_02.png": {
+      "tool": "ink_fraction",
+      "value": 0.022129
+    },
+    "skew_print_03_-3.2.png": {
+      "tool": "skew",
+      "applied": -3.2,
+      "angle": 3.2,
+      "confidence": 0.747
+    },
+    "skew_print_03_+1.7.png": {
+      "tool": "skew",
+      "applied": 1.7,
+      "angle": -1.7,
+      "confidence": 0.658
+    },
+    "ink_print_03.png": {
+      "tool": "ink_fraction",
+      "value": 0.044428
+    },
+    "ink_blank.png": {
+      "tool": "ink_fraction",
+      "value": 0.0
+    },
+    "pen_removed_blue.png": {
+      "tool": "remove_ink",
+      "input": "pen_marked.png",
+      "colour": "blue"
+    },
+    "pen_removed_red.png": {
+      "tool": "remove_ink",
+      "input": "pen_marked.png",
+      "colour": "red"
+    },
+    "spread_books_01.png": {
+      "tool": "gutter",
+      "x": 449,
+      "confidence": 1.0
+    },
+    "spread_books_02.png": {
+      "tool": "gutter",
+      "x": 449,
+      "confidence": 1.0
+    },
+    "spread_books_03.png": {
+      "tool": "gutter",
+      "x": 450,
+      "confidence": 1.0
+    }
+  }
+}
