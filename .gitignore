@@ -1,0 +1,27 @@
+# Build outputs and caches
+build/
+.gradle/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Private or generated working data
+test-data/scanner/real/
+work/
+shots/
+
+# Signing
+*.keystore
+*.jks
+keystore.properties
