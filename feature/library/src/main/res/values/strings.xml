@@ -1,7 +1,12 @@
 <resources>
     <string name="library_title">Library</string>
-    <string name="camera_phase">Camera arrives in Phase 1</string>
     <string name="scan">Scan</string>
     <string name="no_documents">No documents yet</string>
     <string name="scan_prompt">Tap Scan to digitise your first page.</string>
+    <string name="favorite">Favourite</string>
+    <string name="document_metadata">%1$s &#183; %2$s</string>
+    <plurals name="page_count">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
 </resources>
