@@ -92,7 +92,7 @@ class PageProcessor {
 }
 
 /** Blocking. Returns pixel coordinates in the full-size, EXIF-oriented JPEG. */
-fun detectOnFile(jpeg: File, maxSide: Int = 2000): Detection {
+fun detectOnFile(jpeg: File, maxSide: Int = 2000, aspectPrior: Float? = null): Detection {
     require(maxSide > 0)
     OpenCv.ensureLoaded()
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -109,7 +109,7 @@ fun detectOnFile(jpeg: File, maxSide: Int = 2000): Detection {
 
     return decodeJpeg(jpeg, orientation, mode).useMat { decoded ->
         withResized(decoded, imageScale(decoded, maxSide)) { working ->
-            val result = QuadDetector().detect(working)
+            val result = QuadDetector().detect(working, aspectPrior = aspectPrior)
             val quad = result.quad ?: return@withResized result
             val transposed = orientation in ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
             val width = if (transposed) bounds.outHeight else bounds.outWidth
@@ -121,10 +121,10 @@ fun detectOnFile(jpeg: File, maxSide: Int = 2000): Detection {
     }
 }
 
-private fun exifOrientation(jpeg: File): Int = ExifInterface(jpeg.path)
+internal fun exifOrientation(jpeg: File): Int = ExifInterface(jpeg.path)
     .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
 
-private fun decodeJpeg(file: File, orientation: Int, mode: Int = Imgcodecs.IMREAD_COLOR): Mat = newMat { image ->
+internal fun decodeJpeg(file: File, orientation: Int, mode: Int = Imgcodecs.IMREAD_COLOR): Mat = newMat { image ->
     Imgcodecs.imread(file.path, image, mode or Imgcodecs.IMREAD_IGNORE_ORIENTATION)
     require(!image.empty()) { "Unable to decode JPEG: $file" }
     when (orientation) {

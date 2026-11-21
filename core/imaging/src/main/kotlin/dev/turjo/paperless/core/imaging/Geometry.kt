@@ -29,11 +29,7 @@ object Geometry {
     }
 
     internal fun dimensions(q: FloatArray, snap: Boolean, snapTol: Double = 0.03): Pair<Int, Int> {
-        val ordered = orderQuad(q)
-        val width = ((distance(ordered, 0, ordered, 1) + distance(ordered, 2, ordered, 3)) / 2.0)
-            .coerceAtLeast(1.0)
-        val height = ((distance(ordered, 0, ordered, 3) + distance(ordered, 1, ordered, 2)) / 2.0)
-            .coerceAtLeast(1.0)
+        val (width, height) = sideLengths(q)
         val long = maxOf(width, height)
         var short = minOf(width, height)
         val ratio = long / short
@@ -47,16 +43,29 @@ object Geometry {
         return if (width >= height) roundedLong to roundedShort else roundedShort to roundedLong
     }
 
-    fun warp(src: Mat, q: FloatArray, size: Size? = null, snap: Boolean = true): Mat {
-        val output = size ?: outputSize(q, snap)
+    internal fun sideLengths(q: FloatArray): Pair<Double, Double> {
+        val ordered = orderQuad(q)
+        val width = ((distance(ordered, 0, ordered, 1) + distance(ordered, 2, ordered, 3)) / 2.0)
+            .coerceAtLeast(1.0)
+        val height = ((distance(ordered, 0, ordered, 3) + distance(ordered, 1, ordered, 2)) / 2.0)
+            .coerceAtLeast(1.0)
+        return width to height
+    }
+
+    internal fun warpTransform(q: FloatArray, output: Size): Mat {
         val x = output.width - 1
         val y = output.height - 1
         return orderQuad(q).pointMat().useMat { from ->
             MatOfPoint2f(Point(0.0, 0.0), Point(x, 0.0), Point(x, y), Point(0.0, y)).useMat { to ->
-                org.opencv.geometry.Geometry.getPerspectiveTransform(from, to).useMat { transform ->
-                    newMat { Imgproc.warpPerspective(src, it, transform, output, Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
-                }
+                org.opencv.geometry.Geometry.getPerspectiveTransform(from, to)
             }
+        }
+    }
+
+    fun warp(src: Mat, q: FloatArray, size: Size? = null, snap: Boolean = true): Mat {
+        val output = size ?: outputSize(q, snap)
+        return warpTransform(q, output).useMat { transform ->
+            newMat { Imgproc.warpPerspective(src, it, transform, output, Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE) }
         }
     }
 

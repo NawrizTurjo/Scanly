@@ -40,4 +40,10 @@
         <item quantity="one">Discard %d scanned page?</item>
         <item quantity="other">Discard %d scanned pages?</item>
     </plurals>
+    <string name="camera_mode_document">Document</string>
+    <string name="camera_mode_id">ID card</string>
+    <string name="camera_mode_book">Book</string>
+    <string name="camera_mode_whiteboard">Whiteboard</string>
+    <string name="camera_id_front">Front side</string>
+    <string name="camera_id_back">Back side</string>
 </resources>

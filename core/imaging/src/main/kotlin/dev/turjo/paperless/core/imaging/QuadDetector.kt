@@ -15,13 +15,14 @@ import org.opencv.imgproc.Imgproc
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.round
 import kotlin.math.sqrt
 
 data class Detection(val quad: FloatArray?, val confidence: Float)
 
 class QuadDetector {
-    fun detect(bitmap: Bitmap): Detection {
+    fun detect(bitmap: Bitmap, aspectPrior: Float? = null): Detection {
         OpenCv.ensureLoaded()
         val argb = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap
             else requireNotNull(bitmap.copy(Bitmap.Config.ARGB_8888, false))
@@ -29,23 +30,24 @@ class QuadDetector {
             return Mat().useMat { bgr ->
                 Utils.bitmapToMat(argb, bgr)
                 Imgproc.cvtColor(bgr, bgr, Imgproc.COLOR_RGBA2BGR)
-                detect(bgr)
+                detect(bgr, aspectPrior = aspectPrior)
             }
         } finally {
             if (argb !== bitmap) argb.recycle()
         }
     }
 
-    fun detect(bgr: Mat, refine: Boolean = true): Detection {
+    fun detect(bgr: Mat, refine: Boolean = true, aspectPrior: Float? = null): Detection {
         require(!bgr.empty() && bgr.type() == CvType.CV_8UC3)
+        require(aspectPrior == null || (aspectPrior.isFinite() && aspectPrior > 0))
         val workingScale = imageScale(bgr, 1000)
-        val scored = withResized(bgr, workingScale) { small -> scoreCandidates(small) }
+        val scored = withResized(bgr, workingScale) { small -> scoreCandidates(small, aspectPrior) }
         val best = scored.maxByOrNull { it.score } ?: return Detection(null, 0f)
         if (best.score < MIN_SCORE) return Detection(null, best.score.toFloat())
 
         val width = round(bgr.cols() * workingScale).toInt().coerceAtLeast(1)
         val height = round(bgr.rows() * workingScale).toInt().coerceAtLeast(1)
-        val chosen = preferEnclosing(best, scored, width, height)
+        val chosen = if (aspectPrior == null) preferEnclosing(best, scored, width, height) else best
         var quad = Geometry.orderQuad(chosen.quad).mapScale(1 / workingScale)
         if (refine) {
             val refineScale = imageScale(bgr, 2000)
@@ -57,7 +59,7 @@ class QuadDetector {
 
     internal data class Candidate(val quad: FloatArray, val score: Double, val area: Double)
 
-    private fun scoreCandidates(small: Mat): List<Candidate> {
+    private fun scoreCandidates(small: Mat, aspectPrior: Float?): List<Candidate> {
         val width = small.cols()
         val height = small.rows()
         val gradients = colourGradient(small)
@@ -65,11 +67,16 @@ class QuadDetector {
             val paperArea = if (paper.empty()) 0.0 else CvGeometry.contourArea(paper)
             Mat().useMat { intersection ->
                 scoreCandidates(candidates(small), gradients, width, height) { quad, area ->
-                    if (paperArea == 0.0) 0.0 else {
+                    val paperAdjustment = if (paperArea == 0.0) 0.0 else {
                         val shared = Geometry.orderQuad(quad).pointMat().useMat {
                             CvGeometry.intersectConvexConvex(it, paper, intersection).toDouble()
                         }
                         0.3 * (shared / (area + paperArea - shared) - 0.75)
+                    }
+                    paperAdjustment + if (aspectPrior == null) 0.0 else {
+                        val (w, h) = Geometry.sideLengths(quad)
+                        val aspect = maxOf(w, h) / minOf(w, h)
+                        0.15 * (1 - minOf(1.0, abs(ln(aspect / aspectPrior)) / 0.25))
                     }
                 }
             }

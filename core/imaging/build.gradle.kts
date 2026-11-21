@@ -2,7 +2,10 @@ plugins { id("paperless.android.library") }
 
 android {
     defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    sourceSets["androidTest"].assets.srcDir(rootProject.file("test-data/imaging-goldens"))
+    sourceSets["androidTest"].assets.srcDirs(
+        rootProject.file("test-data/imaging-goldens"),
+        rootProject.file("test-data/special"),
+    )
 }
 
 dependencies {

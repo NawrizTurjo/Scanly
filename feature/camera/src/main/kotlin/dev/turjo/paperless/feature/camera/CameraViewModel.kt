@@ -12,6 +12,7 @@ import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
+import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.interleaveDuplex
 import java.io.File
@@ -35,11 +36,20 @@ internal fun interface CaptureController {
 
 internal data class CameraArgs(val targetDocumentId: String?, val insertAt: Int?, val singleMode: Boolean)
 
+internal enum class ScanMode(val pageMode: PageMode) {
+    DOCUMENT(PageMode.NORMAL),
+    ID_CARD(PageMode.ID_FRONT),
+    BOOK(PageMode.BOOK_L),
+    WHITEBOARD(PageMode.WHITEBOARD),
+}
+
 internal enum class DuplexPhase { FRONTS, BACKS }
 
 internal data class CameraState(
     val ready: Boolean = false,
     val singleMode: Boolean,
+    val mode: ScanMode = ScanMode.DOCUMENT,
+    val idBack: Boolean = false,
     val pageIds: List<String> = emptyList(),
     val capturing: Boolean = false,
     val importing: Boolean = false,
@@ -102,12 +112,25 @@ internal class CameraViewModel internal constructor(
     private val autoCapture = AutoCaptureController()
     private var latestQuad: OverlayQuad? = null
     private val duplexSides = mutableMapOf<String, DuplexPhase>()
+    private var waitForDerivedPages = false
     private var lastDuplexPhase = DuplexPhase.FRONTS
 
     init {
         viewModelScope.launch {
             initializationFailed = !reportErrors {
                 session = sessions.active() ?: sessions.start(args.targetDocumentId, args.insertAt)
+                val rememberedMode = lastSessionMode?.takeIf { it.first == session.id }?.second
+                val initialPages = documents.observeDocument(session.draftDocumentId).first()?.pages.orEmpty()
+                val idBack = initialPages.lastOrNull()?.mode == PageMode.ID_FRONT
+                mutableState.update {
+                    it.copy(
+                        mode = if (idBack) ScanMode.ID_CARD else rememberedMode ?: ScanMode.DOCUMENT,
+                        idBack = idBack,
+                    )
+                }
+                waitForDerivedPages = initialPages.any {
+                    it.mode == PageMode.BOOK_L || it.mode == PageMode.ID_FRONT || it.mode == PageMode.ID_BACK
+                }
                 documents.observeDocument(session.draftDocumentId).collect { draft ->
                     val ids = draft?.pages.orEmpty().map { it.id }
                     mutableState.update { it.copy(ready = draft != null, pageIds = ids).withSideCounts() }
@@ -117,9 +140,17 @@ internal class CameraViewModel internal constructor(
     }
 
     fun setSingleMode(single: Boolean) {
-        if (state.value.canEdit && state.value.duplexPhase == null) {
+        if (state.value.canEdit && state.value.duplexPhase == null && state.value.mode != ScanMode.ID_CARD) {
             mutableState.update { it.copy(singleMode = single) }
         }
+    }
+
+    fun setMode(mode: ScanMode) {
+        val current = state.value
+        if (!current.canEdit || current.idBack || current.duplexPhase != null || current.mode == mode) return
+        lastSessionMode = session.id to mode
+        autoCapture.stopTracking()
+        mutableState.update { it.copy(mode = mode, autoCaptureProgress = null) }
     }
 
     fun toggleAutoCapture() {
@@ -141,7 +172,7 @@ internal class CameraViewModel internal constructor(
 
     fun toggleDuplex() {
         val current = state.value
-        if (!current.canEdit || current.singleMode) return
+        if (!current.canEdit || current.singleMode || current.mode != ScanMode.DOCUMENT) return
         val phase = if (current.duplexPhase == null) lastDuplexPhase else null
         mutableState.update { it.copy(duplexPhase = phase) }
     }
@@ -162,11 +193,11 @@ internal class CameraViewModel internal constructor(
             var captured = false
             try {
                 captured = reportErrors {
-                    addPage { file ->
+                    val finished = addPage { file ->
                         controller.capture(file)
                         eventChannel.trySend(CameraEvent.Captured)
                     }
-                    if (state.value.singleMode) reviewDraft()
+                    if (finished) reviewWhenReady()
                 }
             } finally {
                 autoCapture.captureFinished(captured)
@@ -177,14 +208,14 @@ internal class CameraViewModel internal constructor(
 
     fun <T> importImages(images: List<T>, copy: suspend (T, File) -> Unit) {
         if (!state.value.canEdit || images.isEmpty()) return
-        val single = state.value.singleMode
         mutableState.update { it.copy(importing = true) }
         viewModelScope.launch {
             try {
                 for (image in images) {
-                    val added = reportErrors { addPage { file -> copy(image, file) } }
-                    if (single && added) {
-                        reviewDraft()
+                    var finished = false
+                    reportErrors { finished = addPage { file -> copy(image, file) } }
+                    if (finished) {
+                        reportErrors { reviewWhenReady() }
                         break
                     }
                 }
@@ -195,7 +226,8 @@ internal class CameraViewModel internal constructor(
     }
 
     fun review() {
-        if (state.value.canEdit && state.value.pageIds.isNotEmpty()) prepareReview()
+        val current = state.value
+        if (current.canEdit && !current.idBack && current.pageIds.isNotEmpty()) prepareReview()
     }
 
     fun close() {
@@ -261,7 +293,7 @@ internal class CameraViewModel internal constructor(
     }
 
     private fun prepareReview() {
-        if (state.value.duplexPhase == null) {
+        if (state.value.duplexPhase == null && !waitForDerivedPages) {
             reviewDraft()
             return
         }
@@ -269,6 +301,11 @@ internal class CameraViewModel internal constructor(
         viewModelScope.launch {
             try {
                 reportErrors {
+                    if (state.value.duplexPhase == null) {
+                        reviewWhenReady()
+                        return@reportErrors
+                    }
+                    if (waitForDerivedPages) processing.awaitIdle(latestPageIds())
                     val ids = latestPageIds()
                     val fronts = ids.filter { duplexSides[it] != DuplexPhase.BACKS }
                     val draftIds = ids.toSet()
@@ -298,16 +335,28 @@ internal class CameraViewModel internal constructor(
         eventChannel.trySend(CameraEvent.Review(session.draftDocumentId))
     }
 
-    private suspend fun addPage(write: suspend (File) -> Unit) {
-        val side = state.value.duplexPhase
-        val pageId = persistPage(write)
-        if (side != null) {
-            duplexSides[pageId] = side
-            mutableState.update { it.withSideCounts() }
-        }
+    private suspend fun reviewWhenReady() {
+        if (waitForDerivedPages) processing.awaitIdle(latestPageIds())
+        reviewDraft()
     }
 
-    private suspend fun persistPage(write: suspend (File) -> Unit): String = withContext(io + NonCancellable) {
+    private suspend fun addPage(write: suspend (File) -> Unit): Boolean {
+        val current = state.value
+        val mode = if (current.idBack) PageMode.ID_BACK else current.mode.pageMode
+        val pageId = persistPage(mode, write)
+        if (current.duplexPhase != null) {
+            duplexSides[pageId] = current.duplexPhase
+            mutableState.update { it.withSideCounts() }
+        }
+        if (mode == PageMode.BOOK_L || current.mode == ScanMode.ID_CARD) waitForDerivedPages = true
+        if (current.mode == ScanMode.ID_CARD) {
+            mutableState.update { it.copy(idBack = mode == PageMode.ID_FRONT) }
+            return mode == PageMode.ID_BACK
+        }
+        return current.singleMode
+    }
+
+    private suspend fun persistPage(mode: PageMode, write: suspend (File) -> Unit): String = withContext(io + NonCancellable) {
         // A started write can outlive the screen. Keep file cleanup and queue submission together.
         val temp = newTempFile()
         val page = try {
@@ -318,8 +367,12 @@ internal class CameraViewModel internal constructor(
         } finally {
             temp.delete()
         }
-        processing.enqueueNewPage(page.id)
+        processing.enqueueNewPage(page.id, mode)
         page.id
+    }
+
+    private companion object {
+        var lastSessionMode: Pair<String, ScanMode>? = null
     }
 
     private suspend fun reportErrors(block: suspend () -> Unit): Boolean = try {
