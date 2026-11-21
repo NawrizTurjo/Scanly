@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.SettingsRepository
+import dev.turjo.paperless.core.model.AppLock
+import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import javax.inject.Inject
@@ -29,5 +31,25 @@ class SettingsViewModel @Inject constructor(
 
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { repository.setDynamicColor(enabled) }
+    }
+
+    fun setAutoNamePattern(pattern: String) {
+        viewModelScope.launch { repository.setAutoNamePattern(pattern) }
+    }
+
+    fun setAppLock(mode: AppLock) {
+        viewModelScope.launch { repository.setAppLock(mode) }
+    }
+
+    fun setLockAfterMinutes(minutes: Int) {
+        viewModelScope.launch { repository.setLockAfterMinutes(minutes) }
+    }
+
+    fun setAutoCaptureDelayMs(delayMs: Int) {
+        viewModelScope.launch { repository.setAutoCaptureDelayMs(delayMs) }
+    }
+
+    fun setAutoCaptureSensitivity(sensitivity: AutoCaptureSensitivity) {
+        viewModelScope.launch { repository.setAutoCaptureSensitivity(sensitivity) }
     }
 }

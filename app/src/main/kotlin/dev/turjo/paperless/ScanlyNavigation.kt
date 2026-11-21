@@ -7,13 +7,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -33,6 +39,8 @@ import dev.turjo.paperless.feature.library.LibraryScreen
 import dev.turjo.paperless.feature.reader.ReaderScreen
 import dev.turjo.paperless.feature.settings.SettingsScreen
 import dev.turjo.paperless.feature.tools.ToolsScreen
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable sealed interface Route : NavKey
@@ -70,13 +78,33 @@ private fun NavBackStack<NavKey>.showReview(draftId: String) {
 }
 
 @Composable
-fun ScanlyNavigation() {
-    val backStack = rememberNavBackStack(LibraryRoute)
+internal fun ScanlyNavigation(
+    initialStack: List<Route>,
+    entries: Flow<EntryEvent>,
+    onDocumentOpened: (String) -> Unit,
+) {
+    val backStack = rememberNavBackStack(*initialStack.toTypedArray())
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val resources = LocalResources.current
+    LaunchedEffect(entries, resources) {
+        entries.collect { event ->
+            when (val route = event.route) {
+                is ReviewRoute -> backStack.showReview(route.draftDocumentId)
+                null -> Unit
+                else -> backStack.replaceAll(LibraryRoute, route)
+            }
+            event.message?.let { message ->
+                scope.launch { snackbar.showSnackbar(resources.getString(message)) }
+            }
+        }
+    }
     var exportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     val top = backStack.lastOrNull()
     val currentTab = Tab.entries.firstOrNull { it.route == top }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (currentTab != null) {
                 NavigationBar {
@@ -138,6 +166,7 @@ fun ScanlyNavigation() {
                     PageEditorScreen(pageId = key.pageId, onBack = { backStack.removeAt(backStack.lastIndex) })
                 }
                 entry<DocumentRoute> { key ->
+                    LaunchedEffect(key.documentId) { onDocumentOpened(key.documentId) }
                     DocumentScreen(
                         documentId = key.documentId,
                         onBack = { backStack.removeAt(backStack.lastIndex) },

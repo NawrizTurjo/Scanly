@@ -1,6 +1,8 @@
 package dev.turjo.paperless.core.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import dev.turjo.paperless.core.model.AppLock
+import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import java.io.File
@@ -19,10 +21,10 @@ class DataStoreSettingsRepositoryTest {
     val temp = TemporaryFolder()
 
     @Test
-    fun defaultsAreSystemThemeAndDynamicColorEnabled() = runTest {
+    fun defaultsMatchUserSettings() = runTest {
         val repository = repository(backgroundScope, settingsFile())
 
-        assertEquals(UserSettings(ThemeMode.SYSTEM, true), repository.settings.first())
+        assertEquals(UserSettings(), repository.settings.first())
     }
 
     @Test
@@ -56,6 +58,27 @@ class DataStoreSettingsRepositoryTest {
 
         val reader = repository(backgroundScope, file)
         assertEquals(UserSettings(ThemeMode.LIGHT, true), reader.settings.first())
+    }
+
+
+    @Test
+    fun scanningAndSecuritySettingsPersist() = runTest {
+        val changes: List<Pair<UserSettings, suspend (SettingsRepository) -> Unit>> = listOf(
+            UserSettings(autoNamePattern = "{n} {date}") to { it.setAutoNamePattern("{n} {date}") },
+            UserSettings(appLock = AppLock.AFTER_MINUTES) to { it.setAppLock(AppLock.AFTER_MINUTES) },
+            UserSettings(lockAfterMinutes = 12) to { it.setLockAfterMinutes(12) },
+            UserSettings(autoCaptureDelayMs = 1200) to { it.setAutoCaptureDelayMs(1200) },
+            UserSettings(autoCaptureSensitivity = AutoCaptureSensitivity.HIGH) to { it.setAutoCaptureSensitivity(AutoCaptureSensitivity.HIGH) },
+        )
+        changes.forEachIndexed { index, (expected, write) ->
+            val file = File(temp.root, "settings-$index.preferences_pb")
+            val writerJob = Job(backgroundScope.coroutineContext[Job])
+            val writer = repository(CoroutineScope(backgroundScope.coroutineContext + writerJob), file)
+            write(writer)
+            writerJob.cancelAndJoin()
+
+            assertEquals(expected, repository(backgroundScope, file).settings.first())
+        }
     }
 
     private fun settingsFile() = File(temp.root, "settings.preferences_pb")

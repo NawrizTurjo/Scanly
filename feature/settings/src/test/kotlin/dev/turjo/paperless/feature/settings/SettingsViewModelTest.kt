@@ -3,6 +3,8 @@ package dev.turjo.paperless.feature.settings
 import androidx.lifecycle.ViewModelStore
 import app.cash.turbine.test
 import dev.turjo.paperless.core.data.SettingsRepository
+import dev.turjo.paperless.core.model.AppLock
+import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +75,39 @@ class SettingsViewModelTest {
         }
     }
 
+
+    @Test
+    fun savesAndExposesScanningAndSecurityPreferences() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            var expected = awaitItem().settings
+
+            viewModel.setAutoNamePattern("{n} {date}")
+            expected = expected.copy(autoNamePattern = "{n} {date}")
+            assertEquals(SettingsUiState(expected), awaitItem())
+            assertEquals(expected, repository.settings.value)
+
+            viewModel.setAppLock(AppLock.AFTER_MINUTES)
+            expected = expected.copy(appLock = AppLock.AFTER_MINUTES)
+            assertEquals(SettingsUiState(expected), awaitItem())
+            assertEquals(expected, repository.settings.value)
+
+            viewModel.setLockAfterMinutes(12)
+            expected = expected.copy(lockAfterMinutes = 12)
+            assertEquals(SettingsUiState(expected), awaitItem())
+            assertEquals(expected, repository.settings.value)
+
+            viewModel.setAutoCaptureDelayMs(1200)
+            expected = expected.copy(autoCaptureDelayMs = 1200)
+            assertEquals(SettingsUiState(expected), awaitItem())
+            assertEquals(expected, repository.settings.value)
+
+            viewModel.setAutoCaptureSensitivity(AutoCaptureSensitivity.HIGH)
+            expected = expected.copy(autoCaptureSensitivity = AutoCaptureSensitivity.HIGH)
+            assertEquals(SettingsUiState(expected), awaitItem())
+            assertEquals(expected, repository.settings.value)
+        }
+    }
+
     private class FakeSettingsRepository : SettingsRepository {
         override val settings = MutableStateFlow(UserSettings())
 
@@ -82,6 +117,26 @@ class SettingsViewModelTest {
 
         override suspend fun setDynamicColor(enabled: Boolean) {
             settings.update { it.copy(dynamicColor = enabled) }
+        }
+
+        override suspend fun setAutoNamePattern(pattern: String) {
+            settings.update { it.copy(autoNamePattern = pattern) }
+        }
+
+        override suspend fun setAppLock(mode: AppLock) {
+            settings.update { it.copy(appLock = mode) }
+        }
+
+        override suspend fun setLockAfterMinutes(minutes: Int) {
+            settings.update { it.copy(lockAfterMinutes = minutes) }
+        }
+
+        override suspend fun setAutoCaptureDelayMs(delayMs: Int) {
+            settings.update { it.copy(autoCaptureDelayMs = delayMs) }
+        }
+
+        override suspend fun setAutoCaptureSensitivity(sensitivity: AutoCaptureSensitivity) {
+            settings.update { it.copy(autoCaptureSensitivity = sensitivity) }
         }
     }
 }

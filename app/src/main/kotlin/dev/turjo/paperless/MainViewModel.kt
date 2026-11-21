@@ -1,16 +1,177 @@
 package dev.turjo.paperless
 
+import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
+import android.net.Uri
+import android.os.SystemClock
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.turjo.paperless.core.data.DocumentRepository
+import dev.turjo.paperless.core.data.FileStore
+import dev.turjo.paperless.core.data.PageProcessing
+import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.data.SettingsRepository
+import dev.turjo.paperless.core.designsystem.R as DesignR
+import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
 import javax.inject.Inject
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+
+internal data class EntryEvent(val route: Route? = null, val message: Int? = null)
 
 @HiltViewModel
-class MainViewModel @Inject constructor(repository: SettingsRepository) : ViewModel() {
-    val settings = repository.settings
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UserSettings())
+class MainViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+    repository: SettingsRepository,
+    documents: DocumentRepository,
+    sessions: ScanSessionRepository,
+    files: FileStore,
+    processing: PageProcessing,
+) : ViewModel() {
+    private val storedSettings = MutableStateFlow<UserSettings?>(null)
+    val settings = storedSettings.asStateFlow()
+    private val lockState = MutableStateFlow(true)
+    val locked = lockState.asStateFlow()
+    private var backgroundedAtMs: Long? = null
+    private var coldStart = true
+
+    private val shares = Channel<Intent>(Channel.UNLIMITED)
+    private val entryEvents = Channel<EntryEvent>(Channel.UNLIMITED)
+    internal val entries = entryEvents.receiveAsFlow()
+    private val openedDocument = MutableStateFlow<Pair<String, Long>?>(null)
+
+    init {
+        viewModelScope.launch {
+            repository.settings.collect { settings ->
+                val previous = storedSettings.value
+                if (previous == null) checkLock(settings)
+                if (settings.appLock == AppLock.OFF) lockState.value = false
+                storedSettings.value = settings
+            }
+        }
+        viewModelScope.launch {
+            for (intent in shares) {
+                locked.first { !it }
+                if (intent.type == "application/pdf") {
+                    entryEvents.send(EntryEvent(message = R.string.pdf_share_pending))
+                } else {
+                    val result = importSharedImages(
+                        sharedUris(intent), context.contentResolver, files, documents, sessions, processing,
+                    )
+                    entryEvents.send(EntryEvent(
+                        route = result.draftId?.let(::ReviewRoute),
+                        message = R.string.share_import_error.takeIf { result.hadErrors },
+                    ))
+                }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val manager = context.getSystemService(ShortcutManager::class.java)
+            val previousId = manager.dynamicShortcuts.firstOrNull { it.id == LAST_DOCUMENT_SHORTCUT }
+                ?.intent?.getStringExtra(ROUTE_EXTRA)?.let { startBackStack(it).last() as? DocumentRoute }
+                ?.documentId
+            var lastPublishedId = previousId
+            var lastOpened: Pair<String, Long>? = null
+            var newest: Pair<String, Long>? = null
+            combine(documents.observeLibrary(), openedDocument) { library, opened -> library to opened }
+                .collect { (library, opened) ->
+                    val head = library.firstOrNull()?.let { it.id to it.updatedAt }
+                    val id = when {
+                        opened != lastOpened && library.any { it.id == opened?.first } -> opened?.first
+                        newest != null && head != newest -> head?.first
+                        library.any { it.id == lastPublishedId } -> lastPublishedId
+                        else -> head?.first
+                    }
+                    newest = head
+                    lastOpened = opened
+                    if (id != lastPublishedId) {
+                        if (id == null) {
+                            manager.removeDynamicShortcuts(listOf(LAST_DOCUMENT_SHORTCUT))
+                            lastPublishedId = null
+                        } else if (manager.addDynamicShortcuts(listOf(lastDocumentShortcut(id)))) {
+                            lastPublishedId = id
+                        }
+                    }
+                }
+        }
+    }
+
+    internal fun receiveShare(intent: Intent) {
+        shares.trySend(intent)
+    }
+
+    internal fun openRoute(value: String?) {
+        startBackStack(value).getOrNull(1)?.let { entryEvents.trySend(EntryEvent(route = it)) }
+    }
+
+    internal fun documentOpened(id: String) {
+        openedDocument.value = id to SystemClock.elapsedRealtimeNanos()
+    }
+
+    internal fun onStart() {
+        storedSettings.value?.let(::checkLock)
+    }
+
+    internal fun onStop() {
+        backgroundedAtMs = SystemClock.elapsedRealtime()
+    }
+
+    internal fun unlock() {
+        lockState.value = false
+        backgroundedAtMs = null
+    }
+
+    private fun checkLock(settings: UserSettings) {
+        val lockOnReturn = shouldLock(
+            settings.appLock,
+            settings.lockAfterMinutes,
+            backgroundedAtMs,
+            SystemClock.elapsedRealtime(),
+            coldStart,
+        )
+        if (lockOnReturn) lockState.value = true
+        coldStart = false
+        backgroundedAtMs = null
+    }
+
+    private fun lastDocumentShortcut(id: String): ShortcutInfo =
+        ShortcutInfo.Builder(context, LAST_DOCUMENT_SHORTCUT)
+            .setShortLabel(context.getString(R.string.open_last_document))
+            .setIcon(Icon.createWithResource(context, DesignR.drawable.ic_library))
+            .setIntent(entryIntent(context, documentEntry(id)))
+            .build()
+
+    private companion object {
+        const val LAST_DOCUMENT_SHORTCUT = "last_document"
+    }
+}
+
+private fun sharedUris(intent: Intent): List<Uri> {
+    val streams = when (intent.action) {
+        Intent.ACTION_SEND -> listOfNotNull(
+            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java),
+        )
+        Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(
+            intent, Intent.EXTRA_STREAM, Uri::class.java,
+        ).orEmpty().filterIsInstance<Uri>()
+        else -> emptyList()
+    }
+    val clip = intent.clipData
+    val uris = if (streams.isNotEmpty() || clip == null) streams
+    else (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }
+    return uris.filter { it.scheme == ContentResolver.SCHEME_CONTENT }
 }
