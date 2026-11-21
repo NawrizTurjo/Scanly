@@ -31,6 +31,8 @@ if [ -f tools/imaging-lab/run_regression.py ]; then
   "$PY" tools/imaging-lab/run_regression.py
   step "Imaging lab regression: enhancement"
   "$PY" tools/imaging-lab/run_enhance.py
+  step "Imaging lab regression: page tools (deskew, blank, ink removal, book gutter)"
+  "$PY" tools/imaging-lab/run_pagetools.py
 fi
 
 if [ -d tools/pdf-fixwidth/tests ] && [ -n "$PY" ] && "$PY" -c "import fitz" 2>/dev/null; then

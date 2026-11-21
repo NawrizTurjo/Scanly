@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":feature:camera"))
     implementation(project(":feature:editor"))
     implementation(project(":feature:export"))
+    implementation(project(":core:imaging"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)

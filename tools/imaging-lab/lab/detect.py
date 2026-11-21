@@ -14,6 +14,7 @@ import cv2
 from .geometry import order_quad
 
 WORK_MAX = 1000
+MIN_SCORE = 0.35
 REFINE_MAX = 2000
 
 
@@ -76,14 +77,32 @@ def _angles_ok(q, lo=40.0, hi=140.0):
     return True
 
 
-def _side_support(q, grad, thresh):
-    """Fraction of sample points along each side with a strong gradient; returns the 4 fractions."""
+def _border_side(a, b, shape, margin):
+    """A side lying along the image border: the page continues beyond the frame there."""
+    h, w = shape
+    return ((a[0] < margin and b[0] < margin) or (a[1] < margin and b[1] < margin)
+            or (a[0] > w - 1 - margin and b[0] > w - 1 - margin) or (a[1] > h - 1 - margin and b[1] > h - 1 - margin))
+
+
+def _side_support(q, grads, thresh):
+    """Fraction of points along each side where the gradient ACROSS the side is strong.
+    grads = (gx, gy) stacks of the text-suppressed channels; projecting on the side normal ignores text
+    strokes (any direction) while keeping paper edges (always across the side). Sides on the image
+    border count as supported (frame-clipped page) and are reported as None."""
+    gx, gy = grads
     q = order_quad(q)
-    h, w = grad.shape
+    h, w = gx.shape[1:]
+    margin = 0.012 * max(h, w)
     out = []
     for i in range(4):
         a, b = q[i], q[(i + 1) % 4]
-        n = max(20, int(np.linalg.norm(b - a) / 3))
+        if _border_side(a, b, (h, w), margin):
+            out.append(None)
+            continue
+        d = b - a
+        length = float(np.linalg.norm(d)) + 1e-9
+        nx, ny = -d[1] / length, d[0] / length
+        n = max(20, int(length / 3))
         t = np.linspace(0.05, 0.95, n)
         pts = a[None, :] * (1 - t[:, None]) + b[None, :] * t[:, None]
         hits = 0
@@ -91,8 +110,10 @@ def _side_support(q, grad, thresh):
             xi, yi = int(round(x)), int(round(y))
             x0, x1 = max(0, xi - 2), min(w, xi + 3)
             y0, y1 = max(0, yi - 2), min(h, yi + 3)
-            if x1 > x0 and y1 > y0 and grad[y0:y1, x0:x1].max() >= thresh:
-                hits += 1
+            if x1 > x0 and y1 > y0:
+                proj = np.abs(gx[:, y0:y1, x0:x1] * nx + gy[:, y0:y1, x0:x1] * ny)
+                if proj.max() >= thresh:
+                    hits += 1
         out.append(hits / float(n))
     return out
 
@@ -131,25 +152,56 @@ def _candidates(small):
     return cands, edges_all
 
 
-def _score(q, grad, gthresh, area_img):
+def _score(q, grads, gthresh, area_img):
     area = cv2.contourArea(q.reshape(-1, 1, 2))
     frac = area / area_img
     if frac < 0.08 or frac > 0.985 or not _angles_ok(q):
         return -1.0, None
-    sup = _side_support(q, grad, gthresh)
-    # A quad hugging the image border is usually the frame, not the page.
-    return 0.55 * min(sup) + 0.25 * float(np.mean(sup)) + 0.20 * min(1.0, frac / 0.5), sup
+    sup = _side_support(q, grads, gthresh)
+    real = [v for v in sup if v is not None]
+    if len(real) < 2:  # three or four sides on the frame: that's the photo, not a page
+        return -1.0, None
+    # Frame-clipped sides count as fully supported, but a fully visible outline is still preferred.
+    filled = [1.0 if v is None else v for v in sup]
+    penalty = 0.06 * (4 - len(real))
+    return 0.55 * min(filled) + 0.25 * float(np.mean(filled)) + 0.20 * min(1.0, frac / 0.5) - penalty, sup
 
 
 def _colour_gradient(small):
-    """Per-pixel max of the Sobel magnitude over L, a, b: hue changes (green card on brown desk) count as edges."""
+    """Sobel gx/gy stacks of the text-suppressed L, a, b channels (a/b weighted x2 so hue changes count:
+    green card on brown desk). Closing first removes handwriting/print, which otherwise fakes edge support."""
+    h, w = small.shape[:2]
+    k = max(5, int(round(max(h, w) / 90.0)) | 1)
     lab = cv2.cvtColor(cv2.GaussianBlur(small, (3, 3), 0), cv2.COLOR_BGR2LAB)
-    out = None
+    gxs, gys = [], []
     for i, gain in ((0, 1.0), (1, 2.0), (2, 2.0)):
-        ch = lab[:, :, i]
-        m = cv2.magnitude(cv2.Sobel(ch, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(ch, cv2.CV_32F, 0, 1, ksize=3)) * gain
-        out = m if out is None else np.maximum(out, m)
-    return out
+        ch = _close(lab[:, :, i], k)
+        gxs.append(cv2.Sobel(ch, cv2.CV_32F, 1, 0, ksize=3) * gain)
+        gys.append(cv2.Sobel(ch, cv2.CV_32F, 0, 1, ksize=3) * gain)
+    return np.stack(gxs), np.stack(gys)
+
+
+def _paper_hull(small, k):
+    """Convex hull of the largest bright, low-saturation region (the paper, text closed away), or None
+    when it's too small to be informative."""
+    h, w = small.shape[:2]
+    lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB)
+    L = cv2.GaussianBlur(_close(lab[:, :, 0], k), (5, 5), 0)
+    _, th = cv2.threshold(L, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+    cs, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cs:
+        return None
+    c = max(cs, key=cv2.contourArea)
+    if cv2.contourArea(c) < 0.3 * h * w:
+        return None
+    return cv2.convexHull(c).reshape(-1, 2).astype(np.float32)
+
+
+def _iou_convex(a, b):
+    inter, _ = cv2.intersectConvexConvex(a.reshape(-1, 1, 2), b.reshape(-1, 1, 2))
+    ua = cv2.contourArea(a.reshape(-1, 1, 2)) + cv2.contourArea(b.reshape(-1, 1, 2)) - inter
+    return inter / ua if ua > 0 else 0.0
 
 
 def _touches_border(q, shape, margin=0.01):
@@ -242,8 +294,9 @@ def detect_quad_live(gray):
     h, w = small.shape[:2]
     k = max(5, int(round(max(h, w) / 90.0)) | 1)
     m = cv2.GaussianBlur(_close(small, k), (5, 5), 0)
-    grad = cv2.magnitude(cv2.Sobel(m, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(m, cv2.CV_32F, 0, 1, ksize=3))
-    gthresh = max(12.0, float(np.percentile(grad, 85)))
+    gx, gy = cv2.Sobel(m, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(m, cv2.CV_32F, 0, 1, ksize=3)
+    grads = (gx[None], gy[None])  # m is already text-suppressed (closed)
+    gthresh = max(12.0, float(np.percentile(cv2.magnitude(gx, gy), 85)))
     cands = []
     e = cv2.dilate(_auto_canny(m), np.ones((3, 3), np.uint8), iterations=1)
     cs, _ = cv2.findContours(e, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -258,11 +311,11 @@ def detect_quad_live(gray):
             q = _quad_from_contour(c)
             if q is not None:
                 cands.append(q)
-    scored = [(sc, q) for q in cands for sc, _ in [_score(q, grad, gthresh, float(h * w))] if sc >= 0]
+    scored = [(sc, q) for q in cands for sc, _ in [_score(q, grads, gthresh, float(h * w))] if sc >= 0]
     if not scored:
         return None, 0.0
     best_score, best = max(scored, key=lambda t: t[0])
-    if best_score < 0.35:
+    if best_score < MIN_SCORE:
         return None, best_score
     best = _prefer_enclosing(best, best_score, scored, (h, w))
     return order_quad(best) / s, float(min(1.0, best_score))
@@ -272,18 +325,23 @@ def detect_quad(image, refine=True):
     """Return (quad TL,TR,BR,BL in image px or None, confidence 0..1)."""
     small, s = _resize_max(image, WORK_MAX)
     h, w = small.shape[:2]
-    grad = _colour_gradient(small)
-    gthresh = max(12.0, float(np.percentile(grad, 85)))
+    grads = _colour_gradient(small)
+    mag = np.sqrt(grads[0] ** 2 + grads[1] ** 2).max(axis=0)
+    gthresh = max(12.0, float(np.percentile(mag, 85)))
     cands, _ = _candidates(small)
+    paper = _paper_hull(small, max(5, int(round(max(h, w) / 90.0)) | 1))
     scored = []
     for q in cands:
-        sc, _ = _score(q, grad, gthresh, float(h * w))
+        sc, _ = _score(q, grads, gthresh, float(h * w))
+        if sc >= 0 and paper is not None:
+            # A quad that covers only part of the paper (a diagonal "half page" along a shadow) is wrong.
+            sc += 0.3 * (_iou_convex(order_quad(q), paper) - 0.75)
         if sc >= 0:
             scored.append((sc, q))
     if not scored:
         return None, 0.0
     best_score, best = max(scored, key=lambda t: t[0])
-    if best_score < 0.35:
+    if best_score < MIN_SCORE:
         return None, best_score
     best = _prefer_enclosing(best, best_score, scored, (h, w))
     quad = order_quad(best) / s
