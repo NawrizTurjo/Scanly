@@ -21,8 +21,8 @@ test-core = "1.7.0"
 
 room = "2.8.5"
 coil = "3.6.3"
-robolectric = "4.18.1"
-test-core = "1.7.0"
+camerax = "1.7.0"
+reorderable = "3.1.0"
 
 [libraries]
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
@@ -32,6 +32,11 @@ room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 test-core = { module = "androidx.test:core", version.ref = "test-core" }
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
@@ -57,8 +62,6 @@ turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 test-junit = { module = "androidx.test.ext:junit", version.ref = "test-junit" }
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbox-android" }
-robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
-test-core = { module = "androidx.test:core", version.ref = "test-core" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
