@@ -18,6 +18,7 @@
     <string name="camera_preview_error">The camera could not be opened.</string>
     <string name="camera_discard">Discard</string>
     <string name="camera_keep">Keep</string>
+    <string name="camera_analysis_fps" translatable="false">%1$d FPS</string>
     <plurals name="camera_discard_title">
         <item quantity="one">Discard %d scanned page?</item>
         <item quantity="other">Discard %d scanned pages?</item>
