@@ -13,6 +13,7 @@ import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.ScanSession
+import dev.turjo.paperless.core.model.interleaveDuplex
 import java.io.File
 import java.util.Optional
 import kotlinx.coroutines.CancellationException
@@ -34,6 +35,8 @@ internal fun interface CaptureController {
 
 internal data class CameraArgs(val targetDocumentId: String?, val insertAt: Int?, val singleMode: Boolean)
 
+internal enum class DuplexPhase { FRONTS, BACKS }
+
 internal data class CameraState(
     val ready: Boolean = false,
     val singleMode: Boolean,
@@ -42,8 +45,14 @@ internal data class CameraState(
     val importing: Boolean = false,
     val closing: Boolean = false,
     val confirmDiscard: Boolean = false,
+    val confirmDuplexMismatch: Boolean = false,
+    val duplexPhase: DuplexPhase? = null,
+    val frontCount: Int = 0,
+    val backCount: Int = 0,
+    val autoCapture: Boolean = false,
+    val autoCaptureProgress: Float? = null,
 ) {
-    val canEdit get() = ready && !capturing && !importing && !closing && !confirmDiscard
+    val canEdit get() = ready && !capturing && !importing && !closing && !confirmDiscard && !confirmDuplexMismatch
 }
 
 internal sealed interface CameraEvent {
@@ -90,6 +99,10 @@ internal class CameraViewModel internal constructor(
     val events = eventChannel.receiveAsFlow()
     private lateinit var session: ScanSession
     private var initializationFailed = false
+    private val autoCapture = AutoCaptureController()
+    private var latestQuad: OverlayQuad? = null
+    private val duplexSides = mutableMapOf<String, DuplexPhase>()
+    private var lastDuplexPhase = DuplexPhase.FRONTS
 
     init {
         viewModelScope.launch {
@@ -97,22 +110,58 @@ internal class CameraViewModel internal constructor(
                 session = sessions.active() ?: sessions.start(args.targetDocumentId, args.insertAt)
                 documents.observeDocument(session.draftDocumentId).collect { draft ->
                     val ids = draft?.pages.orEmpty().map { it.id }
-                    mutableState.update { it.copy(ready = draft != null, pageIds = ids) }
+                    mutableState.update { it.copy(ready = draft != null, pageIds = ids).withSideCounts() }
                 }
             }
         }
     }
 
     fun setSingleMode(single: Boolean) {
-        if (state.value.canEdit) mutableState.update { it.copy(singleMode = single) }
+        if (state.value.canEdit && state.value.duplexPhase == null) {
+            mutableState.update { it.copy(singleMode = single) }
+        }
+    }
+
+    fun toggleAutoCapture() {
+        if (!state.value.canEdit) return
+        autoCapture.stopTracking()
+        mutableState.update { it.copy(autoCapture = !it.autoCapture, autoCaptureProgress = null) }
+    }
+
+    fun onOverlay(quad: OverlayQuad?, nowMillis: Long, controller: CaptureController?) {
+        latestQuad = quad
+        val current = state.value
+        if (!current.autoCapture || !current.canEdit || controller == null) {
+            autoCapture.stopTracking()
+        } else if (autoCapture.update(quad, nowMillis) == AutoCaptureAction.CaptureNow) {
+            capture(controller)
+        }
+        mutableState.update { it.copy(autoCaptureProgress = autoCapture.progress) }
+    }
+
+    fun toggleDuplex() {
+        val current = state.value
+        if (!current.canEdit || current.singleMode) return
+        val phase = if (current.duplexPhase == null) lastDuplexPhase else null
+        mutableState.update { it.copy(duplexPhase = phase) }
+    }
+
+    fun scanBacks() {
+        val current = state.value
+        if (current.canEdit && current.duplexPhase == DuplexPhase.FRONTS && current.frontCount > 0) {
+            lastDuplexPhase = DuplexPhase.BACKS
+            mutableState.update { it.copy(duplexPhase = lastDuplexPhase) }
+        }
     }
 
     fun capture(controller: CaptureController) {
         if (!state.value.canEdit) return
-        mutableState.update { it.copy(capturing = true) }
+        autoCapture.startCapture(latestQuad)
+        mutableState.update { it.copy(capturing = true, autoCaptureProgress = null) }
         viewModelScope.launch {
+            var captured = false
             try {
-                reportErrors {
+                captured = reportErrors {
                     addPage { file ->
                         controller.capture(file)
                         eventChannel.trySend(CameraEvent.Captured)
@@ -120,6 +169,7 @@ internal class CameraViewModel internal constructor(
                     if (state.value.singleMode) reviewDraft()
                 }
             } finally {
+                autoCapture.captureFinished(captured)
                 mutableState.update { it.copy(capturing = false) }
             }
         }
@@ -145,7 +195,7 @@ internal class CameraViewModel internal constructor(
     }
 
     fun review() {
-        if (state.value.canEdit && state.value.pageIds.isNotEmpty()) reviewDraft()
+        if (state.value.canEdit && state.value.pageIds.isNotEmpty()) prepareReview()
     }
 
     fun close() {
@@ -175,6 +225,16 @@ internal class CameraViewModel internal constructor(
     fun keep() {
         if (!state.value.confirmDiscard) return
         dismissDiscard()
+        prepareReview()
+    }
+
+    fun dismissDuplexMismatch() {
+        mutableState.update { it.copy(confirmDuplexMismatch = false) }
+    }
+
+    fun keepDuplexOrder() {
+        if (!state.value.confirmDuplexMismatch) return
+        dismissDuplexMismatch()
         reviewDraft()
     }
 
@@ -200,11 +260,54 @@ internal class CameraViewModel internal constructor(
         eventChannel.send(CameraEvent.Close)
     }
 
+    private fun prepareReview() {
+        if (state.value.duplexPhase == null) {
+            reviewDraft()
+            return
+        }
+        mutableState.update { it.copy(closing = true) }
+        viewModelScope.launch {
+            try {
+                reportErrors {
+                    val ids = latestPageIds()
+                    val fronts = ids.filter { duplexSides[it] != DuplexPhase.BACKS }
+                    val draftIds = ids.toSet()
+                    val backs = duplexSides.filter { (id, side) ->
+                        id in draftIds && side == DuplexPhase.BACKS
+                    }.keys.toList()
+                    val result = interleaveDuplex(fronts, backs)
+                    if (result.mismatch) {
+                        mutableState.update { it.copy(pageIds = ids, confirmDuplexMismatch = true).withSideCounts() }
+                    } else {
+                        documents.reorderPages(session.draftDocumentId, result.pages)
+                        reviewDraft()
+                    }
+                }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
+    }
+
+    private fun CameraState.withSideCounts(): CameraState {
+        val backs = pageIds.count { duplexSides[it] == DuplexPhase.BACKS }
+        return copy(frontCount = pageIds.size - backs, backCount = backs)
+    }
+
     private fun reviewDraft() {
         eventChannel.trySend(CameraEvent.Review(session.draftDocumentId))
     }
 
-    private suspend fun addPage(write: suspend (File) -> Unit) = withContext(io + NonCancellable) {
+    private suspend fun addPage(write: suspend (File) -> Unit) {
+        val side = state.value.duplexPhase
+        val pageId = persistPage(write)
+        if (side != null) {
+            duplexSides[pageId] = side
+            mutableState.update { it.withSideCounts() }
+        }
+    }
+
+    private suspend fun persistPage(write: suspend (File) -> Unit): String = withContext(io + NonCancellable) {
         // A started write can outlive the screen. Keep file cleanup and queue submission together.
         val temp = newTempFile()
         val page = try {
@@ -216,6 +319,7 @@ internal class CameraViewModel internal constructor(
             temp.delete()
         }
         processing.enqueueNewPage(page.id)
+        page.id
     }
 
     private suspend fun reportErrors(block: suspend () -> Unit): Boolean = try {

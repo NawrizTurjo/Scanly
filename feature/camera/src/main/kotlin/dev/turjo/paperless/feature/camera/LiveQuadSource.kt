@@ -17,7 +17,13 @@ class AnalysisFrame(
 )
 
 /** Points are normalized upright-frame coordinates in TL, TR, BR, BL order. */
-data class OverlayQuad(val points: FloatArray, val confidence: Float, val stableForMillis: Long)
+data class OverlayQuad(
+    val points: FloatArray,
+    val confidence: Float,
+    val stableForMillis: Long,
+    val sharpness: Float = 0f,
+    val fingerprint: FloatArray = floatArrayOf(),
+)
 
 fun interface LiveQuadSource {
     fun process(frame: AnalysisFrame): OverlayQuad?

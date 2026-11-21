@@ -131,7 +131,7 @@ internal fun CameraPreview(
             if (analysis == null) awaitCancellation()
             for (result in results) {
                 withFrameNanos {
-                    if (result != null) quadCallback(result)
+                    quadCallback(result)
                     gate.acknowledge()
                 }
             }
@@ -193,7 +193,7 @@ private fun startQuadAnalysis(
                 )
                 val result = source.process(frame)?.let { quad ->
                     LiveQuadSample(
-                        quad.copy(points = quad.points.copyOf()),
+                        quad.copy(points = quad.points.copyOf(), fingerprint = quad.fingerprint.copyOf()),
                         uprightAspectRatio(frame.width, frame.height, frame.rotationDegrees),
                     )
                 }

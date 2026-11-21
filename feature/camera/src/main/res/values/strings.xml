@@ -18,6 +18,23 @@
     <string name="camera_preview_error">The camera could not be opened.</string>
     <string name="camera_discard">Discard</string>
     <string name="camera_keep">Keep</string>
+    <string name="camera_auto_capture">Auto-capture</string>
+    <string name="camera_auto_capture_short" translatable="false">A</string>
+    <string name="camera_duplex">Duplex</string>
+    <string name="camera_duplex_fronts">Fronts: %1$d</string>
+    <string name="camera_duplex_now_backs">Now backs</string>
+    <string name="camera_duplex_backs">Backs: %1$d / %2$d · scan in the order they come off the stack</string>
+    <string name="camera_duplex_mismatch_title">Uneven duplex batch</string>
+    <string name="camera_duplex_mismatch">%1$s but %2$s — keep the scan order?</string>
+    <string name="camera_back_to_camera">Back to camera</string>
+    <plurals name="camera_front_count">
+        <item quantity="one">%d front</item>
+        <item quantity="other">%d fronts</item>
+    </plurals>
+    <plurals name="camera_back_count">
+        <item quantity="one">%d back</item>
+        <item quantity="other">%d backs</item>
+    </plurals>
     <string name="camera_analysis_fps" translatable="false">%1$d FPS</string>
     <plurals name="camera_discard_title">
         <item quantity="one">Discard %d scanned page?</item>

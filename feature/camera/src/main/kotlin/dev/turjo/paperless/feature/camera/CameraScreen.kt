@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,6 +37,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -156,6 +158,9 @@ fun CameraScreen(
     val haptic = LocalHapticFeedback.current
     val snackbar = remember { SnackbarHostState() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        model.onOverlay(null, SystemClock.elapsedRealtime(), null)
+    }
     val reviewCallback by rememberUpdatedState(onReview)
     val closeCallback by rememberUpdatedState(onClose)
     val operationError = stringResource(R.string.camera_operation_error)
@@ -190,13 +195,24 @@ fun CameraScreen(
                 flash = flash,
                 liveQuadSource = liveQuadSource,
                 fpsCounter = fpsCounter,
-                onQuad = { liveQuad = it },
+                onQuad = { sample ->
+                    val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                    if (sample != null || controller == null) liveQuad = sample
+                    model.onOverlay(sample?.quad.takeIf { resumed }, SystemClock.elapsedRealtime(), controller.takeIf { resumed })
+                },
                 onController = { controller = it },
                 onError = { scope.launch { snackbar.showSnackbar(previewError) } },
             )
         }
         Box(Modifier.matchParentSize()) {
             if (allowed && liveQuadSource != null) LiveQuadOverlay(liveQuad, Modifier.matchParentSize())
+            state.autoCaptureProgress?.let { progress ->
+                CircularProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.align(Alignment.Center).size(56.dp),
+                    strokeWidth = 4.dp,
+                )
+            }
             if (BuildConfig.DEBUG && fpsCounter != null) {
                 AnalysisFpsReadout(
                     fpsCounter,
@@ -229,31 +245,70 @@ fun CameraScreen(
             }
         }
 
-        Row(
+        Column(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Scrim)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            CameraIconButton(R.drawable.camera_ic_close, R.string.camera_close, model::close)
-            SingleChoiceSegmentedButtonRow {
-                SegmentedButton(
-                    selected = !state.singleMode,
-                    onClick = { model.setSingleMode(false) },
-                    shape = SegmentedButtonDefaults.itemShape(0, 2),
-                    enabled = state.canEdit,
-                    colors = cameraSegmentColors(),
-                ) { Text(stringResource(R.string.camera_batch)) }
-                SegmentedButton(
-                    selected = state.singleMode,
-                    onClick = { model.setSingleMode(true) },
-                    shape = SegmentedButtonDefaults.itemShape(1, 2),
-                    enabled = state.canEdit,
-                    colors = cameraSegmentColors(),
-                ) { Text(stringResource(R.string.camera_single)) }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                CameraIconButton(R.drawable.camera_ic_close, R.string.camera_close, model::close)
+                SingleChoiceSegmentedButtonRow {
+                    SegmentedButton(
+                        selected = !state.singleMode,
+                        onClick = { model.setSingleMode(false) },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2),
+                        enabled = state.canEdit,
+                        colors = cameraSegmentColors(),
+                    ) { Text(stringResource(R.string.camera_batch)) }
+                    SegmentedButton(
+                        selected = state.singleMode,
+                        onClick = { model.setSingleMode(true) },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2),
+                        enabled = state.canEdit && state.duplexPhase == null,
+                        colors = cameraSegmentColors(),
+                    ) { Text(stringResource(R.string.camera_single)) }
+                }
+                val autoCaptureLabel = stringResource(R.string.camera_auto_capture)
+                FilterChip(
+                    selected = state.autoCapture,
+                    onClick = model::toggleAutoCapture,
+                    label = { Text(stringResource(R.string.camera_auto_capture_short)) },
+                    enabled = state.canEdit && allowed && liveQuadSource != null,
+                    modifier = Modifier.semantics { contentDescription = autoCaptureLabel },
+                )
+                CameraIconButton(flash.icon, flash.label, { flash = flash.next() }, enabled = allowed)
             }
-            CameraIconButton(flash.icon, flash.label, { flash = flash.next() }, enabled = allowed)
+            if (!state.singleMode) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = state.duplexPhase != null,
+                        onClick = model::toggleDuplex,
+                        label = { Text(stringResource(R.string.camera_duplex)) },
+                        enabled = state.canEdit,
+                    )
+                    when (state.duplexPhase) {
+                        DuplexPhase.FRONTS -> {
+                            Text(stringResource(R.string.camera_duplex_fronts, state.frontCount), color = Color.White)
+                            Button(onClick = model::scanBacks, enabled = state.canEdit && state.frontCount > 0) {
+                                Text(stringResource(R.string.camera_duplex_now_backs))
+                            }
+                        }
+                        DuplexPhase.BACKS -> Text(
+                            stringResource(R.string.camera_duplex_backs, state.backCount, state.frontCount),
+                            color = Color.White,
+                        )
+                        null -> Unit
+                    }
+                }
+            }
         }
 
         Column(
@@ -304,6 +359,21 @@ fun CameraScreen(
             title = { Text(pluralStringResource(R.plurals.camera_discard_title, state.pageIds.size, state.pageIds.size)) },
             confirmButton = { TextButton(onClick = model::discard) { Text(stringResource(R.string.camera_discard)) } },
             dismissButton = { TextButton(onClick = model::keep) { Text(stringResource(R.string.camera_keep)) } },
+        )
+    }
+    if (state.confirmDuplexMismatch) {
+        AlertDialog(
+            onDismissRequest = model::dismissDuplexMismatch,
+            title = { Text(stringResource(R.string.camera_duplex_mismatch_title)) },
+            text = {
+                val fronts = pluralStringResource(R.plurals.camera_front_count, state.frontCount, state.frontCount)
+                val backs = pluralStringResource(R.plurals.camera_back_count, state.backCount, state.backCount)
+                Text(stringResource(R.string.camera_duplex_mismatch, fronts, backs))
+            },
+            confirmButton = { TextButton(onClick = model::keepDuplexOrder) { Text(stringResource(R.string.camera_keep)) } },
+            dismissButton = {
+                TextButton(onClick = model::dismissDuplexMismatch) { Text(stringResource(R.string.camera_back_to_camera)) }
+            },
         )
     }
 }
