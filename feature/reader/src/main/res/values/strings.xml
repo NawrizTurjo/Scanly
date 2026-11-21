@@ -1,0 +1,5 @@
+<resources>
+    <string name="no_pdfs">No PDFs open</string>
+    <string name="open_pdf">Open PDF</string>
+    <string name="reader_phase">Reader arrives in Phase 5</string>
+</resources>

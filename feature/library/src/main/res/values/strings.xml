@@ -1,0 +1,7 @@
+<resources>
+    <string name="library_title">Library</string>
+    <string name="camera_phase">Camera arrives in Phase 1</string>
+    <string name="scan">Scan</string>
+    <string name="no_documents">No documents yet</string>
+    <string name="scan_prompt">Tap Scan to digitise your first page.</string>
+</resources>

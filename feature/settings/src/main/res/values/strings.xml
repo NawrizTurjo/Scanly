@@ -1,0 +1,10 @@
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="dynamic_color">Dynamic colour</string>
+    <string name="about">About</string>
+    <string name="about_summary">Scanly 0.1.0 · offline, no tracking</string>
+</resources>

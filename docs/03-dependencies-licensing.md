@@ -8,12 +8,14 @@ Rule: the app ships only Apache-2.0 / MIT / BSD code. **Pin exact versions at S1
 |---|---|---|---|
 | Kotlin + Coroutines | Language, async | Apache-2.0 | |
 | Jetpack Compose (BOM) + Material 3 | UI | Apache-2.0 | Use Material 3 *Expressive* components only where they're stable |
-| Navigation Compose (or Navigation 3 if stable and the S1 check says it's mature) | Screen navigation | Apache-2.0 | |
+| Google Material Symbols Outlined | Tab and scan icons | Apache-2.0 | Vector resources from [Material Design Icons](https://github.com/google/material-design-icons) |
+| Navigation 3 | Screen navigation | Apache-2.0 | |
+| AndroidX Activity, Core, and Lifecycle | Compose activity, window insets, and ViewModels | Apache-2.0 | |
 | CameraX (core, camera2, lifecycle, view) | Preview, ImageAnalysis, ImageCapture | Apache-2.0 | |
 | OpenCV Android (`org.opencv:opencv` on Maven Central) | Detection, warp, enhancement | Apache-2.0 (4.5+) | Use `abiFilters` to keep the APK small |
 | Room + KSP | Local DB | Apache-2.0 | |
 | DataStore (Preferences) | Settings | Apache-2.0 | |
-| Hilt | DI | Apache-2.0 | |
+| Dagger Hilt and AndroidX Hilt | DI and Compose ViewModel integration | Apache-2.0 | |
 | Coil 3 | Thumbnail/image loading | Apache-2.0 | |
 | PdfBox-Android (`com.tom-roush:pdfbox-android`) | Merge, split, compress, write, flatten | Apache-2.0 | Check that it's still maintained at S1; it's large, so enable R8 shrinking |
 | `android.graphics.pdf.PdfRenderer` | PDF viewing | Platform (free) | Built in |
