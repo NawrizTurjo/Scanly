@@ -8,6 +8,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.turjo.paperless.core.model.LibraryFilter
 import dev.turjo.paperless.core.model.LibrarySort
+import dev.turjo.paperless.core.model.PageFilter
+import dev.turjo.paperless.core.model.PageMode
+import dev.turjo.paperless.core.model.Quad
+import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
 import java.time.Duration
 import java.time.LocalDate
@@ -73,6 +77,45 @@ class RoomRepositoriesTest {
         assertOrder(id, first.id, middle.id, last.id)
         assertTrue(jpeg.isFile)
         assertEquals(jpeg.readBytes().toList(), File(middle.originalPath).readBytes().toList())
+    }
+
+    @Test
+    fun bookSplitInsertsRightHalfWithIndependentOriginalAndIsSafeToRetry() = runBlocking {
+        val id = draft()
+        val spread = add(id)
+        val tail = add(id)
+        val left = spread.copy(mode = PageMode.BOOK_L, quad = Quad(0f, 0f, 480f, 0f, 480f, 479f, 0f, 479f))
+        val rightQuad = Quad(480f, 0f, 959f, 0f, 959f, 479f, 480f, 479f)
+
+        val right = documents.splitBookPage(left, rightQuad)
+        assertEquals(right, documents.splitBookPage(left, rightQuad))
+        assertOrder(id, spread.id, right.id, tail.id)
+        assertEquals(left, documents.getPage(spread.id))
+        assertEquals(PageMode.BOOK_R, right.mode)
+        assertEquals(rightQuad, right.quad)
+        assertTrue(right.originalPath != left.originalPath)
+        assertTrue(File(left.originalPath).readBytes().contentEquals(File(right.originalPath).readBytes()))
+    }
+
+    @Test
+    fun idCompositeIsInsertedAfterTheBackAsAnOriginalPage() = runBlocking {
+        val id = draft()
+        val front = add(id).copy(mode = PageMode.ID_FRONT)
+        val back = add(id).copy(mode = PageMode.ID_BACK, glareFix = true)
+        documents.updatePage(front)
+        documents.updatePage(back)
+        val tail = add(id)
+
+        val composite = documents.addIdComposite(back, jpeg, 960, 480)
+        assertEquals(composite, documents.addIdComposite(back, jpeg, 960, 480))
+        assertOrder(id, front.id, back.id, composite.id, tail.id)
+        assertEquals(PageMode.NORMAL, composite.mode)
+        assertEquals(PageFilter.ORIGINAL, composite.filter)
+        assertNull(composite.quad)
+        assertFalse(composite.deskew)
+        assertFalse(composite.glareFix)
+        assertEquals(composite.originalPath, composite.processedPath)
+        assertEquals(composite.paramsHash(), composite.processedHash)
     }
 
     @Test

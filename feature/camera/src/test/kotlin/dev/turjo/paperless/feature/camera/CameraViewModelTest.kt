@@ -42,10 +42,15 @@ class CameraViewModelTest {
     private val documents = Documents()
     private lateinit var model: CameraViewModel
     private lateinit var temp: File
+    private val pageModes = mutableListOf<PageMode>()
     private val steps = mutableListOf<String>()
     private val processing = object : PageProcessing {
         override val busyPageIds = MutableStateFlow(emptySet<String>())
-        override fun enqueueNewPage(pageId: String, filter: PageFilter) {
+        override fun enqueueNewPage(pageId: String, filter: PageFilter) =
+            enqueueNewPage(pageId, PageMode.NORMAL, filter)
+
+        override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) {
+            pageModes += mode
             assertEquals(documents.draft.value.pages.last().id, pageId)
             assertEquals(PageFilter.DOCUMENT, filter)
             assertFalse(temp.exists())
@@ -109,6 +114,53 @@ class CameraViewModelTest {
 
         assertEquals(CameraEvent.Captured, model.events.first())
         assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
+    }
+
+    @Test fun modeChipsSelectTheModeForCapturesAndImports() = runTest {
+        createModel()
+        runCurrent()
+        assertEquals(ScanMode.DOCUMENT, model.state.value.mode)
+
+        model.setMode(ScanMode.BOOK)
+        model.capture { it.writeText("spread") }
+        model.setMode(ScanMode.WHITEBOARD)
+        assertEquals(ScanMode.BOOK, model.state.value.mode)
+        runCurrent()
+
+        model.setMode(ScanMode.WHITEBOARD)
+        model.importImages(listOf("board")) { image, file -> file.writeText(image) }
+        runCurrent()
+
+        assertEquals(ScanMode.WHITEBOARD, model.state.value.mode)
+        assertEquals(listOf(PageMode.BOOK_L, PageMode.WHITEBOARD), pageModes)
+        model.viewModelScope.cancel()
+        createModel()
+        runCurrent()
+        assertEquals(ScanMode.WHITEBOARD, model.state.value.mode)
+        model.setMode(ScanMode.DOCUMENT)
+    }
+
+    @Test fun idCardScansBothSidesInSingleModeBeforeReview() = runTest {
+        createModel(single = true)
+        runCurrent()
+        model.setMode(ScanMode.ID_CARD)
+        assertFalse(model.state.value.idBack)
+
+        model.capture { it.writeText("front") }
+        runCurrent()
+        assertEquals(CameraEvent.Captured, model.events.first())
+        assertTrue(model.state.value.idBack)
+        assertEquals(listOf("enqueue"), steps)
+        model.setMode(ScanMode.BOOK)
+        assertEquals(ScanMode.ID_CARD, model.state.value.mode)
+
+        model.importImages(listOf("back", "extra")) { image, file -> file.writeText(image) }
+        runCurrent()
+        assertFalse(model.state.value.idBack)
+        assertEquals(listOf(PageMode.ID_FRONT, PageMode.ID_BACK), pageModes)
+        assertEquals(listOf("enqueue", "enqueue", "idle"), steps)
+        assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
+        model.setMode(ScanMode.DOCUMENT)
     }
 
     @Test fun failedCaptureDeletesTempAndReenablesShutter() = runTest {

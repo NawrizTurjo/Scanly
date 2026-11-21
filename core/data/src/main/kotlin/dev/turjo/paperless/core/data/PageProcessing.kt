@@ -5,10 +5,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.util.Log
+import dev.turjo.paperless.core.imaging.BookSplitter
+import dev.turjo.paperless.core.imaging.IdCardComposer
 import dev.turjo.paperless.core.imaging.ProcessParams
 import dev.turjo.paperless.core.imaging.detectOnFile
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageFilter
+import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
@@ -35,6 +38,8 @@ data class PixelSize(val width: Int, val height: Int)
 interface PageProcessing {
     val busyPageIds: StateFlow<Set<String>>
     fun enqueueNewPage(pageId: String, filter: PageFilter = PageFilter.DOCUMENT)
+    fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter = PageFilter.DOCUMENT) =
+        enqueueNewPage(pageId, filter)
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
     suspend fun detectQuad(pageId: String): Quad?
@@ -58,21 +63,72 @@ class QueuedPageProcessing @Inject constructor(
 ) : PageProcessing {
     private val worker = Dispatchers.Default.limitedParallelism(1)
     private val previewLock = Mutex()
+    private val processingLock = Mutex()
     private val processor = ImagingPageProcessor()
-    private val pending = ConcurrentHashMap<String, Int>()
+    private val pending = mutableMapOf<String, Int>()
     private val busy = MutableStateFlow<Set<String>>(emptySet())
     private val sizes = ConcurrentHashMap<String, PixelSize>()
 
     override val busyPageIds: StateFlow<Set<String>> = busy.asStateFlow()
 
-    override fun enqueueNewPage(pageId: String, filter: PageFilter) = submit(pageId) {
+    override fun enqueueNewPage(pageId: String, filter: PageFilter) =
+        enqueueNewPage(pageId, PageMode.NORMAL, filter)
+
+    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) = submit(pageId) {
         val page = documents.getPage(pageId) ?: return@submit
-        val quad = runCatching { detectOnFile(File(page.originalPath)).quad?.let(Quad::fromArray) }
+        val source = File(page.originalPath)
+        val detected = runCatching { detectOnFile(source, aspectPrior = mode.cardAspect()).quad }
             .onFailure { Log.w(TAG, "Detection failed for $pageId", it) }
             .getOrNull()
-        documents.updatePage(page.copy(quad = quad, filter = filter))
+        val prepared = page.copy(mode = mode, quad = detected?.let(Quad::fromArray), filter = filter)
+        if (mode == PageMode.BOOK_L) {
+            val halves = detected?.let {
+                runCatching { BookSplitter.split(source, it) }
+                    .onFailure { error -> Log.w(TAG, "Book split failed for $pageId", error) }
+                    .getOrNull()
+            }
+            if (halves != null) {
+                val left = prepared.copy(quad = Quad.fromArray(halves.first))
+                val right = documents.splitBookPage(left, Quad.fromArray(halves.second))
+                try {
+                    render(pageId)
+                } finally {
+                    render(right.id)
+                }
+                return@submit
+            } else {
+                documents.updatePage(prepared.copy(mode = PageMode.NORMAL))
+            }
+        } else {
+            val glareMode = mode.cardAspect() != null || mode == PageMode.WHITEBOARD
+            documents.updatePage(prepared.copy(
+                filter = if (mode == PageMode.WHITEBOARD) PageFilter.WHITEBOARD else filter,
+                glareFix = glareMode || page.glareFix,
+                deskew = !glareMode && page.deskew,
+            ))
+        }
         render(pageId)
+        if (mode == PageMode.ID_BACK) composeIdCard(pageId)
     }
+
+    private suspend fun composeIdCard(backId: String) {
+        val back = documents.getPage(backId) ?: return
+        val draft = documents.observeDocument(back.documentId).first() ?: return
+        if (!draft.document.isDraft) return
+        val front = draft.pages.getOrNull(back.index - 1)?.takeIf { it.mode == PageMode.ID_FRONT } ?: return
+        val frontFile = front.processedPath?.let(::File)?.takeIf(File::isFile) ?: return
+        val backFile = back.processedPath?.let(::File)?.takeIf(File::isFile) ?: return
+        val output = files.newTempFile(".jpg")
+        try {
+            IdCardComposer.compose(frontFile, backFile, output)
+            documents.addIdComposite(back, output, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
+        } finally {
+            output.delete()
+        }
+    }
+
+    private fun PageMode.cardAspect(): Float? =
+        if (this == PageMode.ID_FRONT || this == PageMode.ID_BACK) 1.586f else null
 
     override fun enqueueRender(pageId: String) = submit(pageId) { render(pageId) }
 
@@ -82,7 +138,7 @@ class QueuedPageProcessing @Inject constructor(
 
     override suspend fun detectQuad(pageId: String): Quad? = withContext(worker) {
         val page = documents.getPage(pageId) ?: return@withContext null
-        detectOnFile(File(page.originalPath)).quad?.let(Quad::fromArray)
+        detectOnFile(File(page.originalPath), aspectPrior = page.mode.cardAspect()).quad?.let(Quad::fromArray)
     }
 
     override suspend fun originalBitmap(pageId: String, maxSide: Int): Bitmap = withContext(Dispatchers.IO) {
@@ -112,18 +168,22 @@ class QueuedPageProcessing @Inject constructor(
     }
 
     private fun submit(pageId: String, block: suspend () -> Unit) {
-        pending.merge(pageId, 1, Int::plus)
-        busy.update { it + pageId }
+        synchronized(pending) {
+            pending.merge(pageId, 1, Int::plus)
+            busy.update { it + pageId }
+        }
         scope.launch(worker) {
             try {
-                block()
+                processingLock.withLock { block() }
             } catch (error: Exception) {
                 Log.e(TAG, "Processing failed for $pageId", error)
             } finally {
-                val left = pending.merge(pageId, -1, Int::plus) ?: 0
-                if (left <= 0) {
-                    pending.remove(pageId)
-                    busy.update { it - pageId }
+                synchronized(pending) {
+                    val left = pending.merge(pageId, -1, Int::plus) ?: 0
+                    if (left <= 0) {
+                        pending.remove(pageId)
+                        busy.update { it - pageId }
+                    }
                 }
             }
         }
@@ -133,7 +193,7 @@ class QueuedPageProcessing @Inject constructor(
         val page = documents.getPage(pageId) ?: return
         val hash = page.paramsHash()
         val processed = files.processedFile(pageId)
-        if (page.processedHash == hash && processed.isFile) return
+        if (page.processedHash == hash && page.processedPath?.let { File(it).isFile } == true) return
         val result = processor.process(File(page.originalPath), page.toParams(1f), processed)
         thumbnails.make(processed, pageId)
         // Re-read: the user may have edited the page while it rendered; keep their params, record what we rendered.
@@ -152,6 +212,7 @@ class QueuedPageProcessing @Inject constructor(
         contrast = contrast,
         shadowFix = shadowFix,
         glareFix = glareFix,
+        snapToPaper = mode.cardAspect() == null,
         deskew = deskew,
         inkRemoval = inkRemoval?.name,
     )

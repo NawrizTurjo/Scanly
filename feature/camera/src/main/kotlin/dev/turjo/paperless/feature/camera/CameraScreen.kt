@@ -16,6 +16,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -206,6 +208,9 @@ fun CameraScreen(
         }
         Box(Modifier.matchParentSize()) {
             if (allowed && liveQuadSource != null) LiveQuadOverlay(liveQuad, Modifier.matchParentSize())
+            if (state.mode == ScanMode.ID_CARD || state.mode == ScanMode.BOOK) {
+                ScanModeGuide(state.mode, Modifier.matchParentSize())
+            }
             state.autoCaptureProgress?.let { progress ->
                 CircularProgressIndicator(
                     progress = { progress },
@@ -261,14 +266,14 @@ fun CameraScreen(
                         selected = !state.singleMode,
                         onClick = { model.setSingleMode(false) },
                         shape = SegmentedButtonDefaults.itemShape(0, 2),
-                        enabled = state.canEdit,
+                        enabled = state.canEdit && state.mode != ScanMode.ID_CARD,
                         colors = cameraSegmentColors(),
                     ) { Text(stringResource(R.string.camera_batch)) }
                     SegmentedButton(
                         selected = state.singleMode,
                         onClick = { model.setSingleMode(true) },
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
-                        enabled = state.canEdit && state.duplexPhase == null,
+                        enabled = state.canEdit && state.duplexPhase == null && state.mode != ScanMode.ID_CARD,
                         colors = cameraSegmentColors(),
                     ) { Text(stringResource(R.string.camera_single)) }
                 }
@@ -282,7 +287,27 @@ fun CameraScreen(
                 )
                 CameraIconButton(flash.icon, flash.label, { flash = flash.next() }, enabled = allowed)
             }
-            if (!state.singleMode) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ScanMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = mode == state.mode,
+                        onClick = { model.setMode(mode) },
+                        label = { Text(stringResource(mode.label)) },
+                        enabled = state.canEdit && state.duplexPhase == null && (!state.idBack || mode == state.mode),
+                    )
+                }
+            }
+            if (state.mode == ScanMode.ID_CARD) {
+                Text(
+                    stringResource(if (state.idBack) R.string.camera_id_back else R.string.camera_id_front),
+                    Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
+                    color = Color.White,
+                )
+            }
+            if (!state.singleMode && state.mode == ScanMode.DOCUMENT) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -390,7 +415,7 @@ private fun ReviewThumbnail(model: CameraViewModel, state: CameraState) {
         }
         IconButton(
             onClick = model::review,
-            enabled = pageId != null && state.canEdit,
+            enabled = pageId != null && state.canEdit && !state.idBack,
             modifier = Modifier.size(48.dp),
         ) {
             BadgedBox(badge = { if (pageId != null) Badge { Text(state.pageIds.size.toString()) } }) {

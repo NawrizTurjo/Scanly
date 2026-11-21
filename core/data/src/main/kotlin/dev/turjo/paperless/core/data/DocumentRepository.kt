@@ -9,6 +9,8 @@ import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
+import dev.turjo.paperless.core.model.Quad
+import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -41,6 +43,12 @@ interface DocumentRepository {
     suspend fun getPage(id: String): Page?
     suspend fun updatePage(page: Page)
     suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int? = null): Page
+    suspend fun addPageCopy(sourcePageId: String, at: Int): Page =
+        throw UnsupportedOperationException("Page copying unavailable")
+    suspend fun splitBookPage(left: Page, rightQuad: Quad): Page =
+        throw UnsupportedOperationException("Book splitting unavailable")
+    suspend fun addIdComposite(back: Page, original: File, width: Int, height: Int): Page =
+        throw UnsupportedOperationException("ID composition unavailable")
     suspend fun reorderPages(documentId: String, orderedPageIds: List<String>)
     suspend fun deletePage(pageId: String)
     suspend fun rotatePage(pageId: String, delta: Int)
@@ -207,6 +215,76 @@ class RoomDocumentRepository @Inject constructor(
                     }
                     throw error
                 }
+            }
+        }
+
+    override suspend fun addPageCopy(sourcePageId: String, at: Int): Page =
+        insertDerivedPage(UUID.randomUUID().toString()) { id ->
+            val source = requireNotNull(dao.page(sourcePageId)).toModel()
+            val count = dao.pages(source.documentId).size
+            source.asDerivedPage(id, insertionIndex(at, count), File(source.originalPath))
+        }
+
+    override suspend fun splitBookPage(left: Page, rightQuad: Quad): Page =
+        insertDerivedPage("book-right-${left.id}") { id ->
+            val current = requireNotNull(dao.page(left.id))
+            val updated = left.copy(index = current.index, documentId = current.documentId)
+            dao.updatePage(updated.toEntity())
+            updated.asDerivedPage(id, current.index + 1, File(updated.originalPath))
+                .copy(mode = PageMode.BOOK_R, quad = rightQuad)
+        }
+
+    override suspend fun addIdComposite(back: Page, original: File, width: Int, height: Int): Page =
+        insertDerivedPage("id-composite-${back.id}", renderedOriginal = true) { id ->
+            val current = requireNotNull(dao.page(back.id)).toModel()
+            current.asDerivedPage(id, current.index + 1, original).copy(
+                originalWidth = width, originalHeight = height, mode = PageMode.NORMAL, filter = PageFilter.ORIGINAL,
+                quad = null, rotation = 0, brightness = 0f, contrast = 0f,
+                deskew = false, shadowFix = false, glareFix = false, inkRemoval = null,
+            )
+        }
+
+    private fun Page.asDerivedPage(id: String, index: Int, source: File): Page =
+        copy(
+            id = id, index = index, originalPath = source.path, processedPath = null,
+            processedHash = null, glareWarning = false, createdAt = System.currentTimeMillis(),
+        )
+
+    private suspend fun insertDerivedPage(
+        id: String,
+        renderedOriginal: Boolean = false,
+        build: suspend (String) -> Page,
+    ): Page =
+        withContext(Dispatchers.IO + NonCancellable) {
+            var createdFiles = false
+            try {
+                database.withTransaction {
+                    dao.page(id)?.let { return@withTransaction it.toModel() }
+                    val page = build(id)
+                    val document = requireDocument(page.documentId)
+                    check(document.deletedAt == null)
+                    createdFiles = true
+                    val original = File(page.originalPath).copyTo(files.originalFile(id), overwrite = true)
+                    thumbnails.make(original, id)
+                    val stored = if (renderedOriginal) {
+                        page.copy(originalPath = original.path, processedPath = original.path, processedHash = page.paramsHash())
+                    } else {
+                        page.copy(originalPath = original.path)
+                    }
+                    dao.shiftForInsert(page.documentId, page.index)
+                    dao.insertPage(stored.toEntity())
+                    touch(document)
+                    stored
+                }
+            } catch (error: Exception) {
+                if (createdFiles) {
+                    try {
+                        files.deletePageFiles(id)
+                    } catch (cleanupError: Exception) {
+                        error.addSuppressed(cleanupError)
+                    }
+                }
+                throw error
             }
         }
 
