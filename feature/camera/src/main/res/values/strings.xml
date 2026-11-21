@@ -1,0 +1,25 @@
+<resources>
+    <string name="camera_close">Close camera</string>
+    <string name="camera_batch">Batch</string>
+    <string name="camera_single">Single</string>
+    <string name="camera_flash_off">Flash off</string>
+    <string name="camera_flash_on">Flash on</string>
+    <string name="camera_flash_auto">Auto flash</string>
+    <string name="camera_flash_torch">Torch</string>
+    <string name="camera_capture">Capture page</string>
+    <string name="camera_gallery">Import images</string>
+    <string name="camera_review">Review scanned pages</string>
+    <string name="camera_importing">Importing images</string>
+    <string name="camera_permission_title">Camera access</string>
+    <string name="camera_permission_message">Allow camera access to scan pages.</string>
+    <string name="camera_grant">Grant</string>
+    <string name="camera_settings">Open settings</string>
+    <string name="camera_operation_error">The scan operation could not be completed.</string>
+    <string name="camera_preview_error">The camera could not be opened.</string>
+    <string name="camera_discard">Discard</string>
+    <string name="camera_keep">Keep</string>
+    <plurals name="camera_discard_title">
+        <item quantity="one">Discard %d scanned page?</item>
+        <item quantity="other">Discard %d scanned pages?</item>
+    </plurals>
+</resources>
