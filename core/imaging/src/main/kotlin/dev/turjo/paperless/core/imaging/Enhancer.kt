@@ -135,27 +135,31 @@ object Enhancer {
 
     private fun divideChannels(source: Mat, out: Mat) {
         Mat().useMat { channel ->
-            val ink = ByteArray(source.cols())
-            val paper = ByteArray(source.cols())
             for (i in 0..2) {
                 Core.extractChannel(source, channel, i)
-                background(channel).useMat { bg ->
-                    for (y in 0 until channel.rows()) {
-                        channel.get(y, 0, ink)
-                        bg.get(y, 0, paper)
-                        for (x in ink.indices) {
-                            val value = ink[x].unsigned().toFloat() / maxOf(paper[x].unsigned(), 1) * 255f
-                            ink[x] = value.toInt().coerceAtMost(255).toByte()
-                        }
-                        channel.put(y, 0, ink)
-                    }
-                }
+                divideChannelInPlace(channel)
                 Core.insertChannel(channel, out, i)
             }
         }
     }
 
-    private fun background(channel: Mat): Mat = Mat().useMat { closed ->
+    internal fun divideChannelInPlace(channel: Mat) {
+        val ink = ByteArray(channel.cols())
+        val paper = ByteArray(channel.cols())
+        background(channel).useMat { bg ->
+            for (y in 0 until channel.rows()) {
+                channel.get(y, 0, ink)
+                bg.get(y, 0, paper)
+                for (x in ink.indices) {
+                    val value = ink[x].unsigned().toFloat() / maxOf(paper[x].unsigned(), 1) * 255f
+                    ink[x] = value.toInt().coerceAtMost(255).toByte()
+                }
+                channel.put(y, 0, ink)
+            }
+        }
+    }
+
+    internal fun background(channel: Mat): Mat = Mat().useMat { closed ->
         val width = channel.cols()
         val kernelSize = odd(width / 60.0).toDouble()
         Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(kernelSize, kernelSize)).useMat {
