@@ -6,6 +6,7 @@ dependencies {
     implementation(libs.reorderable)
     implementation(libs.coil.compose)
     implementation(libs.hilt.viewmodel.compose)
+    implementation(libs.activity.compose)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
