@@ -24,7 +24,7 @@ Update at the end of every session: tick boxes, add a log row, and note surprise
 | D2 | Package | **`dev.turjo.paperless`** (2026-11-22) |
 | D3 | minSdk | **31** (default) |
 | D4 | ML Kit benchmark | **No ML Kit in the app**; optional benchmark stays optional (default) |
-| D5 | Navigation lib | Decided at S1 version research (see session log) |
+| D5 | Navigation lib | **Navigation 3** 1.2.2 stable (S1 research, 2026-11-22) |
 | D6 | Git hosting | **Local git only** for now (2026-11-22) |
 | D7 | Annotations scope | **Any PDF** (default) |
 | D8 | Default filter after a scan | **Document** (default) |

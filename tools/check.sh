@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 : "${ANDROID_HOME:=G:/Android/Sdk}"
-: "${JAVA_HOME:=C:/Program Files/Android/Android Studio/jbr}"
+: "${JAVA_HOME:=C:/Program Files/Java/jdk-21}"
 : "${GRADLE_USER_HOME:=G:/.gradle}"
 export ANDROID_HOME JAVA_HOME GRADLE_USER_HOME
 
@@ -27,8 +27,10 @@ if [ -d tools/fixtures/tests ]; then
 fi
 
 if [ -f tools/imaging-lab/run_regression.py ]; then
-  step "Imaging lab regression"
+  step "Imaging lab regression: detection + warp"
   "$PY" tools/imaging-lab/run_regression.py
+  step "Imaging lab regression: enhancement"
+  "$PY" tools/imaging-lab/run_enhance.py
 fi
 
 if [ -d tools/pdf-fixwidth/tests ] && [ -n "$PY" ] && "$PY" -c "import fitz" 2>/dev/null; then
