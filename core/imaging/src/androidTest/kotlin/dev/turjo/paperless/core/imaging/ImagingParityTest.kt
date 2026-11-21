@@ -14,8 +14,10 @@ import org.opencv.core.Mat
 import org.opencv.core.MatOfByte
 import org.opencv.core.Size
 import org.opencv.imgcodecs.Imgcodecs
+import org.opencv.imgproc.Imgproc
 import java.nio.ByteBuffer
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
 
@@ -140,6 +142,83 @@ class ImagingParityTest {
         val median = (sorted[(sorted.size - 1) / 2] + sorted[sorted.size / 2]) / 2
         val p95 = sorted[ceil(0.95 * sorted.size).toInt() - 1]
         Log.i(TAG, "live upright timings (n=${sorted.size}) | median ${median.formatted()} ms | p95 ${p95.formatted()} ms")
+        assertTrue(failures.joinToString("\n"), failures.isEmpty())
+    }
+
+    @Test
+    fun liveSharpnessAndFingerprint() {
+        val detector = LiveQuadDetector()
+        try {
+            val metadata = assets.open("goldens.json").bufferedReader().use { JSONObject(it.readText()) }
+            val items = metadata.getJSONObject("items")
+            fun frame(name: String): Mat = assets.image(
+                items.getJSONObject(name).getJSONObject("live").getString("frame"),
+                Imgcodecs.IMREAD_GRAYSCALE,
+            )
+
+            OpenCv.ensureLoaded()
+            frame("clean_01").useMat { original ->
+                val sharp = requireNotNull(detector.detect(original.lumaFrame()))
+                val repeat = requireNotNull(detector.detect(original.lumaFrame()))
+                val blurred = newMat { Imgproc.GaussianBlur(original, it, Size(), 2.0) }.useMat {
+                    requireNotNull(detector.detect(it.lumaFrame()))
+                }
+                val other = frame("clean_05").useMat { requireNotNull(detector.detect(it.lumaFrame())) }
+                assertTrue(sharp.fingerprint.size == 256 && sharp.fingerprint.all { it in 0f..1f })
+                assertTrue(sharp.fingerprint.contentEquals(repeat.fingerprint))
+                val distance = sharp.fingerprint.indices.map { abs(sharp.fingerprint[it] - other.fingerprint[it]) }.average()
+                Log.i(TAG, "live sharpness ${sharp.sharpness} -> ${blurred.sharpness} | fingerprint distance $distance")
+                assertTrue("Sharpness should drop after blur", blurred.sharpness < sharp.sharpness)
+                assertTrue("Fingerprint mean absolute difference: $distance", distance > 0.05)
+            }
+        } finally {
+            detector.release()
+        }
+    }
+
+    @Test
+    fun pageToolsMatchPythonGoldens() {
+        OpenCv.ensureLoaded()
+        val dir = "pagetools"
+        val metadata = assets.open("$dir/pagetools.json").bufferedReader().use { JSONObject(it.readText()) }
+        val tolerances = metadata.getJSONObject("tolerances")
+        val items = metadata.getJSONObject("items")
+        val failures = mutableListOf<String>()
+        for (name in items.keys()) {
+            val item = items.getJSONObject(name)
+            val (error, limit) = assets.image("$dir/${item.optString("input", name)}").useMat { input ->
+                when (item.getString("tool")) {
+                    "skew" -> {
+                        val start = SystemClock.elapsedRealtimeNanos()
+                        val (output, angle) = PageTools.deskew(input)
+                        val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
+                        output.release()
+                        Log.i(TAG, "$name | angle ${angle.formatted()} | deskew ${elapsedMs.formatted()} ms")
+                        abs(angle - item.getDouble("angle")) to tolerances.getDouble("angle_deg")
+                    }
+                    "ink_fraction" -> {
+                        val fraction = PageTools.inkFraction(input)
+                        Log.i(TAG, "$name | ink fraction ${String.format(Locale.US, "%.6f", fraction)}")
+                        abs(fraction - item.getDouble("value")) to tolerances.getDouble("ink_fraction_abs")
+                    }
+                    "remove_ink" -> {
+                        val colour = InkColour.valueOf(item.getString("colour").uppercase(Locale.ROOT))
+                        val mean = PageTools.removeInk(input, colour).useMat { result ->
+                            assets.image("$dir/$name").useMat { diff(result, it).mean }
+                        }
+                        Log.i(TAG, "$name | mean absolute difference ${mean.formatted()}")
+                        mean to tolerances.getDouble("pixel_mean_abs")
+                    }
+                    "gutter" -> {
+                        val (x, confidence) = PageTools.findGutter(input)
+                        Log.i(TAG, "$name | gutter x $x | confidence ${confidence.formatted()}")
+                        abs(x.toDouble() - item.getInt("x")) to tolerances.getDouble("gutter_px")
+                    }
+                    else -> error("Unknown page tool for $name")
+                }
+            }
+            if (error > limit) failures.add("$name: error $error exceeds $limit")
+        }
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 

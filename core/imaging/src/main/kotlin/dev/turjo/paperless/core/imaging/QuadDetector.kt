@@ -41,7 +41,7 @@ class QuadDetector {
         val workingScale = imageScale(bgr, 1000)
         val scored = withResized(bgr, workingScale) { small -> scoreCandidates(small) }
         val best = scored.maxByOrNull { it.score } ?: return Detection(null, 0f)
-        if (best.score < 0.35) return Detection(null, best.score.toFloat())
+        if (best.score < MIN_SCORE) return Detection(null, best.score.toFloat())
 
         val width = round(bgr.cols() * workingScale).toInt().coerceAtLeast(1)
         val height = round(bgr.rows() * workingScale).toInt().coerceAtLeast(1)
@@ -60,27 +60,71 @@ class QuadDetector {
     private fun scoreCandidates(small: Mat): List<Candidate> {
         val width = small.cols()
         val height = small.rows()
-        val gradient = newMat { colourGradient(small, it) }.useMat { mag ->
-            FloatArray(width * height).also { mag.get(0, 0, it) }
+        val gradients = colourGradient(small)
+        return paperHull(small).useMat { paper ->
+            val paperArea = if (paper.empty()) 0.0 else CvGeometry.contourArea(paper)
+            Mat().useMat { intersection ->
+                scoreCandidates(candidates(small), gradients, width, height) { quad, area ->
+                    if (paperArea == 0.0) 0.0 else {
+                        val shared = Geometry.orderQuad(quad).pointMat().useMat {
+                            CvGeometry.intersectConvexConvex(it, paper, intersection).toDouble()
+                        }
+                        0.3 * (shared / (area + paperArea - shared) - 0.75)
+                    }
+                }
+            }
         }
-        return scoreCandidates(candidates(small), gradient, width, height)
     }
 
     internal fun scoreCandidates(
         quads: List<FloatArray>,
-        gradient: FloatArray,
+        gradients: Gradients,
         width: Int,
         height: Int,
-        percentileScratch: FloatArray = FloatArray(gradient.size),
+        percentileScratch: FloatArray = FloatArray(gradients.magnitude.size),
+        adjustment: (FloatArray, Double) -> Double = { _, _ -> 0.0 },
     ): List<Candidate> {
-        val threshold = maxOf(12.0, Percentiles.ofFloats(gradient, 85.0, percentileScratch))
+        val threshold = maxOf(12.0, Percentiles.ofFloats(gradients.magnitude, 85.0, percentileScratch))
         return quads.mapNotNull { quad ->
             val area = quad.pointMat().useMat { CvGeometry.contourArea(it) }
             val fraction = area / (width.toDouble() * height)
             if (fraction !in 0.08..0.985 || !anglesOk(quad)) return@mapNotNull null
-            val support = sideSupport(quad, gradient, width, height, threshold)
-            val score = 0.55 * support.min() + 0.25 * support.average() + 0.20 * minOf(1.0, fraction / 0.5)
-            Candidate(quad, score, area)
+            val support = sideSupport(quad, gradients, width, height, threshold)
+            val borderCount = support.count { it == null }
+            if (borderCount > 2) return@mapNotNull null
+            val filled = support.map { it ?: 1.0 }
+            val score = 0.55 * filled.min() + 0.25 * filled.average() + 0.20 * minOf(1.0, fraction / 0.5)
+            val adjusted = score - 0.06 * borderCount + adjustment(quad, area)
+            if (adjusted >= 0.0) Candidate(quad, adjusted, area) else null
+        }
+    }
+
+    private fun paperHull(small: Mat): Mat = newMat { hull ->
+        val size = closingSize(small).toDouble()
+        Mat().useMat { mask ->
+            Imgproc.cvtColor(small, mask, Imgproc.COLOR_BGR2Lab)
+            Core.extractChannel(mask, mask, 0)
+            Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(size, size)).useMat {
+                closeAndBlur(mask, mask, it)
+            }
+            Imgproc.threshold(mask, mask, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
+            Mat.ones(7, 7, CvType.CV_8UC1).useMat {
+                Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, it)
+            }
+            val contours = mutableListOf<MatOfPoint>()
+            try {
+                Mat().useMat { Imgproc.findContours(mask, contours, it, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE) }
+                val largest = contours.maxByOrNull { CvGeometry.contourArea(it) }
+                if (largest != null && CvGeometry.contourArea(largest) >= 0.3 * small.total()) {
+                    MatOfInt().useMat { indices ->
+                        CvGeometry.convexHull(largest, indices)
+                        val points = largest.toArray()
+                        MatOfPoint2f(*indices.toArray().map { points[it] }.toTypedArray()).useMat { it.copyTo(hull) }
+                    }
+                }
+            } finally {
+                contours.forEach(Mat::release)
+            }
         }
     }
 
@@ -186,12 +230,20 @@ class QuadDetector {
         }
     }
 
-    private fun sideSupport(quad: FloatArray, gradient: FloatArray, width: Int, height: Int, threshold: Double): DoubleArray {
+    private fun sideSupport(quad: FloatArray, gradients: Gradients, width: Int, height: Int, threshold: Double): Array<Double?> {
         val q = Geometry.orderQuad(quad).points()
-        return DoubleArray(4) { i ->
+        val margin = 0.012 * maxOf(width, height)
+        return Array(4) { i ->
             val a = q[i]
             val b = q[(i + 1) % 4]
-            val count = maxOf(20, (hypot(b.x - a.x, b.y - a.y) / 3).toInt())
+            if ((a.x < margin && b.x < margin) || (a.y < margin && b.y < margin) ||
+                (a.x > width - 1 - margin && b.x > width - 1 - margin) ||
+                (a.y > height - 1 - margin && b.y > height - 1 - margin)
+            ) return@Array null
+            val length = hypot(b.x - a.x, b.y - a.y) + 1e-9
+            val nx = (-(b.y - a.y) / length).toFloat()
+            val ny = ((b.x - a.x) / length).toFloat()
+            val count = maxOf(20, (length / 3).toInt())
             val step = (0.95 - 0.05) / (count - 1)
             var hits = 0
             for (j in 0 until count) {
@@ -200,9 +252,12 @@ class QuadDetector {
                 val y = round(a.y * (1 - t) + b.y * t).toInt()
                 sample@ for (row in maxOf(0, y - 2)..minOf(height - 1, y + 2)) {
                     for (col in maxOf(0, x - 2)..minOf(width - 1, x + 2)) {
-                        if (gradient[row * width + col] >= threshold) {
-                            hits++
-                            break@sample
+                        val pixel = row * width + col
+                        for (channel in gradients.x.indices) {
+                            if (abs(gradients.x[channel][pixel] * nx + gradients.y[channel][pixel] * ny) >= threshold) {
+                                hits++
+                                break@sample
+                            }
                         }
                     }
                 }
@@ -211,23 +266,41 @@ class QuadDetector {
         }
     }
 
-    private fun colourGradient(src: Mat, out: Mat) {
-        newMat {
-            Imgproc.GaussianBlur(src, it, Size(3.0, 3.0), 0.0)
-            Imgproc.cvtColor(it, it, Imgproc.COLOR_BGR2Lab)
-        }.useMat { lab ->
-            Mat().useMat { channel ->
-                for (i in 0..2) {
-                    Core.extractChannel(lab, channel, i)
-                    magnitude(channel).useMat { mag ->
-                        if (i == 0) mag.copyTo(out) else {
-                            mag.convertTo(mag, CvType.CV_32F, 2.0)
-                            Core.max(out, mag, out)
+    private fun colourGradient(src: Mat): Gradients {
+        val gradients = Gradients(3, src.rows() * src.cols())
+        val size = closingSize(src).toDouble()
+        Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(size, size)).useMat { kernel ->
+            newMat {
+                Imgproc.GaussianBlur(src, it, Size(3.0, 3.0), 0.0)
+                Imgproc.cvtColor(it, it, Imgproc.COLOR_BGR2Lab)
+            }.useMat { lab ->
+                Mat().useMat { channel ->
+                    Mat().useMat { gx ->
+                        Mat().useMat { gy ->
+                            for (i in 0..2) {
+                                Core.extractChannel(lab, channel, i)
+                                Imgproc.morphologyEx(channel, channel, Imgproc.MORPH_CLOSE, kernel, Point(-1.0, -1.0), 2)
+                                val gain = if (i == 0) 1.0 else 2.0
+                                Imgproc.Sobel(channel, gx, CvType.CV_32F, 1, 0, 3, gain)
+                                Imgproc.Sobel(channel, gy, CvType.CV_32F, 0, 1, 3, gain)
+                                gx.get(0, 0, gradients.x[i])
+                                gy.get(0, 0, gradients.y[i])
+                            }
                         }
                     }
                 }
             }
         }
+        for (i in gradients.magnitude.indices) {
+            var maxSquared = 0f
+            for (ch in gradients.x.indices) {
+                val dx = gradients.x[ch][i]
+                val dy = gradients.y[ch][i]
+                maxSquared = maxOf(maxSquared, dx * dx + dy * dy)
+            }
+            gradients.magnitude[i] = sqrt(maxSquared)
+        }
+        return gradients
     }
 
     private fun magnitude(gray: Mat): Mat =
@@ -361,4 +434,12 @@ internal fun lumaGradient(gray: Mat, out: Mat, gx: Mat, gy: Mat) {
     Imgproc.Sobel(gray, gx, CvType.CV_32F, 1, 0, 3)
     Imgproc.Sobel(gray, gy, CvType.CV_32F, 0, 1, 3)
     Core.magnitude(gx, gy, out)
+}
+
+internal const val MIN_SCORE = 0.35
+
+internal class Gradients(channels: Int, pixels: Int) {
+    val x = Array(channels) { FloatArray(pixels) }
+    val y = Array(channels) { FloatArray(pixels) }
+    val magnitude = FloatArray(pixels)
 }

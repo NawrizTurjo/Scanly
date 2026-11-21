@@ -19,6 +19,8 @@ data class ProcessParams(
     val shadowFix: Boolean,
     val glareFix: Boolean,
     val snapToPaper: Boolean = true,
+    val deskew: Boolean = false,
+    val inkRemoval: String? = null,
 )
 
 data class ProcessResult(val width: Int, val height: Int, val glareWarning: Boolean)
@@ -40,6 +42,8 @@ class PageProcessor {
 
         try {
             if (params.quad != null) replace(Geometry.warp(page, params.quad, snap = params.snapToPaper))
+            params.inkRemoval?.let { replace(PageTools.removeInk(page, InkColour.valueOf(it))) }
+            if (params.deskew) replace(PageTools.deskew(page).first)
             if (params.glareFix) {
                 val (fixed, glareWarning) = Enhancer.glareFix(page)
                 replace(fixed)

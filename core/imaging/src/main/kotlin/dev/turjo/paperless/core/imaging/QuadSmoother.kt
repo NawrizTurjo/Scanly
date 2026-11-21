@@ -7,6 +7,8 @@ data class SmoothedQuad(
     val confidence: Float,
     val stableForMillis: Long,
     val movement: Float,
+    val sharpness: Float = 0f,
+    val fingerprint: FloatArray = FloatArray(0),
 )
 
 /** Smooths the overlay and measures how long consecutive detections have stayed steady. */
@@ -27,7 +29,7 @@ class QuadSmoother(private val window: Int = 4, private val jumpThreshold: Float
                 reset()
                 return null
             }
-            return last.copy(points = last.points.copyOf(), stableForMillis = 0)
+            return last.copy(points = last.points.copyOf(), stableForMillis = 0, fingerprint = last.fingerprint.copyOf())
         }
 
         require(quad.points.size == 8)
@@ -51,8 +53,8 @@ class QuadSmoother(private val window: Int = 4, private val jumpThreshold: Float
             (samples[(samples.size - 1) / 2] + samples[samples.size / 2]) * 0.5f
         }
         val elapsedMillis = (timestampNanos - stableSinceNanos).coerceAtLeast(0) / 1_000_000
-        val result = SmoothedQuad(median, quad.confidence, elapsedMillis, movement)
-        smoothed = result.copy(points = median.copyOf())
+        val result = SmoothedQuad(median, quad.confidence, elapsedMillis, movement, quad.sharpness, quad.fingerprint.copyOf())
+        smoothed = result.copy(points = median.copyOf(), fingerprint = result.fingerprint.copyOf())
         return result
     }
 

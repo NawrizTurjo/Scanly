@@ -3,6 +3,8 @@ package dev.turjo.paperless.core.imaging
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.MatOfDouble
+import org.opencv.core.MatOfPoint
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
@@ -19,7 +21,12 @@ class LumaFrame(
 )
 
 /** Eight coordinates in TL, TR, BR, BL order, normalized to the upright frame. */
-data class LiveQuad(val points: FloatArray, val confidence: Float)
+data class LiveQuad(
+    val points: FloatArray,
+    val confidence: Float,
+    val sharpness: Float = 0f,
+    val fingerprint: FloatArray = FloatArray(0),
+)
 
 class LiveQuadDetector {
     private val detector = QuadDetector()
@@ -78,11 +85,13 @@ class LiveQuadDetector {
 
         closeAndBlur(small, work.map, work.closing)
         lumaGradient(work.map, work.magnitude, work.gx, work.gy)
-        if (work.gradient.size != width * height) {
-            work.gradient = FloatArray(width * height)
+        if (work.gradients.magnitude.size != width * height) {
+            work.gradients = Gradients(1, width * height)
             work.percentileScratch = FloatArray(width * height)
         }
-        work.magnitude.get(0, 0, work.gradient)
+        work.magnitude.get(0, 0, work.gradients.magnitude)
+        work.gx.get(0, 0, work.gradients.x[0])
+        work.gy.get(0, 0, work.gradients.y[0])
 
         val quads = ArrayList<FloatArray>(10)
         autoCanny(work.map, work.mask)
@@ -93,18 +102,39 @@ class LiveQuadDetector {
         Core.bitwise_not(work.mask, work.mask)
         detector.collectContours(work.mask, Imgproc.RETR_EXTERNAL, 2, quads, work.hierarchy)
 
-        val scored = detector.scoreCandidates(quads, work.gradient, width, height, work.percentileScratch)
+        val scored = detector.scoreCandidates(quads, work.gradients, width, height, work.percentileScratch)
         val best = scored.maxByOrNull { it.score } ?: return null
-        if (best.score < 0.35) return null
+        if (best.score < MIN_SCORE) return null
         val chosen = detector.preferEnclosing(best, scored, width, height)
         val points = Geometry.orderQuad(chosen.quad)
+        val sharpness = sharpness(small, points, work)
+        val fingerprint = Geometry.warp(small, points, Size(16.0, 16.0)).useMat { patch ->
+            val bytes = ByteArray(256)
+            patch.get(0, 0, bytes)
+            FloatArray(bytes.size) { bytes[it].unsigned() / 255f }
+        }
         val scaledWidth = scale * upright.cols()
         val scaledHeight = scale * upright.rows()
         for (i in points.indices step 2) {
             points[i] = (points[i] / scaledWidth).toFloat().coerceIn(0f, 1f)
             points[i + 1] = (points[i + 1] / scaledHeight).toFloat().coerceIn(0f, 1f)
         }
-        return LiveQuad(points, minOf(1.0, best.score).toFloat())
+        return LiveQuad(points, minOf(1.0, best.score).toFloat(), sharpness, fingerprint)
+    }
+
+    private fun sharpness(gray: Mat, quad: FloatArray, work: Workspace): Float {
+        work.mask.setTo(Scalar(0.0)).release()
+        MatOfPoint(*quad.points()).useMat { polygon ->
+            Imgproc.fillConvexPoly(work.mask, polygon, Scalar(255.0))
+        }
+        Imgproc.Laplacian(gray, work.gx, CvType.CV_32F)
+        return MatOfDouble().useMat { mean ->
+            MatOfDouble().useMat { deviation ->
+                Core.meanStdDev(work.gx, mean, deviation, work.mask)
+                val sigma = deviation.toArray()[0]
+                (sigma * sigma).toFloat()
+            }
+        }
     }
 
     /** Releases native buffers. Call when no detection is running. */
@@ -124,7 +154,7 @@ class LiveQuadDetector {
         val magnitude = Mat()
         val gx = Mat()
         val gy = Mat()
-        var gradient = FloatArray(0)
+        var gradients = Gradients(1, 0)
         var percentileScratch = FloatArray(0)
         var packed: ByteBuffer = ByteBuffer.allocateDirect(0)
         var row = ByteArray(0)
