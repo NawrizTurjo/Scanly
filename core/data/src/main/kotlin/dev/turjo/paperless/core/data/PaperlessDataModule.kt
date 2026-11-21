@@ -21,6 +21,10 @@ abstract class PaperlessDataModule {
     @Singleton
     abstract fun bindScanSessionRepository(repository: RoomScanSessionRepository): ScanSessionRepository
 
+    @Binds
+    @Singleton
+    abstract fun bindPageProcessing(processing: QueuedPageProcessing): PageProcessing
+
     companion object {
         @Provides
         @Singleton
