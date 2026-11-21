@@ -23,6 +23,7 @@ room = "2.8.5"
 coil = "3.6.3"
 camerax = "1.7.0"
 reorderable = "3.1.0"
+serialization = "1.13.0"
 
 [libraries]
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
@@ -36,6 +37,7 @@ camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" 
 camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
+kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 opencv = { module = "org.opencv:opencv", version = "5.1.0" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }

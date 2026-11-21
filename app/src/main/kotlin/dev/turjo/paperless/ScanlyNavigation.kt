@@ -1,0 +1,153 @@
+package dev.turjo.paperless
+
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import dev.turjo.paperless.core.designsystem.R as DesignR
+import dev.turjo.paperless.feature.camera.CameraScreen
+import dev.turjo.paperless.feature.editor.PageEditorScreen
+import dev.turjo.paperless.feature.editor.ReviewScreen
+import dev.turjo.paperless.feature.export.ExportSheet
+import dev.turjo.paperless.feature.library.DocumentScreen
+import dev.turjo.paperless.feature.library.LibraryScreen
+import dev.turjo.paperless.feature.reader.ReaderScreen
+import dev.turjo.paperless.feature.settings.SettingsScreen
+import dev.turjo.paperless.feature.tools.ToolsScreen
+import kotlinx.serialization.Serializable
+
+@Serializable sealed interface Route : NavKey
+
+@Serializable data object LibraryRoute : Route
+@Serializable data object ReaderRoute : Route
+@Serializable data object ToolsRoute : Route
+@Serializable data object SettingsRoute : Route
+@Serializable data class CameraRoute(val targetDocumentId: String? = null, val insertAt: Int? = null, val single: Boolean = false) : Route
+@Serializable data class ReviewRoute(val draftDocumentId: String) : Route
+@Serializable data class PageEditorRoute(val pageId: String) : Route
+@Serializable data class DocumentRoute(val documentId: String) : Route
+
+private enum class Tab(val route: Route, val label: Int, val icon: Int) {
+    LIBRARY(LibraryRoute, R.string.tab_library, DesignR.drawable.ic_library),
+    READER(ReaderRoute, R.string.tab_reader, DesignR.drawable.ic_reader),
+    TOOLS(ToolsRoute, R.string.tab_tools, DesignR.drawable.ic_tools),
+    SETTINGS(SettingsRoute, R.string.tab_settings, DesignR.drawable.ic_settings),
+}
+
+private fun NavBackStack<NavKey>.replaceAll(vararg keys: Route) {
+    clear()
+    addAll(keys)
+}
+
+/** Back from the camera's "review" goes to an existing Review for the same draft instead of stacking another. */
+private fun NavBackStack<NavKey>.showReview(draftId: String) {
+    val existing = indexOfLast { it is ReviewRoute && it.draftDocumentId == draftId }
+    if (existing >= 0) {
+        while (size > existing + 1) removeAt(lastIndex)
+    } else {
+        if (lastOrNull() is CameraRoute) removeAt(lastIndex)
+        add(ReviewRoute(draftId))
+    }
+}
+
+@Composable
+fun ScanlyNavigation() {
+    val backStack = rememberNavBackStack(LibraryRoute)
+    var exportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    val top = backStack.lastOrNull()
+    val currentTab = Tab.entries.firstOrNull { it.route == top }
+
+    Scaffold(
+        bottomBar = {
+            if (currentTab != null) {
+                NavigationBar {
+                    for (tab in Tab.entries) {
+                        NavigationBarItem(
+                            selected = tab == currentTab,
+                            onClick = { if (tab != currentTab) backStack.replaceAll(tab.route) },
+                            icon = { Icon(painterResource(tab.icon), contentDescription = null) },
+                            label = { Text(stringResource(tab.label)) },
+                        )
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        // Only tab roots sit above the bottom bar; full-screen routes (camera, editor) handle their own insets.
+        val contentModifier = if (currentTab != null) {
+            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+        } else {
+            Modifier.fillMaxSize()
+        }
+        NavDisplay(
+            backStack = backStack,
+            onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+            modifier = contentModifier,
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberViewModelStoreNavEntryDecorator(),
+            ),
+            entryProvider = entryProvider {
+                entry<LibraryRoute> {
+                    LibraryScreen(
+                        onScan = { backStack.add(CameraRoute()) },
+                        onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                    )
+                }
+                entry<ReaderRoute> { ReaderScreen() }
+                entry<ToolsRoute> { ToolsScreen() }
+                entry<SettingsRoute> { SettingsScreen() }
+                entry<CameraRoute> { key ->
+                    CameraScreen(
+                        targetDocumentId = key.targetDocumentId,
+                        insertAt = key.insertAt,
+                        singleMode = key.single,
+                        onReview = { draftId -> backStack.showReview(draftId) },
+                        onClose = { backStack.removeAt(backStack.lastIndex) },
+                    )
+                }
+                entry<ReviewRoute> { key ->
+                    ReviewScreen(
+                        draftDocumentId = key.draftDocumentId,
+                        onEditPage = { backStack.add(PageEditorRoute(it)) },
+                        onAddMore = { backStack.add(CameraRoute()) },
+                        onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
+                        onBack = { backStack.removeAt(backStack.lastIndex) },
+                    )
+                }
+                entry<PageEditorRoute> { key ->
+                    PageEditorScreen(pageId = key.pageId, onBack = { backStack.removeAt(backStack.lastIndex) })
+                }
+                entry<DocumentRoute> { key ->
+                    DocumentScreen(
+                        documentId = key.documentId,
+                        onBack = { backStack.removeAt(backStack.lastIndex) },
+                        onOpenPage = { backStack.add(PageEditorRoute(it)) },
+                        onAddPages = { id, insertAt -> backStack.add(CameraRoute(targetDocumentId = id, insertAt = insertAt)) },
+                        onExport = { exportDocumentId = it },
+                    )
+                }
+            },
+        )
+    }
+    exportDocumentId?.let { id -> ExportSheet(documentId = id, onDismiss = { exportDocumentId = null }) }
+}

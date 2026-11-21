@@ -238,20 +238,32 @@ private fun ReviewTile(
     }
     var menu by remember { mutableStateOf(false) }
     val background = MaterialTheme.colorScheme.surfaceContainerHighest
-    Box(
-        Modifier.fillMaxWidth().aspectRatio(0.78f).clip(RoundedCornerShape(12.dp)).background(background)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(background)
             .clickable(enabled = enabled, onClick = edit),
     ) {
-        AsyncImage(
-            request, stringResource(R.string.review_page_number, number), Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-        )
-        Box(
-            Modifier.align(Alignment.TopStart).background(background, RoundedCornerShape(bottomEnd = 12.dp)),
-        ) {
-            Text(number.toString(), Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+        // Controls sit below the thumbnail so they never cover the page corners.
+        Box(Modifier.fillMaxWidth().aspectRatio(0.78f)) {
+            AsyncImage(
+                request, stringResource(R.string.review_page_number, number),
+                Modifier.fillMaxSize().padding(6.dp),
+                contentScale = ContentScale.Fit,
+            )
+            Row(
+                Modifier.align(Alignment.TopEnd).padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (item.page.glareWarning) {
+                    val warning = stringResource(R.string.editor_glare_warning)
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer) {
+                        Text("!", Modifier.padding(horizontal = 8.dp).semantics { contentDescription = warning })
+                    }
+                }
+                if (item.busy) EditorProgress()
+            }
         }
-        Row(Modifier.align(Alignment.BottomEnd).background(background, RoundedCornerShape(topStart = 12.dp))) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(number.toString(), Modifier.padding(start = 12.dp).weight(1f))
             dragHandle()
             Box {
                 SymbolButton("⋮", R.string.review_page_options, enabled) { menu = true }
@@ -270,18 +282,6 @@ private fun ReviewTile(
                     })
                 }
             }
-        }
-        Row(
-            Modifier.align(Alignment.TopEnd).padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (item.page.glareWarning) {
-                val warning = stringResource(R.string.editor_glare_warning)
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer) {
-                    Text("!", Modifier.padding(horizontal = 8.dp).semantics { contentDescription = warning })
-                }
-            }
-            if (item.busy) EditorProgress()
         }
     }
 }

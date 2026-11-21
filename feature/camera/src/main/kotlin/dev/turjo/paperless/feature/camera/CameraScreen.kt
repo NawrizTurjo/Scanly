@@ -48,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -59,6 +60,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -99,6 +101,18 @@ fun CameraScreen(
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context.findActivity()
+    // The preview is dark whatever the app theme is: force light system-bar icons while the camera shows.
+    DisposableEffect(activity) {
+        val controller = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        val previousStatus = controller?.isAppearanceLightStatusBars
+        val previousNav = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            previousStatus?.let { controller.isAppearanceLightStatusBars = it }
+            previousNav?.let { controller.isAppearanceLightNavigationBars = it }
+        }
+    }
     var allowed by remember { mutableStateOf(context.hasCameraPermission()) }
     var requested by rememberSaveable { mutableStateOf<Boolean?>(null) }
     var rationale by remember { mutableStateOf(activity.showsCameraRationale()) }
