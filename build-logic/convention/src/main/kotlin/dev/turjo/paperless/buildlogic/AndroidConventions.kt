@@ -24,12 +24,16 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 targetSdk = 37
                 versionCode = 1
                 versionName = "0.1.0"
-                ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
+            // The emulator needs x86_64; the Pixel only arm64 (keeps the release APK small: OpenCV is ~33 MB per ABI).
+            buildTypes.named("debug") { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } }
             buildTypes.named("release") {
+                ndk { abiFilters += listOf("arm64-v8a") }
+                // Temporary until P8 adds the real release keystore: lets the user sideload a small arm64 APK now.
+                signingConfig = signingConfigs.getByName("debug")
                 isMinifyEnabled = true
-                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             }
             lint.checkDependencies = true
         }
@@ -82,6 +86,7 @@ private fun CommonExtension.configureAndroid(project: Project) {
     // Compose 1.13 (BOM 2026.11.01) AARs require compile SDK 37.1.
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "37.0.0"
+    ndkVersion = "30.0.16248370" // lets AGP strip native libs (OpenCV ships unstripped)
     defaultConfig.minSdk = 31
     compileOptions.apply {
         sourceCompatibility = JavaVersion.VERSION_17

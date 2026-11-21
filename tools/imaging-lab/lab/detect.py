@@ -232,6 +232,42 @@ def _refine(img, quad, band=6):
     return out
 
 
+LIVE_MAX = 480
+
+
+def detect_quad_live(gray):
+    """Fast variant for the camera overlay: luma only (the camera's Y plane), 480 px, one map, no refinement.
+    Returns (quad in the input's pixel coords or None, confidence)."""
+    small, s = _resize_max(gray, LIVE_MAX)
+    h, w = small.shape[:2]
+    k = max(5, int(round(max(h, w) / 90.0)) | 1)
+    m = cv2.GaussianBlur(_close(small, k), (5, 5), 0)
+    grad = cv2.magnitude(cv2.Sobel(m, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(m, cv2.CV_32F, 0, 1, ksize=3))
+    gthresh = max(12.0, float(np.percentile(grad, 85)))
+    cands = []
+    e = cv2.dilate(_auto_canny(m), np.ones((3, 3), np.uint8), iterations=1)
+    cs, _ = cv2.findContours(e, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    for c in sorted(cs, key=cv2.contourArea, reverse=True)[:6]:
+        q = _quad_from_contour(c)
+        if q is not None:
+            cands.append(q)
+    _, th = cv2.threshold(m, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    for mask in (th, 255 - th):
+        cs, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for c in sorted(cs, key=cv2.contourArea, reverse=True)[:2]:
+            q = _quad_from_contour(c)
+            if q is not None:
+                cands.append(q)
+    scored = [(sc, q) for q in cands for sc, _ in [_score(q, grad, gthresh, float(h * w))] if sc >= 0]
+    if not scored:
+        return None, 0.0
+    best_score, best = max(scored, key=lambda t: t[0])
+    if best_score < 0.35:
+        return None, best_score
+    best = _prefer_enclosing(best, best_score, scored, (h, w))
+    return order_quad(best) / s, float(min(1.0, best_score))
+
+
 def detect_quad(image, refine=True):
     """Return (quad TL,TR,BR,BL in image px or None, confidence 0..1)."""
     small, s = _resize_max(image, WORK_MAX)

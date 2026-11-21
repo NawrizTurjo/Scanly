@@ -16,7 +16,7 @@ import cv2
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lab import enhance as E  # noqa: E402
-from lab.detect import detect_quad  # noqa: E402
+from lab.detect import detect_quad, detect_quad_live  # noqa: E402
 from lab.geometry import output_size, warp  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +38,7 @@ WARP_LONG = 700  # keep goldens small; the Kotlin test warps to the same explici
 def main():
     if OUT.exists():
         shutil.rmtree(OUT)
-    for d in ("inputs", "warped", "filters"):
+    for d in ("inputs", "warped", "filters", "live"):
         (OUT / d).mkdir(parents=True)
     goldens = {}
     for p in PICKS:
@@ -52,10 +52,18 @@ def main():
         warped = warp(img, quad, size=size)
         cv2.imwrite(str(OUT / "warped" / f"{name}.png"), warped)
         _, warn = E.glare_fix(warped)
+        # Live overlay input: a 640 px camera analysis frame, luma only (the Y plane).
+        ls = 640.0 / max(img.shape[:2])
+        luma = cv2.cvtColor(cv2.resize(img, (round(img.shape[1] * ls), round(img.shape[0] * ls)), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)
+        cv2.imwrite(str(OUT / "live" / f"{name}.png"), luma)
+        lq, lconf = detect_quad_live(luma)
         goldens[name] = {
             "input": f"inputs/{p.name}", "quad": [[round(float(x), 2), round(float(y), 2)] for x, y in quad],
             "confidence": round(conf, 3), "output_size_snapped": [w, h], "warp_size": list(size),
             "glare_warning": warn,
+            "live": {"frame": f"live/{name}.png", "size": [luma.shape[1], luma.shape[0]],
+                     "quad": None if lq is None else [[round(float(x), 2), round(float(y), 2)] for x, y in lq],
+                     "confidence": round(lconf, 3)},
         }
         if name in FILTER_INPUTS:
             for f, fn in E.FILTERS.items():
@@ -63,7 +71,7 @@ def main():
                     continue
                 cv2.imwrite(str(OUT / "filters" / f"{name}_{f}.png"), fn(warped))
     meta = {"version": 1, "generator": "tools/imaging-lab/make_goldens.py", "opencv": cv2.__version__,
-            "tolerances": {"quad_px": 3.0, "filter_mean_abs": 3.0, "filter_max_share_over_32": 0.01},
+            "tolerances": {"quad_px": 3.0, "live_quad_px": 1.5, "filter_mean_abs": 3.0, "filter_max_share_over_32": 0.01},
             "items": goldens}
     (OUT / "goldens.json").write_text(json.dumps(meta, indent=2))
     total = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file())
