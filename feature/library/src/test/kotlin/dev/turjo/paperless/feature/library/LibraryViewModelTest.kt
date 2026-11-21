@@ -44,22 +44,23 @@ class LibraryViewModelTest {
         }
     }
 
-    private class FakeRepository : DocumentRepository {
+    internal open class FakeRepository : DocumentRepository {
         val library = MutableStateFlow<List<DocumentSummary>>(emptyList())
 
         override fun observeLibrary() = library
-        override fun observeDocument(id: String): Nothing = unsupported()
+        override fun observeDocument(id: String): kotlinx.coroutines.flow.Flow<dev.turjo.paperless.core.model.DocumentWithPages?> =
+            unsupported()
         override suspend fun getPage(id: String): Nothing = unsupported()
         override suspend fun updatePage(page: Page): Nothing = unsupported()
         override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Nothing =
             unsupported()
 
-        override suspend fun reorderPages(documentId: String, orderedPageIds: List<String>): Nothing = unsupported()
-        override suspend fun deletePage(pageId: String): Nothing = unsupported()
+        override suspend fun reorderPages(documentId: String, orderedPageIds: List<String>): Unit = unsupported()
+        override suspend fun deletePage(pageId: String): Unit = unsupported()
         override suspend fun rotatePage(pageId: String, delta: Int): Nothing = unsupported()
-        override suspend fun rename(id: String, title: String): Nothing = unsupported()
+        override suspend fun rename(id: String, title: String): Unit = unsupported()
         override suspend fun setFavorite(id: String, isFavorite: Boolean): Nothing = unsupported()
-        override suspend fun softDelete(id: String): Nothing = unsupported()
+        override suspend fun softDelete(id: String): Unit = unsupported()
         override suspend fun restore(id: String): Nothing = unsupported()
         override suspend fun commitDraft(draftId: String, title: String, targetDocumentId: String?, insertAt: Int?): Nothing =
             unsupported()

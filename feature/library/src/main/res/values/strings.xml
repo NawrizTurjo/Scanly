@@ -9,4 +9,33 @@
         <item quantity="one">%d page</item>
         <item quantity="other">%d pages</item>
     </plurals>
+    <string name="detail_back">Back</string>
+    <string name="detail_back_icon" translatable="false">‹</string>
+    <string name="detail_rename">Rename document</string>
+    <string name="detail_name">Document name</string>
+    <string name="detail_favorite">Add to favorites</string>
+    <string name="detail_unfavorite">Remove from favorites</string>
+    <string name="detail_star_full" translatable="false">★</string>
+    <string name="detail_star_empty" translatable="false">☆</string>
+    <string name="detail_share">Share</string>
+    <string name="detail_more">More options</string>
+    <string name="detail_more_icon" translatable="false">⋮</string>
+    <string name="detail_page_actions">Page actions</string>
+    <string name="detail_add_pages">Add pages</string>
+    <string name="detail_at_end">At the end</string>
+    <string name="detail_after_page">After page…</string>
+    <string name="detail_export">Export</string>
+    <string name="detail_delete_document">Delete document</string>
+    <string name="detail_delete_message">Move this document to the recycle bin?</string>
+    <string name="detail_last_page_message">This is the last page. Delete the document?</string>
+    <string name="detail_delete">Delete</string>
+    <string name="detail_rotate_left">Rotate left</string>
+    <string name="detail_rotate_right">Rotate right</string>
+    <string name="detail_save">Save</string>
+    <string name="detail_cancel">Cancel</string>
+    <string name="detail_page_number">Page %1$d</string>
+    <string name="detail_position">Page number (1–%1$d)</string>
+    <string name="detail_reorder">Hold and drag to reorder</string>
+    <string name="detail_reorder_icon" translatable="false">≡</string>
+    <string name="detail_error">Couldn’t complete the document action</string>
 </resources>

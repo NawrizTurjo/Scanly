@@ -1,0 +1,28 @@
+<resources>
+    <string name="export_title">Export</string>
+    <string name="export_format">Format</string>
+    <string name="export_pdf">PDF</string>
+    <string name="export_jpg">Images (JPG)</string>
+    <string name="export_both">Both</string>
+    <string name="export_png">PNG</string>
+    <string name="export_page_size">Page size</string>
+    <string name="export_auto">Auto</string>
+    <string name="export_a4">A4</string>
+    <string name="export_letter">Letter</string>
+    <string name="export_quality">Quality</string>
+    <string name="export_high">High</string>
+    <string name="export_medium">Medium</string>
+    <string name="export_small">Small</string>
+    <string name="export_estimate">≈ %1$s</string>
+    <string name="export_filename">File name</string>
+    <string name="export_same_width">Same width for all pages</string>
+    <string name="export_phase">Phase 6</string>
+    <string name="export_cancel">Cancel</string>
+    <string name="export_share">Share</string>
+    <string name="export_save">Save to device</string>
+    <string name="export_saved_pdf">Saved to Documents/Paperless</string>
+    <string name="export_saved_images">Saved to Pictures/Paperless</string>
+    <string name="export_saved_both">Saved to Documents/Paperless and Pictures/Paperless</string>
+    <string name="export_open">Open</string>
+    <string name="export_error">Couldn’t complete the export action</string>
+</resources>
