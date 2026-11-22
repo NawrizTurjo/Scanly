@@ -17,4 +17,12 @@
         <item quantity="other">%d pages indexed</item>
     </plurals>
     <string name="search_index_rebuild">Rebuild index</string>
+    <plurals name="backup_documents_backed_up">
+        <item quantity="one">Backed up %1$d document to %2$s</item>
+        <item quantity="other">Backed up %1$d documents to %2$s</item>
+    </plurals>
+    <plurals name="backup_documents_restored">
+        <item quantity="one">Restored %1$d document · %2$d already present</item>
+        <item quantity="other">Restored %1$d documents · %2$d already present</item>
+    </plurals>
 </resources>

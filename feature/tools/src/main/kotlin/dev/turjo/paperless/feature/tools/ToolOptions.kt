@@ -92,6 +92,7 @@ private fun PrintOptions(values: MutableMap<String, String>, count: Int) {
     Field("Gap in pt", values, "12")
     Toggle("Cut line", values, false)
     Toggle("Scale to fit", values, true)
+    Toggle("Page labels for cutting", values, true)
     val layout = values.layout()
     val flip = values.flip()
     val sheet = remember(count, layout, flip) { NUp.impose(count, layout, flip).firstOrNull() }

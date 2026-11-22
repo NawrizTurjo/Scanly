@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,14 +13,20 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.turjo.paperless.core.model.InkRemoval
+import dev.turjo.paperless.core.model.Page
 import kotlinx.coroutines.delay
 
 private enum class EditorTab(val label: Int) {
@@ -80,50 +87,10 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                 when (tab) {
                     EditorTab.Crop -> CropPanel(state, vm, enabled)
                     EditorTab.Filter, EditorTab.Rotate -> {
-                        var rendered by remember { mutableStateOf<Bitmap?>(null) }
-                        var rendering by remember { mutableStateOf(true) }
-                        val working = edits.applyTo(page)
-                        LaunchedEffect(working) {
-                            rendering = true
-                            delay(150)
-                            vm.preview(working, 1200)?.let { rendered = it }
-                            rendering = false
-                        }
-                        val comparisonPage = working.originalComparison()
-                        val comparingEnabled = enabled && tab == EditorTab.Filter
-                        var holding by remember { mutableStateOf(false) }
-                        var comparison by remember { mutableStateOf<Bitmap?>(null) }
-                        LaunchedEffect(comparingEnabled, comparisonPage) {
-                            comparison = null
-                            if (comparingEnabled) comparison = vm.preview(comparisonPage, 1200)
-                        }
-
-                        Box(
-                            Modifier.weight(1f).fillMaxWidth().padding(12.dp)
-                                .pointerInput(comparingEnabled) {
-                                    if (comparingEnabled) detectTapGestures(onPress = {
-                                        holding = true
-                                        try {
-                                            tryAwaitRelease()
-                                        } finally {
-                                            holding = false
-                                        }
-                                    })
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            val bitmap = (if (holding) comparison else null) ?: rendered
-                            if (bitmap != null) {
-                                Image(
-                                    bitmap.asImageBitmap(), stringResource(R.string.editor_preview),
-                                    Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
-                                )
-                            } else if (rendering) {
-                                EditorProgress()
-                            } else {
-                                Text(stringResource(R.string.editor_preview_error))
-                            }
-                        }
+                        FilterPreview(
+                            edits.applyTo(page), vm, enabled && tab == EditorTab.Filter,
+                            Modifier.weight(1f).fillMaxWidth().padding(12.dp),
+                        )
 
                         if (tab == EditorTab.Filter) {
                             Text(
@@ -162,6 +129,106 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
             onBack()
         }
     }
+}
+
+@Composable
+private fun FilterPreview(
+    working: Page,
+    vm: PageEditorViewModel,
+    comparingEnabled: Boolean,
+    modifier: Modifier,
+) {
+    var rendered by remember { mutableStateOf<Bitmap?>(null) }
+    var rendering by remember { mutableStateOf(true) }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var highResolution by remember { mutableStateOf(false) }
+    val wantsDetail = scale > 1.5f
+    LaunchedEffect(wantsDetail) {
+        if (wantsDetail && !highResolution) {
+            delay(180)
+            highResolution = true
+        }
+    }
+    // The preview source tops out at 1600 px. Request half-size first so zoom can reveal real detail.
+    val maxSide = if (highResolution) 1600 else 800
+    LaunchedEffect(working, maxSide) {
+        rendering = true
+        delay(150)
+        vm.preview(working, maxSide)?.let { rendered = it }
+        rendering = false
+    }
+
+    val comparisonPage = working.originalComparison()
+    var holding by remember { mutableStateOf(false) }
+    var comparison by remember(comparisonPage) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(comparingEnabled, comparisonPage, maxSide) {
+        if (comparingEnabled) vm.preview(comparisonPage, maxSide)?.let { comparison = it }
+    }
+
+    val aspect by rememberUpdatedState(rendered?.let { it.width.toFloat() / it.height } ?: 1f)
+    fun transform(viewport: Size, focal: Offset, pan: Offset, nextScale: Float) {
+        val center = Offset(viewport.width / 2f, viewport.height / 2f)
+        val current = clampPreviewOffset(offset, scale, viewport, aspect)
+        val ratio = nextScale / scale
+        val anchor = focal - center
+        offset = clampPreviewOffset((current - anchor) * ratio + anchor + pan, nextScale, viewport, aspect)
+        scale = nextScale
+    }
+
+    Box(
+        modifier.clipToBounds()
+            .pointerInput(comparingEnabled) {
+                detectTapGestures(
+                    onPress = {
+                        if (comparingEnabled) {
+                            holding = true
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                holding = false
+                            }
+                        }
+                    },
+                    onDoubleTap = { tap ->
+                        transform(size.toSize(), tap, Offset.Zero, if (scale == 1f) 3f else 1f)
+                    },
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                    transform(size.toSize(), centroid, pan, (scale * zoom).coerceIn(1f, 6f))
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val bitmap = (if (holding && comparingEnabled) comparison else null) ?: rendered
+        if (bitmap != null) {
+            Image(
+                bitmap.asImageBitmap(), stringResource(R.string.editor_preview),
+                Modifier.fillMaxSize().graphicsLayer {
+                    val position = clampPreviewOffset(offset, scale, size, aspect)
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = position.x
+                    translationY = position.y
+                },
+                contentScale = ContentScale.Fit,
+            )
+        } else if (rendering) {
+            EditorProgress()
+        } else {
+            Text(stringResource(R.string.editor_preview_error))
+        }
+    }
+}
+
+private fun clampPreviewOffset(offset: Offset, scale: Float, viewport: Size, aspect: Float): Offset {
+    val width = minOf(viewport.width, viewport.height * aspect)
+    val height = width / aspect
+    val horizontal = ((width * scale - viewport.width) / 2f).coerceAtLeast(0f)
+    val vertical = ((height * scale - viewport.height) / 2f).coerceAtLeast(0f)
+    return Offset(offset.x.coerceIn(-horizontal, horizontal), offset.y.coerceIn(-vertical, vertical))
 }
 
 @Composable

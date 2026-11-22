@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -41,7 +43,10 @@ private val pdf = arrayOf("application/pdf")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ToolsScreen(onOpenPdf: (File) -> Unit = {}) {
+fun ToolsScreen(
+    onOpenPdf: (File) -> Unit = {},
+    onAdjustImages: ((List<Uri>) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val model: ToolsModel = viewModel(factory = viewModelFactory {
         initializer { ToolsModel(context.applicationContext as Application) }
@@ -68,13 +73,20 @@ fun ToolsScreen(onOpenPdf: (File) -> Unit = {}) {
                 }
             }
         } else {
-            ToolFlow(tool, state, model, onOpenPdf)
+            ToolFlow(tool, state, model, onOpenPdf, onAdjustImages)
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (File) -> Unit) {
+private fun ToolFlow(
+    tool: Tool,
+    state: ToolsState,
+    model: ToolsModel,
+    open: (File) -> Unit,
+    onAdjustImages: ((List<Uri>) -> Unit)?,
+) {
     val context = LocalContext.current
     var batchTool by rememberSaveable { mutableStateOf(Tool.COMPRESS) }
     val operation = if (tool == Tool.BATCH) batchTool else tool
@@ -146,7 +158,8 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
             state.batchId != null -> {
                 if (state.batchRunning) item {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("${state.batchItems.size} files processed")
+                    val count = state.batchItems.size
+                    Text(pluralStringResource(R.plurals.tools_files_processed, count, count))
                     TextButton(onClick = model::stopBatch, enabled = !state.stopping) {
                         Text(if (state.stopping) "Stopping after current file" else "Cancel")
                     }
@@ -217,10 +230,11 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                             Text(input.name)
                             if (tool == Tool.WIDTH) {
                                 val widths = state.details.getOrNull(index)?.widths.orEmpty()
-                                Text(widths.groupingBy { it.roundToInt() }.eachCount().entries
-                                    .sortedByDescending { it.value }.joinToString(", ") { (width, count) ->
-                                        "$count ${if (count == 1) "page" else "pages"} at $width pt"
-                                    })
+                                val summaries = widths.groupingBy { it.roundToInt() }.eachCount().entries
+                                    .sortedByDescending { it.value }.map { (width, count) ->
+                                        pluralStringResource(R.plurals.tools_pages_at_width, count, count, width)
+                                    }
+                                Text(summaries.joinToString(", "))
                             }
                         }
                         if (tool == Tool.MERGE || tool == Tool.FROM_IMAGES) {
@@ -260,26 +274,36 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                     }
                 }
                 if (tool != Tool.PAGES) item {
-                    Button(
-                        enabled = (!pickPages || selection.isNotEmpty()) &&
-                            (operation != Tool.MERGE || state.inputs.size >= 2) &&
-                            (tool == Tool.BATCH || tool == Tool.FROM_IMAGES || state.details.size == state.inputs.size),
-                        onClick = {
-                            val chosen = options.toMap()
-                            if (tool == Tool.BATCH) {
-                                if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
-                                        Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = (!pickPages || selection.isNotEmpty()) &&
+                                (operation != Tool.MERGE || state.inputs.size >= 2) &&
+                                (tool == Tool.BATCH || tool == Tool.FROM_IMAGES || state.details.size == state.inputs.size),
+                            onClick = {
+                                val chosen = options.toMap()
+                                if (tool == Tool.BATCH) {
+                                    if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
+                                            Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                        permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        model.startBatch(operation, chosen)
+                                        options.remove("Password")
+                                    }
                                 } else {
-                                    model.startBatch(operation, chosen)
+                                    model.run(if (pickPages) chosen + ("Pages" to selection.sorted().joinToString { "${it + 1}" }) else chosen)
                                     options.remove("Password")
                                 }
-                            } else {
-                                model.run(if (pickPages) chosen + ("Pages" to selection.sorted().joinToString { "${it + 1}" }) else chosen)
-                                options.remove("Password")
-                            }
-                        },
-                    ) { Text(if (tool == Tool.BATCH) "Start batch" else "Run") }
+                            },
+                        ) { Text(if (tool == Tool.BATCH) "Start batch" else "Run") }
+                        if (tool == Tool.FROM_IMAGES && onAdjustImages != null) {
+                            OutlinedButton(onClick = {
+                                onAdjustImages(state.inputs.map { it.photoUri ?: Uri.fromFile(it.file) })
+                            }) { Text(stringResource(R.string.tools_adjust_images)) }
+                        }
+                    }
+                    if (tool == Tool.FROM_IMAGES && onAdjustImages != null) {
+                        Text(stringResource(R.string.tools_adjust_images_hint), style = MaterialTheme.typography.bodySmall)
+                    }
                     if (tool == Tool.PRINT) OutlinedButton(onClick = {
                         model.run(options.toMap() + ("Test sheet" to "true"))
                     }) { Text(stringResource(R.string.tools_print_test)) }

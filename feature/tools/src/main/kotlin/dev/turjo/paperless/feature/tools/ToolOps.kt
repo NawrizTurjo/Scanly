@@ -1,6 +1,7 @@
 package dev.turjo.paperless.feature.tools
 
 import android.content.Context
+import android.net.Uri
 import dev.turjo.paperless.core.pdf.PageSizeOption
 import dev.turjo.paperless.core.pdf.PdfBox
 import dev.turjo.paperless.core.pdf.QualityPreset
@@ -15,7 +16,7 @@ internal enum class Tool(val title: Int) {
     TO_IMAGES(R.string.tool_pdf_to_images), BATCH(R.string.tool_batch)
 }
 
-internal data class Input(val file: File, val name: String)
+internal data class Input(val file: File, val name: String, val photoUri: Uri? = null)
 internal data class Output(val file: File, val note: String? = null, val bytes: Long = file.length())
 internal typealias Options = Map<String, String>
 
@@ -113,6 +114,7 @@ internal class PdfToolOps(
                         options.measure("Gap in pt", 12f, allowZero = true),
                         options["Cut line"].toBoolean(),
                         options["Scale to fit"] != "false",
+                        pageLabels = options["Page labels for cutting"] != "false",
                     ), out("print"))
                 }
                 listOf(result.output())

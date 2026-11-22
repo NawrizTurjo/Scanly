@@ -99,7 +99,8 @@ internal class ToolsModel(
 
     fun pick(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        loadInputs { uris.map { copy(it) } }
+        val photos = current.tool == Tool.FROM_IMAGES
+        loadInputs { uris.map { uri -> copy(uri, photoUri = uri.takeIf { photos }) } }
     }
 
     fun pickFolder(tree: Uri) = loadInputs {
@@ -265,7 +266,7 @@ internal class ToolsModel(
         set(current.copy(stopping = true))
     }
 
-    private suspend fun copy(uri: Uri): Input = withContext(Dispatchers.IO) {
+    private suspend fun copy(uri: Uri, photoUri: Uri? = null): Input = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { if (it.moveToFirst()) it.getString(0) else null }
@@ -286,7 +287,7 @@ internal class ToolsModel(
                     }
                 }
             }
-            Input(file, name)
+            Input(file, name, photoUri)
         } catch (error: Exception) {
             directory.deleteRecursively()
             throw error
