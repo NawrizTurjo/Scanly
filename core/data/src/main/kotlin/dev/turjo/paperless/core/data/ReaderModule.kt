@@ -17,12 +17,18 @@ abstract class ReaderModule {
     @Binds
     abstract fun bindReaderRepository(repository: RoomReaderRepository): ReaderRepository
 
+    @Binds
+    abstract fun bindPdfSaveService(service: SafPdfSaveService): PdfSaveService
+
+    @Binds
+    abstract fun bindPdfSessionManager(manager: AndroidPdfSessionManager): PdfSessionManager
+
     companion object {
         @Provides
         @Singleton
         fun providePdfSessionManager(
             @ApplicationContext context: Context,
             repository: RoomReaderRepository,
-        ): PdfSessionManager = AndroidPdfSessionManager(context, repository::resolveUri)
+        ): AndroidPdfSessionManager = AndroidPdfSessionManager(context, repository::resolveUri)
     }
 }
