@@ -73,6 +73,41 @@ class RoomRepositoriesTest {
     }
 
     @Test
+    fun tagsSupportCrudFilteringSearchAndCascades() = runBlocking {
+        val id = "notes"
+        dao.insertDocument(DocumentEntity(id, "Lecture notes", null, false, false, 1, 1, null, null))
+        dao.insertDocument(DocumentEntity("other", "Other", null, false, false, 1, 1, null, null))
+        val physics = documents.createTag(" Physics ")
+        val optics = documents.createTag("Optics")
+        assertEquals(listOf(1, 0), documents.observeTags().first().map { it.tag.colorIndex })
+        assertTrue(runCatching { documents.createTag("pHySiCs") }.isFailure)
+        assertTrue(runCatching { documents.renameTag(optics, "pHySiCs") }.isFailure)
+        for (invalid in listOf("  ", "a".repeat(31))) {
+            assertTrue(runCatching { documents.createTag(invalid) }.isFailure)
+        }
+        documents.setDocumentTags(id, setOf(physics), newName = "Homework")
+        assertEquals(listOf("Homework", "Physics"), documents.observeDocumentTags(id).first().map { it.name })
+        assertEquals(listOf(id), documents.observeLibrary(LibraryFilter(tagId = physics)).first().map { it.id })
+        assertEquals(listOf(id), documents.observeLibrary(LibraryFilter(query = "physics")).first().map { it.id })
+        assertTrue(runCatching { documents.setDocumentTags(id, setOf("invalid"), "Rollback") }.isFailure)
+        assertEquals(listOf("Homework", "Physics"), documents.observeDocumentTags(id).first().map { it.name })
+        assertFalse(documents.observeTags().first().any { it.tag.name == "Rollback" })
+        documents.renameTag(physics, " Mechanics ")
+        assertEquals(listOf("Homework", "Mechanics"), documents.observeDocumentTags(id).first().map { it.name })
+        assertEquals(1, documents.observeTags().first().single { it.tag.id == physics }.documentCount)
+        documents.deleteTag(physics)
+        assertEquals(listOf("Homework"), documents.observeDocumentTags(id).first().map { it.name })
+        documents.softDelete(id)
+        assertEquals(0, documents.observeTags().first().single { it.tag.name == "Homework" }.documentCount)
+        assertEquals(1, database.tagDao().links().size)
+        documents.restore(id)
+        assertEquals(listOf("Homework"), documents.observeDocumentTags(id).first().map { it.name })
+        documents.softDelete(id)
+        documents.deleteForever(id)
+        assertTrue(database.tagDao().links().isEmpty())
+    }
+
+    @Test
     fun appendAndInsertKeepIndicesContiguous() = runBlocking {
         val id = draft()
         val first = add(id)

@@ -98,11 +98,13 @@ data class ScanSessionEntity(
         FolderEntity::class, DocumentEntity::class, PageEntity::class, ScanSessionEntity::class,
         ExternalPdfEntity::class, ReaderTabEntity::class,
         AnnotationEntity::class, PageTextEntity::class, IndexedPdfEntity::class,
+        TagEntity::class, DocumentTagEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class PaperlessDatabase : RoomDatabase() {
+    internal abstract fun tagDao(): TagDao
     abstract fun documentDao(): DocumentDao
     abstract fun folderDao(): FolderDao
     abstract fun scanSessionDao(): ScanSessionDao

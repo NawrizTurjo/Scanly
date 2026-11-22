@@ -40,6 +40,7 @@ import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibrarySort
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.core.pdf.ShareIntents
 import java.io.File
 import dev.turjo.paperless.core.designsystem.R as DesignR
 
@@ -62,6 +63,11 @@ fun LibraryScreen(
     val listLayout by model.listLayout.collectAsStateWithLifecycle()
     val folders by model.folderList.collectAsStateWithLifecycle()
     val deleted by model.deleted.collectAsStateWithLifecycle()
+    val tags by model.tags.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var manageTags by rememberSaveable { mutableStateOf(false) }
+    var moveDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editTagsId by rememberSaveable { mutableStateOf<String?>(null) }
     var folderMode by rememberSaveable { mutableStateOf(false) }
     var bin by rememberSaveable { mutableStateOf(false) }
     var move by rememberSaveable { mutableStateOf(false) }
@@ -71,7 +77,7 @@ fun LibraryScreen(
     val childFolders = folders.filter { it.folder.parentId == filter.folderId }
     val folderGrid = folderMode && filter.folderId == null
     val selecting = selection.isNotEmpty()
-    val visibleScan = unsavedScan.takeIf { filter.query.isBlank() && !selecting && !bin }
+    val visibleScan = unsavedScan.takeIf { filter.query.isBlank() && filter.tagId == null && !selecting && !bin }
     val snackbar = remember { SnackbarHostState() }
     val moved = stringResource(R.string.library_moved_to_bin)
     val undo = stringResource(R.string.library_undo)
@@ -168,6 +174,10 @@ fun LibraryScreen(
                             }
                             LibraryMenu(R.string.detail_more) {
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.library_manage_tags)) },
+                                    onClick = { it(); manageTags = true },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.library_bin)) },
                                     onClick = { it(); bin = true },
                                 )
@@ -201,8 +211,26 @@ fun LibraryScreen(
                             }, label = { Text(stringResource(R.string.library_favourites)) })
                             FilterChip(folderMode, {
                                 folderMode = true
-                                model.updateFilter { it.copy(favouritesOnly = false, query = "") }
+                                model.updateFilter { it.copy(favouritesOnly = false, query = "", tagId = null) }
                             }, label = { Text(stringResource(R.string.library_folders)) })
+                        }
+                    }
+                    if (tags.isNotEmpty()) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(tags, key = { it.tag.id }) { summary ->
+                                FilterChip(
+                                    selected = !folderGrid && filter.tagId == summary.tag.id,
+                                    onClick = {
+                                        if (folderGrid) folderMode = false
+                                        model.toggleTag(summary.tag.id)
+                                    },
+                                    label = { Text(summary.tag.name) },
+                                    leadingIcon = { TagDot(summary.tag.colorIndex) },
+                                )
+                            }
                         }
                     }
                 }
@@ -226,20 +254,24 @@ fun LibraryScreen(
     ) { padding ->
         val content = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         val showRecent = onOpenRecent != null && recent.isNotEmpty() && !folderMode && !selecting &&
-            filter.folderId == null && filter.query.isBlank() && !filter.favouritesOnly
-        val visibleFolders = if (folderMode && filter.query.isBlank()) childFolders else emptyList()
-        val showContentSearch = !bin && !folderGrid && !selecting && filter.query.trim().length >= 2
+            filter.folderId == null && filter.query.isBlank() && !filter.favouritesOnly && filter.tagId == null
+        val visibleFolders = if (folderMode && filter.query.isBlank() && filter.tagId == null) childFolders else emptyList()
+        val showContentSearch = !bin && !folderGrid && !selecting && filter.tagId == null && filter.query.trim().length >= 2
         val hits = if (showContentSearch) insideDocumentHits(filter.query) else emptyList()
         when {
             bin -> RecycleBin(content, deleted, model::restore, model::deleteForever)
-            visibleScan == null && !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId) -> Box(content, contentAlignment = Alignment.Center) {
+            visibleScan == null && !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId || state.filter.tagId != filter.tagId) -> Box(content, contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
             visibleScan == null && !showContentSearch && !showRecent && visibleFolders.isEmpty() &&
                 (folderGrid || state.documents.isEmpty()) -> {
-                if (!folderMode && filter.query.isBlank() && !filter.favouritesOnly) EmptyLibrary(content)
+                if (!folderMode && filter.query.isBlank() && !filter.favouritesOnly && filter.tagId == null) EmptyLibrary(content)
                 else Box(content, contentAlignment = Alignment.Center) {
-                    val label = if (folderGrid) R.string.library_no_folders else R.string.no_documents
+                    val label = when {
+                        folderGrid -> R.string.library_no_folders
+                        filter.tagId != null -> R.string.library_empty_tag
+                        else -> R.string.no_documents
+                    }
                     Text(stringResource(label))
                 }
             }
@@ -278,13 +310,25 @@ fun LibraryScreen(
                         )
                     }
                     if (!folderGrid && state.filter.folderId == filter.folderId) items(state.documents, key = DocumentSummary::id) { document ->
-                        DocumentCard(
-                            document, listLayout, document.id in selection,
-                            onClick = {
-                                if (selecting) model.toggleSelection(document) else onOpenDocument(document.id)
-                            },
-                            onLongClick = { model.toggleSelection(document) },
-                        )
+                        val share = {
+                            model.share(document.id) { files, mime ->
+                                context.startActivity(ShareIntents.forFiles(context, files, mime))
+                            }
+                        }
+                        val delete = { model.deleteDocument(document.id) }
+                        SwipeDocumentCard(enabled = !selecting, onShare = share, onDelete = delete) {
+                            DocumentCard(
+                                document, listLayout, document.id in selection, selecting,
+                                onClick = {
+                                    if (selecting) model.toggleSelection(document) else onOpenDocument(document.id)
+                                },
+                                onSelect = { model.toggleSelection(document) },
+                                onMove = { moveDocumentId = document.id },
+                                onTags = { editTagsId = document.id },
+                                onShare = share,
+                                onDelete = delete,
+                            )
+                        }
                     }
                     if (showContentSearch) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -299,6 +343,15 @@ fun LibraryScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (manageTags) ManageTagsDialog(tags, { manageTags = false }, model::renameTag, model::deleteTag)
+    editTagsId?.let { id ->
+        val assigned = remember(model, id) { model.documentTags(id) }
+        EditTagsDialog(assigned, tags, onDismiss = { editTagsId = null }) { ids, name ->
+            model.setTags(id, ids, name)
+            editTagsId = null
         }
     }
 
@@ -323,6 +376,13 @@ fun LibraryScreen(
     if (create) FolderNameDialog(onDismiss = { create = false }) { name ->
         model.createFolder(name, filter.folderId)
         create = false
+    }
+    moveDocumentId?.let { id ->
+        MoveToFolderDialog(
+            folders, onDismiss = { moveDocumentId = null },
+            onSelect = { moveDocumentId = null; model.moveDocuments(setOf(id), it) },
+            onCreate = { moveDocumentId = null; model.moveDocumentsToNewFolder(setOf(id), it) },
+        )
     }
     if (move && selecting) MoveToFolderDialog(
         folders, onDismiss = { move = false },
@@ -455,8 +515,13 @@ private fun DocumentCard(
     document: DocumentSummary,
     listLayout: Boolean,
     selected: Boolean,
+    selecting: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onSelect: () -> Unit,
+    onMove: () -> Unit,
+    onTags: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val cover = remember(document.coverThumbPath) { document.coverThumbPath?.let(::File) }
     val relativeDate = DateUtils.getRelativeTimeSpanString(
@@ -465,11 +530,14 @@ private fun DocumentCard(
     val count = pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount)
     val cardColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
         else MaterialTheme.colorScheme.surfaceContainerHighest
-    val selectLabel = stringResource(R.string.library_select_document)
+    var menu by remember { mutableStateOf(false) }
+    val longClickLabel = stringResource(if (selecting) R.string.library_select_document else R.string.detail_more)
 
     Card(
         modifier = Modifier.fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClickLabel = selectLabel, onLongClick = onLongClick)
+            .combinedClickable(onClick = onClick, onLongClickLabel = longClickLabel, onLongClick = {
+                if (selecting) onSelect() else menu = true
+            })
             .semantics { this.selected = selected },
         colors = CardDefaults.cardColors(containerColor = cardColor),
     ) {
@@ -500,6 +568,7 @@ private fun DocumentCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                DocumentTagChips(document.tags)
             }
         }
         if (listLayout) {
@@ -510,6 +579,28 @@ private fun DocumentCard(
         } else {
             image(Modifier.fillMaxWidth().aspectRatio(1f / 1.414f))
             metadata()
+        }
+        DropdownMenu(menu && !selecting, { menu = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_move_to_folder)) },
+                onClick = { menu = false; onMove() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_tags)) },
+                onClick = { menu = false; onTags() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.detail_share)) },
+                onClick = { menu = false; onShare() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.detail_delete)) },
+                onClick = { menu = false; onDelete() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.library_select_document)) },
+                onClick = { menu = false; onSelect() },
+            )
         }
     }
 }

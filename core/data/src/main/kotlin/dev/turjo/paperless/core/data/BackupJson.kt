@@ -27,6 +27,20 @@ internal fun JSONObject.readFolder() = FolderEntity(
     isPrivate = getBoolean("isPrivate"),
 )
 
+internal fun TagEntity.backupJson() = JSONObject().apply {
+    put("id", id)
+    put("name", name)
+    put("colorIndex", colorIndex)
+    put("createdAt", createdAt)
+}
+
+internal fun JSONObject.readTag() = TagEntity(
+    id = getString("id"),
+    name = validatedTagName(getString("name")),
+    colorIndex = getInt("colorIndex").also { require(it in 0 until dev.turjo.paperless.core.model.Tag.COLOR_COUNT) },
+    createdAt = getLong("createdAt"),
+)
+
 internal fun DocumentEntity.backupJson() = JSONObject().apply {
     put("id", id)
     put("title", title)

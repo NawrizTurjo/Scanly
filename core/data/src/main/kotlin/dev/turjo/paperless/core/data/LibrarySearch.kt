@@ -10,6 +10,10 @@ internal data class LibrarySearch(
     val dates: Set<LocalDate>,
     val months: Set<Month>,
 ) {
+    fun matchesText(title: String, folderName: String?, tagNames: List<String>): Boolean =
+        title.contains(text, ignoreCase = true) || folderName?.contains(text, ignoreCase = true) == true ||
+            tagNames.any { it.contains(text, ignoreCase = true) }
+
     fun matchesDate(date: LocalDate): Boolean =
         (dates.isEmpty() || date in dates) && (months.isEmpty() || date.month in months)
 }

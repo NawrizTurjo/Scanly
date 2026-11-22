@@ -11,6 +11,13 @@ class LibrarySearchTest {
     private val today = LocalDate.of(2026, 12, 1)
 
     @Test
+    fun matchesTagNamesIgnoringCase() {
+        val search = parseLibrarySearch("physics", LocalDate.of(2026, 1, 1))
+        assertEquals(true, search.matchesText("Notes", "School", listOf("Physics")))
+        assertEquals(false, search.matchesText("Notes", "School", listOf("Chemistry")))
+    }
+
+    @Test
     fun parsesRelativeAndCalendarDateTokens() {
         val result = parseLibrarySearch("ToDaY yesterday 2024-02-29", today)
 

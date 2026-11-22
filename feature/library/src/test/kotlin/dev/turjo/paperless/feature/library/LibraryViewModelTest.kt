@@ -19,12 +19,14 @@ import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.core.model.RecentPdf
 import dev.turjo.paperless.core.model.ScanSession
+import dev.turjo.paperless.core.model.Tag
 import dev.turjo.paperless.core.model.TabState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -139,6 +141,45 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun onlyOneTagCanBeSelectedAndTappingAgainClearsIt() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val model = createModel(repository)
+        val first = DocumentSummary("first", "First", 1, null, 0, false, listOf(Tag("a", "Alpha", 0, 1)))
+        val second = first.copy(id = "second", tags = listOf(Tag("b", "Beta", 1, 2)))
+        repository.library.value = listOf(first, second)
+        try {
+            model.uiState.test {
+                assertEquals(LibraryUiState(), awaitItem())
+                assertEquals(listOf(first, second), awaitItem().documents)
+                model.toggleTag("a")
+                assertEquals(listOf(first), awaitItem().documents)
+                model.toggleTag("b")
+                assertEquals(listOf(second), awaitItem().documents)
+                model.toggleTag("b")
+                assertEquals(listOf(first, second), awaitItem().documents)
+                assertNull(model.filter.value.tagId)
+            }
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun deletingOneDocumentFromACardCanBeUndone() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val model = createModel(repository)
+        model.notices.test {
+            model.deleteDocument("doc")
+            val notice = awaitItem() as LibraryNotice.Deleted
+            assertEquals(setOf("doc"), notice.ids)
+            assertEquals(notice.ids, repository.deletedIds)
+            model.undoDelete(notice.ids)
+            runCurrent()
+            assertEquals(emptySet<String>(), repository.deletedIds)
+        }
+    }
+
+    @Test
     fun deletingSelectionEmitsUndoForExactlyThoseDocuments() = runTest(dispatcher) {
         val repository = FakeRepository()
         val model = createModel(repository)
@@ -209,6 +250,7 @@ class LibraryViewModelTest {
     ) = LibraryViewModel(
         repository, folders, reader, sessions,
         awaitIdle = { error("Unexpected processing wait") },
+        exports = dagger.Lazy { error("Unexpected export request") },
         thumbnailFile = { error("Unexpected thumbnail request") },
     )
 
@@ -245,7 +287,9 @@ class LibraryViewModelTest {
         val favorites = mutableMapOf<String, Boolean>()
         var purgedAfterDays: Int? = null
 
-        override fun observeLibrary(filter: LibraryFilter) = library
+        override fun observeLibrary(filter: LibraryFilter) = library.map { documents ->
+            documents.filter { doc -> filter.tagId == null || doc.tags.any { it.id == filter.tagId } }
+        }
         override fun observeDeleted() = flowOf(emptyList<DeletedDocument>())
         override suspend fun purgeDeletedOlderThan(days: Int) { purgedAfterDays = days }
         override fun observeDocument(id: String): Flow<DocumentWithPages?> = draft

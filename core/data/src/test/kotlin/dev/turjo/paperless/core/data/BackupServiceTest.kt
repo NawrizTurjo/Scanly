@@ -26,13 +26,14 @@ class BackupServiceTest {
     private val app = ApplicationProvider.getApplicationContext<Context>()
 
     @Test
-    fun restoresFoldersDocumentPagesAndAnnotationsAndSkipsExistingIds() = runBlocking {
+    fun restoresFoldersDocumentPagesAnnotationsAndTagsAndSkipsExistingIds() = runBlocking {
         val root = temp.newFolder("backup")
         val parent = FolderEntity("parent", "Courses", null, 123, false)
         val folder = FolderEntity("folder", "Notes / cards", parent.id, 234, true)
         val document = DocumentEntity("doc", "Card: 01", folder.id, true, false,
             1, 2, "page-1", null, lastOpenedAt = 123, lastPage = 1, pageCount = 2)
         val annotation = AnnotationEntity("a", "doc:doc", 1, "NOTE", "{}", 0, 1.5f, 345)
+        val tag = TagEntity("t1", "Physics", 4, 567)
         val source = storage("source")
         val pages = List(2) { index ->
             val id = "page-$index"
@@ -48,6 +49,8 @@ class BackupServiceTest {
             db.folderDao().insert(folder)
             db.documentDao().insertDocument(document)
             for (page in pages) db.documentDao().insertPage(page)
+            db.tagDao().insert(tag)
+            db.tagDao().insertLinks(listOf(DocumentTagEntity(document.id, tag.id)))
             db.annotationDao().upsert(listOf(annotation))
             service(db, source).backup(FileBackupTree(root), setOf(folder.id)) {}
         }
@@ -71,9 +74,34 @@ class BackupServiceTest {
                 assertEquals(File(before.processedPath!!).readText(), File(after.processedPath!!).readText())
             }
             assertEquals(listOf(annotation), db.annotationDao().all(annotation.pdfKey))
+            assertEquals(listOf(tag), db.tagDao().observeDocumentTags(document.id).first())
             db.documentDao().updateDocument(document.copy(title = "Renamed", coverPageId = restored[1].id))
             assertEquals(BackupResult("", 0, 1), service.restore(tree) {})
             assertEquals("Renamed", db.documentDao().document(document.id)?.title)
+        }
+    }
+
+    @Test
+    fun restoresLegacyManifestWithoutTags() = runBlocking {
+        val root = temp.newFolder("legacy")
+        File(root, "library.json").writeText(
+            """
+            {"schemaVersion":1,"folders":[{"id":"old","name":"Legacy","createdAt":1,"isPrivate":false}],
+             "documents":[{"id":"doc","title":"Legacy PDF","folderId":"old","isFavorite":false,
+             "createdAt":1,"updatedAt":1,"lastOpenedAt":0,"lastPage":0,"pageCount":0,"folderDirectory":"Legacy","documentDirectory":"Legacy PDF",
+             "pages":[],"annotations":[]}]}
+            """.trimIndent(),
+        )
+        File(root, "Legacy/Legacy PDF").apply {
+            resolve("orig").mkdirs()
+            resolve("proc").mkdirs()
+            fixture("text-vector.pdf").copyTo(resolve("Legacy PDF.pdf"))
+        }
+        database().withDatabase { db ->
+            assertEquals(BackupResult("", 1, 0), service(db, storage("legacy-target")).restore(FileBackupTree(root)) {})
+            assertEquals("Legacy PDF", db.documentDao().document("doc")?.title)
+            assertTrue(db.tagDao().all().isEmpty())
+            assertTrue(db.tagDao().links().isEmpty())
         }
     }
 

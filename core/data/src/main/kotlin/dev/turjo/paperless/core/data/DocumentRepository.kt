@@ -11,6 +11,8 @@ import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.paramsHash
+import dev.turjo.paperless.core.model.Tag
+import dev.turjo.paperless.core.model.TagSummary
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -23,6 +25,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -32,6 +35,13 @@ interface DocumentRepository {
     fun observeLibrary(): Flow<List<DocumentSummary>> = observeLibrary(LibraryFilter())
     fun observeLibrary(filter: LibraryFilter): Flow<List<DocumentSummary>> =
         throw UnsupportedOperationException("Filtered library unavailable")
+    fun observeTags(): Flow<List<TagSummary>> = flowOf(emptyList())
+    fun observeDocumentTags(id: String): Flow<List<Tag>> = flowOf(emptyList())
+    suspend fun createTag(name: String): String = throw UnsupportedOperationException("Tags unavailable")
+    suspend fun renameTag(id: String, name: String): Unit = throw UnsupportedOperationException("Tags unavailable")
+    suspend fun deleteTag(id: String): Unit = throw UnsupportedOperationException("Tags unavailable")
+    suspend fun setDocumentTags(id: String, tagIds: Set<String>, newName: String? = null): Unit =
+        throw UnsupportedOperationException("Tags unavailable")
     fun observeDeleted(): Flow<List<DeletedDocument>> =
         throw UnsupportedOperationException("Recycle bin unavailable")
     suspend fun duplicate(id: String): String = throw UnsupportedOperationException("Duplication unavailable")
@@ -79,27 +89,60 @@ class RoomDocumentRepository @Inject constructor(
     private val files: FileStore,
     private val thumbnails: ThumbnailMaker,
 ) : DocumentRepository {
-    override fun observeLibrary(filter: LibraryFilter) = dao.observeLibrary(filter.folderId, filter.favouritesOnly)
+    private val tags = database.tagDao()
+
+    override fun observeLibrary(filter: LibraryFilter) =
+        dao.observeTaggedLibrary(filter.folderId, filter.favouritesOnly, filter.tagId)
         .map { rows ->
             val zone = ZoneId.systemDefault()
             val search = parseLibrarySearch(filter.query, LocalDate.now(zone))
-            val matching = rows.filter { row ->
-                (row.title.contains(search.text, ignoreCase = true) ||
-                    row.folderName?.contains(search.text, ignoreCase = true) == true) &&
+            val matching = rows.filter { (row, labels) ->
+                search.matchesText(row.title, row.folderName, labels.map(TagEntity::name)) &&
                     search.matchesDate(Instant.ofEpochMilli(row.createdAt).atZone(zone).toLocalDate())
             }
             val sorted = when (filter.sort) {
                 LibrarySort.UPDATED_DESC -> matching
-                LibrarySort.NAME -> matching.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: LibraryRow ->
-                    it.title
+                LibrarySort.NAME -> matching.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it: TaggedLibraryRow ->
+                    it.row.title
                 })
-                LibrarySort.CREATED_DESC -> matching.sortedByDescending(LibraryRow::createdAt)
+                LibrarySort.CREATED_DESC -> matching.sortedByDescending { it.row.createdAt }
             }
-            sorted.map { row ->
+            sorted.map { (row, labels) ->
                 val thumb = row.coverId?.let(files::thumbFile)?.takeIf(File::isFile)
-                DocumentSummary(row.id, row.title, row.pageCount, thumb?.path, row.updatedAt, row.isFavorite)
+                DocumentSummary(
+                    row.id, row.title, row.pageCount, thumb?.path, row.updatedAt, row.isFavorite,
+                    labels.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, TagEntity::name)).map(TagEntity::toModel),
+                )
             }
         }.flowOn(Dispatchers.IO)
+
+    override fun observeTags() = tags.observeTags().map { rows ->
+        rows.map { TagSummary(it.tag.toModel(), it.documentCount) }
+    }
+
+    override fun observeDocumentTags(id: String) =
+        tags.observeDocumentTags(id).map { rows -> rows.map(TagEntity::toModel) }
+
+    override suspend fun createTag(name: String): String = transaction { insertTag(name) }
+
+    override suspend fun renameTag(id: String, name: String) = tags.rename(id, validatedTagName(name))
+
+    override suspend fun deleteTag(id: String) = tags.delete(id)
+
+    override suspend fun setDocumentTags(id: String, tagIds: Set<String>, newName: String?) = transaction {
+        requireDocument(id)
+        val newId = newName?.let { insertTag(it) }
+        val links = tagIds.map { DocumentTagEntity(id, it) } + listOfNotNull(newId?.let { DocumentTagEntity(id, it) })
+        tags.clearLinks(id)
+        tags.insertLinks(links)
+    }
+
+    private suspend fun insertTag(name: String): String {
+        val id = UUID.randomUUID().toString()
+        val color = ((tags.lastColor() ?: -1) + 1) % Tag.COLOR_COUNT
+        tags.insert(TagEntity(id, validatedTagName(name), color, System.currentTimeMillis()))
+        return id
+    }
 
     override fun observeDeleted() = dao.observeDeleted()
 

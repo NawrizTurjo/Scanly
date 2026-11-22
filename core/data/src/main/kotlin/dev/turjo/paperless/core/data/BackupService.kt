@@ -44,6 +44,7 @@ class BackupService internal constructor(
 
     private val documents = database.documentDao()
     private val folders = database.folderDao()
+    private val tags = database.tagDao()
     private val annotations = database.annotationDao()
 
     suspend fun backup(treeUri: Uri, folderIds: Set<String>?, progress: (Float) -> Unit): BackupResult =
@@ -86,10 +87,21 @@ class BackupService internal constructor(
                 progress((index + 1f) / (rows.size + 1))
             }
 
+            val documentIds = rows.mapTo(hashSetOf(), DocumentEntity::id)
+            val (tagRows, links) = database.withTransaction {
+                val links = tags.links().filter { it.documentId in documentIds }
+                val linkedTags = links.mapTo(hashSetOf(), DocumentTagEntity::tagId)
+                tags.all().filter { selected == null || it.id in linkedTags } to links
+            }
+
             // The manifest is written last so an interrupted export cannot look complete.
             val json = JSONObject()
                 .put("schemaVersion", 1)
                 .put("folders", JSONArray(folderRows.map(FolderEntity::backupJson)))
+                .put("tags", JSONArray(tagRows.map(TagEntity::backupJson)))
+                .put("documentTags", JSONArray(links.map {
+                    JSONObject().put("documentId", it.documentId).put("tagId", it.tagId)
+                }))
                 .put("documents", result)
             destination.write("library.json", "application/json") { it.write(json.toString(2).toByteArray()) }
             progress(1f)
@@ -148,10 +160,28 @@ class BackupService internal constructor(
             val items = manifest.getJSONArray("documents").objects().map(::readBackupDocument)
             require(folderRows.map { it.id }.distinct().size == folderRows.size) { "Duplicate folder ID in backup" }
             require(items.map { it.document.id }.distinct().size == items.size) { "Duplicate document ID in backup" }
+            val tagRows = manifest.optJSONArray("tags")?.objects().orEmpty().map { it.readTag() }
+            val links = manifest.optJSONArray("documentTags")?.objects().orEmpty().map {
+                DocumentTagEntity(it.getString("documentId"), it.getString("tagId"))
+            }
+            val tagIds = tagRows.mapTo(hashSetOf(), TagEntity::id)
+            val documentIds = items.mapTo(hashSetOf()) { it.document.id }
+            require(tagIds.size == tagRows.size) { "Duplicate tag ID in backup" }
+            require(links.all { it.tagId in tagIds && it.documentId in documentIds }) { "Invalid document tag link" }
+            val linksByDocument = links.groupBy(DocumentTagEntity::documentId)
             progress(0f)
-            database.withTransaction {
+            val restoredTagIds = database.withTransaction {
                 for (folder in folderRows) {
                     if (folders.folder(folder.id) == null) folders.insert(folder)
+                }
+                tagRows.associate { tag ->
+                    val existing = tags.byName(tag.name)
+                    val id = existing?.id ?: run {
+                        val availableId = if (tags.byId(tag.id) == null) tag.id else UUID.randomUUID().toString()
+                        tags.insert(tag.copy(id = availableId))
+                        availableId
+                    }
+                    tag.id to id
                 }
             }
             var skipped = 0
@@ -160,7 +190,9 @@ class BackupService internal constructor(
                 if (documents.document(item.document.id) != null) {
                     skipped++
                 } else {
-                    files.pageCreationLock.withLock { restoreDocument(tree, item) }
+                    val restoredLinks = linksByDocument[item.document.id].orEmpty()
+                        .map { it.copy(tagId = restoredTagIds.getValue(it.tagId)) }.distinct()
+                    files.pageCreationLock.withLock { restoreDocument(tree, item, restoredLinks) }
                 }
                 progress((index + 1f) / items.size)
             }
@@ -189,7 +221,11 @@ class BackupService internal constructor(
         )
     }
 
-    private suspend fun restoreDocument(tree: BackupTree, item: BackupDocument) {
+    private suspend fun restoreDocument(
+        tree: BackupTree,
+        item: BackupDocument,
+        links: List<DocumentTagEntity>,
+    ) {
         val document = item.document
         val directory = tree.required(item.folderName).required(item.title)
         val originals = directory.required("orig")
@@ -213,6 +249,7 @@ class BackupService internal constructor(
                 database.withTransaction {
                     documents.insertDocument(document.copy(coverPageId = ids[document.coverPageId]))
                     restored.forEach { documents.insertPage(it) }
+                    tags.insertLinks(links)
                     if (item.annotations.isNotEmpty()) annotations.insert(item.annotations)
                 }
                 committed = true
