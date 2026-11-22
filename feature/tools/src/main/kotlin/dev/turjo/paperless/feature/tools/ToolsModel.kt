@@ -2,6 +2,7 @@ package dev.turjo.paperless.feature.tools
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -9,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.core.content.edit
+import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +27,7 @@ import dev.turjo.paperless.core.pdf.tools.PdfMetadata
 import dev.turjo.paperless.core.pdf.tools.PdfPassword
 import dev.turjo.paperless.core.pdf.tools.ToolError
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -67,6 +70,14 @@ internal class ToolsModel(
     private val context get() = getApplication<Application>()
     private val mutableState = MutableStateFlow(ToolsState())
     val state = mutableState.asStateFlow()
+    private val historyStore = ToolsHistoryStore(application)
+    private val pinDispatcher = Dispatchers.IO.limitedParallelism(1)
+    val history = historyStore.history
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) { historyStore.load() }
+    }
+
     private val ops = ops ?: PdfToolOps(application) { position, total ->
         val progress = application.getString(R.string.tools_enhancing_progress, position, total)
         mutableState.update { it.copy(progress = progress) }
@@ -196,16 +207,21 @@ internal class ToolsModel(
     }
 
     fun save(outputs: List<Output>) = launch {
+        val tool = checkNotNull(current.tool)
         val saver = MediaStoreSaver(context)
         outputs.forEach { output ->
             val mime = output.file.imageMime()
-            if (mime == null) saver.savePdf(output.file, output.file.name)
+            val uri = if (mime == null) saver.savePdf(output.file, output.file.name)
             else saver.saveImage(output.file, output.file.name, mime)
+            withContext(Dispatchers.IO) {
+                historyStore.record(listOf(output.file.recentOutput(tool, uri = uri)))
+            }
         }
         set(current.copy(message = context.getString(R.string.tools_saved)))
     }
 
     fun shareable(outputs: List<Output>, share: (List<File>) -> Unit) = launch {
+        val tool = checkNotNull(current.tool)
         val files = withContext(Dispatchers.IO) {
             val exports = exportCacheDir(context)
             outputs.map { output ->
@@ -214,6 +230,70 @@ internal class ToolsModel(
             }
         }
         share(files)
+        withContext(Dispatchers.IO) {
+            historyStore.record(outputs.zip(files) { output, file -> output.file.recentOutput(tool, file) })
+        }
+    }
+
+    fun openOutput(output: Output, open: (File) -> Unit) {
+        val tool = checkNotNull(current.tool)
+        open(output.file)
+        viewModelScope.launch(Dispatchers.IO) {
+            historyStore.record(listOf(output.file.recentOutput(tool)))
+        }
+    }
+
+    fun setPinned(tool: Tool, pinned: Boolean) {
+        viewModelScope.launch(pinDispatcher) { historyStore.setPinned(tool, pinned) }
+    }
+
+    suspend fun removeRecent(entry: RecentOutput) = withContext(Dispatchers.IO) {
+        historyStore.remove(entry)
+    }
+
+    suspend fun recentImageIntent(entry: RecentOutput, mime: String): Intent = withContext(Dispatchers.IO) {
+        val uri = entry.uri?.let(Uri::parse)
+        val imageUri = if (uri != null) {
+            val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException()
+            descriptor.close()
+            uri
+        } else {
+            val file = File(entry.path)
+            if (!file.isFile) throw FileNotFoundException()
+            val exports = exportCacheDir(context)
+            val shareable = if (file.toPath().startsWith(exports.toPath())) file
+                else file.copyTo(File(uniqueDirectory(exports), entry.name))
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", shareable)
+        }
+        Intent(Intent.ACTION_VIEW).setDataAndType(imageUri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    suspend fun recentPdf(entry: RecentOutput): File = withContext(Dispatchers.IO) {
+        val uri = entry.uri?.let(Uri::parse)
+        if (uri == null) {
+            File(entry.path).also { if (!it.isFile) throw FileNotFoundException() }
+        } else {
+            val source = context.contentResolver.openInputStream(uri) ?: throw FileNotFoundException()
+            source.use { input ->
+                val destination = File(uniqueDirectory(exportCacheDir(context)), entry.name)
+                try {
+                    destination.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    destination
+                } catch (error: Exception) {
+                    destination.delete()
+                    throw error
+                }
+            }
+        }
     }
 
     fun startBatch(tool: Tool, options: Options) = launch {
@@ -310,6 +390,9 @@ internal class ToolsModel(
         }
     }
 }
+
+private fun File.recentOutput(tool: Tool, reopen: File = this, uri: Uri? = null) =
+    RecentOutput(name, tool, System.currentTimeMillis(), absolutePath, reopen.absolutePath, uri?.toString())
 
 private fun uniqueDirectory(parent: File) = File(parent, UUID.randomUUID().toString()).apply {
     check(mkdirs()) { "Cannot create a tools folder" }

@@ -14,9 +14,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,18 +57,7 @@ fun ToolsScreen(
             navigationIcon = { if (tool != null) TextButton(onClick = model::back) { Text(stringResource(R.string.tools_back)) } },
         )
         if (tool == null) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(160.dp),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(Tool.entries, key = { it.name }) { item ->
-                    OutlinedCard(onClick = { model.select(item) }) {
-                        Text(stringResource(item.title), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
+            ToolsLanding(model, onOpenPdf)
         } else {
             ToolFlow(tool, state, model, onOpenPdf, onAdjustImages)
         }
@@ -324,7 +310,7 @@ private fun ResultFile(output: Output, model: ToolsModel, share: (List<Output>) 
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { share(listOf(output)) }) { Text(stringResource(R.string.tools_share)) }
             TextButton(onClick = { model.save(listOf(output)) }) { Text(stringResource(R.string.tools_save)) }
-            if (!image) TextButton(onClick = { open(output.file) }) { Text(stringResource(R.string.tools_open_reader)) }
+            if (!image) TextButton(onClick = { model.openOutput(output, open) }) { Text(stringResource(R.string.tools_open_reader)) }
         }
     }
 }
