@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.turjo.paperless.core.model.AUTO_CAPTURE_DELAYS_MS
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
+import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import java.io.IOException
@@ -22,6 +23,8 @@ interface SettingsRepository {
     val settings: Flow<UserSettings>
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDynamicColor(enabled: Boolean)
+    suspend fun setAmoledBlack(enabled: Boolean)
+    suspend fun setAccent(accent: AccentColor)
     suspend fun setAutoNamePattern(pattern: String)
     suspend fun setAppLock(mode: AppLock)
     suspend fun setLockAfterMinutes(minutes: Int)
@@ -41,6 +44,8 @@ class DataStoreSettingsRepository @Inject constructor(
                 themeMode = ThemeMode.entries.find { it.name == preferences[THEME_MODE] }
                     ?: ThemeMode.SYSTEM,
                 dynamicColor = preferences[DYNAMIC_COLOR] ?: true,
+                amoledBlack = preferences[AMOLED_BLACK] ?: defaults.amoledBlack,
+                accent = AccentColor.entries.find { it.name == preferences[ACCENT] } ?: defaults.accent,
                 autoNamePattern = preferences[AUTO_NAME_PATTERN] ?: defaults.autoNamePattern,
                 appLock = AppLock.entries.find { it.name == preferences[APP_LOCK] } ?: defaults.appLock,
                 lockAfterMinutes = preferences[LOCK_AFTER_MINUTES]?.takeIf { it > 0 } ?: defaults.lockAfterMinutes,
@@ -58,6 +63,14 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setDynamicColor(enabled: Boolean) {
         dataStore.edit { it[DYNAMIC_COLOR] = enabled }
+    }
+
+    override suspend fun setAmoledBlack(enabled: Boolean) {
+        dataStore.edit { it[AMOLED_BLACK] = enabled }
+    }
+
+    override suspend fun setAccent(accent: AccentColor) {
+        dataStore.edit { it[ACCENT] = accent.name }
     }
 
     override suspend fun setAutoNamePattern(pattern: String) {
@@ -89,5 +102,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val AUTO_CAPTURE_SENSITIVITY = stringPreferencesKey("auto_capture_sensitivity")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val AMOLED_BLACK = booleanPreferencesKey("amoled_black")
+        val ACCENT = stringPreferencesKey("accent")
     }
 }

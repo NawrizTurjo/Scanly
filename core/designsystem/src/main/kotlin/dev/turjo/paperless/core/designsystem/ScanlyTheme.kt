@@ -1,6 +1,7 @@
 package dev.turjo.paperless.core.designsystem
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -9,9 +10,10 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Color(0xFF375D87),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD2E4FF),
@@ -45,7 +47,7 @@ private val LightColors = lightColorScheme(
     surfaceDim = Color(0xFFD8DAE1),
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFFA1C9F9),
     onPrimary = Color(0xFF003258),
     primaryContainer = Color(0xFF20456D),
@@ -79,10 +81,29 @@ private val DarkColors = darkColorScheme(
     surfaceDim = Color(0xFF111318),
 )
 
+fun colorSchemeFor(dark: Boolean, accent: AccentColor, amoled: Boolean): ColorScheme {
+    val colors = accentPalette(dark, accent)
+    return if (dark && amoled) colors.withAmoledBlack() else colors
+}
+
+private fun ColorScheme.withAmoledBlack() = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceDim = Color.Black,
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0A0A0A),
+    surfaceContainer = Color(0xFF121212),
+    surfaceContainerHigh = Color(0xFF1A1A1A),
+    surfaceContainerHighest = Color(0xFF222222),
+    surfaceBright = Color(0xFF292929),
+)
+
 @Composable
 fun ScanlyTheme(
     themeMode: ThemeMode,
     dynamicColor: Boolean,
+    amoledBlack: Boolean = false,
+    accent: AccentColor = AccentColor.BLUE,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -92,10 +113,11 @@ fun ScanlyTheme(
     }
     val context = LocalContext.current
     val colors = when {
-        dynamicColor && dark -> dynamicDarkColorScheme(context)
+        dynamicColor && dark -> dynamicDarkColorScheme(context).let {
+            if (amoledBlack) it.withAmoledBlack() else it
+        }
         dynamicColor -> dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
+        else -> colorSchemeFor(dark, accent, amoledBlack)
     }
     MaterialTheme(colorScheme = colors, content = content)
 }
