@@ -67,3 +67,44 @@ internal fun Quad.moveHandle(handle: Int, delta: CropPoint, width: Float, height
     if (!convex) return null
     return Quad.fromArray(corners.flatMap { listOf(it.x, it.y) }.toFloatArray())
 }
+
+/** A split line across a crop: positions along the top edge (tl to tr) and the bottom edge (bl to br), 0..1. */
+internal data class SplitLine(val top: Float, val bottom: Float) {
+    companion object {
+        const val MIN = 0.1f
+        const val MAX = 0.9f
+        val Middle = SplitLine(0.5f, 0.5f)
+    }
+}
+
+internal fun Quad.splitPoints(line: SplitLine): Pair<CropPoint, CropPoint> {
+    val (tl, tr, br, bl) = points()
+    return (tl + (tr - tl) * line.top) to (bl + (br - bl) * line.bottom)
+}
+
+/** Left and right pages of a split, each a quad in the same tl, tr, br, bl order. */
+internal fun Quad.splitHalves(line: SplitLine): Pair<Quad, Quad> {
+    val (tl, tr, br, bl) = points()
+    val (top, bottom) = splitPoints(line)
+    fun quad(vararg p: CropPoint) = Quad.fromArray(p.flatMap { listOf(it.x, it.y) }.toFloatArray())
+    return quad(tl, top, bottom, bl) to quad(top, tr, br, bottom)
+}
+
+/** Where [point] falls along the top (or bottom) edge, as a fraction kept away from the corners. */
+internal fun Quad.edgeFraction(point: CropPoint, topEdge: Boolean): Float {
+    val (tl, tr, br, bl) = points()
+    val start = if (topEdge) tl else bl
+    val edge = (if (topEdge) tr else br) - start
+    val length = edge.dot(edge)
+    if (length == 0f) return 0.5f
+    return ((point - start).dot(edge) / length).coerceIn(SplitLine.MIN, SplitLine.MAX)
+}
+
+/** A fold found by detection (top and bottom points) as a split line, or the middle when it doesn't fit. */
+internal fun Quad.splitLineFor(fold: FloatArray?): SplitLine {
+    if (fold == null || fold.size < 4) return SplitLine.Middle
+    return SplitLine(
+        edgeFraction(CropPoint(fold[0], fold[1]), topEdge = true),
+        edgeFraction(CropPoint(fold[2], fold[3]), topEdge = false),
+    )
+}

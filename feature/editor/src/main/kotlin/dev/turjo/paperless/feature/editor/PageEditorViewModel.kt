@@ -31,6 +31,8 @@ internal data class EditorState(
     val detecting: Boolean = false,
     val saved: Boolean = false,
     val message: Int? = null,
+    /** Non-null while the user places a manual split line on the crop. */
+    val split: SplitLine? = null,
 )
 
 @HiltViewModel(assistedFactory = PageEditorViewModel.Factory::class)
@@ -143,6 +145,58 @@ internal class PageEditorViewModel @AssistedInject constructor(
                 message(R.string.editor_detect_error)
             } finally {
                 mutable.update { it.copy(detecting = false) }
+            }
+        }
+    }
+
+    /** Shows the split line on the current crop, starting on the detected fold when there is a clear one. */
+    fun startSplit() {
+        val current = state.value
+        if (current.detecting || current.saving || current.split != null) return
+        val size = current.size ?: return
+        endGesture()
+        val quad = current.edits?.quad ?: fullCrop(size.width.toFloat(), size.height.toFloat())
+        mutable.update { it.copy(detecting = true) }
+        viewModelScope.launch {
+            val fold = try {
+                processing.findFold(pageId, quad)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            mutable.update { it.copy(detecting = false, split = quad.splitLineFor(fold)) }
+        }
+    }
+
+    fun moveSplit(line: SplitLine) {
+        if (state.value.split != null) mutable.update { it.copy(split = line) }
+    }
+
+    fun cancelSplit() = mutable.update { it.copy(split = null) }
+
+    /** Keeps the left half on this page and inserts the right half after it; both are rendered again. */
+    fun confirmSplit() {
+        val current = state.value
+        val line = current.split ?: return
+        val edits = current.edits ?: return
+        val size = current.size ?: return
+        if (current.saving || current.saved) return
+        val (left, right) = (edits.quad ?: fullCrop(size.width.toFloat(), size.height.toFloat())).splitHalves(line)
+        mutable.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            try {
+                val latest = requireNotNull(documents.getPage(pageId))
+                val added = documents.splitPage(edits.copy(quad = left).applyTo(latest), right)
+                processing.enqueueRender(pageId)
+                processing.enqueueRender(added.id)
+                mutable.update { it.copy(saved = true, dirty = false, split = null) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                message(R.string.editor_split_error)
+            } finally {
+                mutable.update { it.copy(saving = false) }
             }
         }
     }

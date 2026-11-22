@@ -42,6 +42,8 @@ internal fun CropCanvas(
     modifier: Modifier,
     onStart: () -> Unit,
     onEnd: () -> Unit,
+    split: SplitLine? = null,
+    onSplit: (SplitLine) -> Unit = {},
     onCrop: (Quad) -> Unit,
 ) {
     val image = remember(bitmap) { bitmap.asImageBitmap() }
@@ -52,6 +54,8 @@ internal fun CropCanvas(
     val startGesture by rememberUpdatedState(onStart)
     val finishGesture by rememberUpdatedState(onEnd)
     val changeCrop by rememberUpdatedState(onCrop)
+    val latestSplit by rememberUpdatedState(split)
+    val changeSplit by rememberUpdatedState(onSplit)
     var loupe by remember { mutableStateOf<CropPoint?>(null) }
     val accent = MaterialTheme.colorScheme.primary
     val handleFill = MaterialTheme.colorScheme.surface
@@ -65,6 +69,7 @@ internal fun CropCanvas(
             Modifier.fillMaxSize().pointerInput(imageSize, enabled) {
                 if (!enabled) return@pointerInput
                 var handle = -1
+                var splitHandle = -1
                 var startingCrop = latestCrop
                 var displayedCrop = startingCrop
                 var movement = Offset.Zero
@@ -72,6 +77,7 @@ internal fun CropCanvas(
                 fun finish() {
                     if (handle >= 0) finishGesture()
                     handle = -1
+                    splitHandle = -1
                     loupe = null
                 }
 
@@ -79,6 +85,14 @@ internal fun CropCanvas(
                     detectDragGestures(
                         onDragStart = { position ->
                             val fit = CropFit(size.width.toFloat(), size.height.toFloat(), width, height, touchRadius)
+                            latestSplit?.let { line ->
+                                val ends = latestCrop.splitPoints(line).toList().map { fit.toView(it).toOffset() }
+                                val nearest = ends.indices.minBy { (ends[it] - position).getDistanceSquared() }
+                                splitHandle = nearest.takeIf { (ends[it] - position).getDistance() <= touchRadius } ?: -1
+                                finger = position
+                                if (splitHandle >= 0) loupe = fit.toImage(finger.toCropPoint()).clamp(width, height)
+                                return@detectDragGestures
+                            }
                             startingCrop = latestCrop
                             displayedCrop = startingCrop
                             val handles = startingCrop.handles().map { fit.toView(it).toOffset() }
@@ -95,7 +109,16 @@ internal fun CropCanvas(
                         onDragEnd = ::finish,
                         onDragCancel = ::finish,
                     ) { change, delta ->
-                        if (handle >= 0) {
+                        val line = latestSplit
+                        if (splitHandle >= 0 && line != null) {
+                            change.consume()
+                            finger += delta
+                            val fit = CropFit(size.width.toFloat(), size.height.toFloat(), width, height, touchRadius)
+                            val point = fit.toImage(finger.toCropPoint()).clamp(width, height)
+                            loupe = point
+                            val fraction = latestCrop.edgeFraction(point, topEdge = splitHandle == 0)
+                            changeSplit(if (splitHandle == 0) line.copy(top = fraction) else line.copy(bottom = fraction))
+                        } else if (handle >= 0) {
                             change.consume()
                             movement += delta
                             finger += delta
@@ -130,11 +153,21 @@ internal fun CropCanvas(
             }
             drawPath(outline, accent.copy(alpha = 0.18f))
             drawPath(outline, accent, style = Stroke(2.dp.toPx()))
-            crop.handles().forEachIndexed { index, point ->
-                val position = fit.toView(point).toOffset()
-                val radius = (if (index < 4) 8.dp else 5.dp).toPx()
-                drawCircle(handleFill, radius, position)
-                drawCircle(accent, radius, position, style = Stroke(2.dp.toPx()))
+            if (split != null) {
+                val (top, bottom) = crop.splitPoints(split).toList().map { fit.toView(it).toOffset() }
+                drawLine(Color.Black.copy(alpha = 0.45f), top, bottom, 5.dp.toPx())
+                drawLine(accent, top, bottom, 3.dp.toPx())
+                for (end in listOf(top, bottom)) {
+                    drawCircle(handleFill, 10.dp.toPx(), end)
+                    drawCircle(accent, 10.dp.toPx(), end, style = Stroke(3.dp.toPx()))
+                }
+            } else {
+                crop.handles().forEachIndexed { index, point ->
+                    val position = fit.toView(point).toOffset()
+                    val radius = (if (index < 4) 8.dp else 5.dp).toPx()
+                    drawCircle(handleFill, radius, position)
+                    drawCircle(accent, radius, position, style = Stroke(2.dp.toPx()))
+                }
             }
 
             loupe?.let { point ->

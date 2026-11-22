@@ -52,6 +52,8 @@ interface PageProcessing {
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
     suspend fun detectQuad(pageId: String): Quad?
+    /** The book fold inside [quad] as (topX, topY, bottomX, bottomY) in upright pixels, or null if none is clear. */
+    suspend fun findFold(pageId: String, quad: Quad): FloatArray? = null
     suspend fun originalBitmap(pageId: String, maxSide: Int): Bitmap
     suspend fun previewBitmap(page: Page, maxSide: Int): Bitmap
     suspend fun uprightSize(pageId: String): PixelSize?
@@ -151,6 +153,14 @@ class QueuedPageProcessing @Inject constructor(
     override suspend fun detectQuad(pageId: String): Quad? = withContext(worker) {
         val page = documents.getPage(pageId) ?: return@withContext null
         detectOnFile(File(page.originalPath), aspectPrior = page.mode.cardAspect()).quad?.let(Quad::fromArray)
+    }
+
+    override suspend fun findFold(pageId: String, quad: Quad): FloatArray? = withContext(worker) {
+        val page = documents.getPage(pageId) ?: return@withContext null
+        val left = runCatching { BookSplitter.split(File(page.originalPath), quad.toArray()) }
+            .onFailure { Log.w(TAG, "Fold search failed for $pageId", it) }
+            .getOrNull()?.first ?: return@withContext null
+        floatArrayOf(left[2], left[3], left[4], left[5])
     }
 
     override suspend fun originalBitmap(pageId: String, maxSide: Int): Bitmap = withContext(Dispatchers.IO) {

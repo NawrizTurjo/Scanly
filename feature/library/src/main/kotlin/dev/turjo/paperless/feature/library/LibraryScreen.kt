@@ -36,7 +36,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibrarySort
@@ -525,8 +524,6 @@ private fun DocumentCard(
     onDelete: () -> Unit,
 ) {
     val cover = remember(document.coverThumbPath) { document.coverThumbPath?.let(::File) }
-    // FileStore stores each cover thumbnail in its page ID directory.
-    val coverPageId = cover?.parentFile?.name
     val relativeDate = DateUtils.getRelativeTimeSpanString(
         document.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     )
@@ -547,8 +544,9 @@ private fun DocumentCard(
         val image: @Composable (Modifier) -> Unit = { modifier ->
             AsyncImage(
                 model = cover, contentDescription = null, contentScale = ContentScale.Crop,
-                modifier = (if (coverPageId != null) Modifier.sharedPage("page-$coverPageId") else Modifier)
-                    .then(modifier).background(MaterialTheme.colorScheme.surfaceVariant),
+                // No shared element here: the cover loads asynchronously, so going back before it was cached flew an
+                // empty grey square into the list.
+                modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
             )
         }
         val metadata: @Composable () -> Unit = {

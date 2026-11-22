@@ -259,6 +259,7 @@ private fun ColumnScope.CropPanel(
             CropCanvas(
                 original, size, state.edits?.quad, enabled,
                 Modifier.sharedPage("page-$pageId").fillMaxSize(), vm::beginGesture, vm::endGesture,
+                split = state.split, onSplit = vm::moveSplit,
             ) { crop ->
                 val wholeImage = fullCrop(size.width.toFloat(), size.height.toFloat())
                 vm.edit { it.copy(quad = crop.takeUnless { crop == wholeImage }) }
@@ -268,14 +269,30 @@ private fun ColumnScope.CropPanel(
         FirstRunTip(
             "crop_handles",
             stringResource(R.string.editor_tip_crop),
-            visible = enabled && ready && showTip,
+            visible = enabled && ready && showTip && state.split == null,
             modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 48.dp),
         )
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        TextButton(vm::autoCrop, enabled = enabled && ready) { Text(stringResource(R.string.editor_auto)) }
-        TextButton({ vm.edit { it.copy(quad = null) } }, enabled = enabled && ready) {
-            Text(stringResource(R.string.editor_full))
+    if (state.split != null) {
+        Text(
+            stringResource(R.string.editor_split_hint),
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            TextButton(vm::cancelSplit, enabled = !state.saving) { Text(stringResource(R.string.editor_split_cancel)) }
+            Button(vm::confirmSplit, enabled = !state.saving && !state.saved) {
+                Text(stringResource(R.string.editor_split_confirm))
+            }
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            TextButton(vm::autoCrop, enabled = enabled && ready) { Text(stringResource(R.string.editor_auto)) }
+            TextButton({ vm.edit { it.copy(quad = null) } }, enabled = enabled && ready) {
+                Text(stringResource(R.string.editor_full))
+            }
+            TextButton(vm::startSplit, enabled = enabled && ready) { Text(stringResource(R.string.editor_split)) }
         }
     }
 }

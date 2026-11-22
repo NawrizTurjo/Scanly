@@ -60,6 +60,9 @@ interface DocumentRepository {
         throw UnsupportedOperationException("Page copying unavailable")
     suspend fun splitBookPage(left: Page, rightQuad: Quad): Page =
         throw UnsupportedOperationException("Book splitting unavailable")
+    /** Manual split: [left] replaces the page, a copy with [rightQuad] is inserted right after it. */
+    suspend fun splitPage(left: Page, rightQuad: Quad): Page =
+        throw UnsupportedOperationException("Page splitting unavailable")
     suspend fun addIdComposite(back: Page, original: File, width: Int, height: Int): Page =
         throw UnsupportedOperationException("ID composition unavailable")
     suspend fun reorderPages(documentId: String, orderedPageIds: List<String>)
@@ -307,6 +310,14 @@ class RoomDocumentRepository @Inject constructor(
             dao.updatePage(updated.toEntity())
             updated.asDerivedPage(id, current.index + 1, File(updated.originalPath))
                 .copy(mode = PageMode.BOOK_R, quad = rightQuad)
+        }
+
+    override suspend fun splitPage(left: Page, rightQuad: Quad): Page =
+        insertDerivedPage("split-${UUID.randomUUID()}") { id ->
+            val current = requireNotNull(dao.page(left.id))
+            val updated = left.copy(index = current.index, documentId = current.documentId)
+            dao.updatePage(updated.toEntity())
+            updated.asDerivedPage(id, current.index + 1, File(updated.originalPath)).copy(quad = rightQuad)
         }
 
     override suspend fun addIdComposite(back: Page, original: File, width: Int, height: Int): Page =

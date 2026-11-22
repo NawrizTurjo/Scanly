@@ -72,4 +72,36 @@ class CropGeometryTest {
         assertEquals(x, actual.x, 0.001f)
         assertEquals(y, actual.y, 0.001f)
     }
+
+    @Test
+    fun splitHalvesShareTheSplitLineAndKeepCornerOrder() {
+        val quad = Quad(0f, 0f, 200f, 10f, 210f, 110f, 10f, 100f)
+
+        val (left, right) = quad.splitHalves(SplitLine(0.5f, 0.25f))
+
+        assertPoint(100f, 5f, left.points()[1])
+        assertPoint(60f, 102.5f, left.points()[2])
+        assertEquals(left.points()[1], right.points()[0])
+        assertEquals(left.points()[2], right.points()[3])
+        assertEquals(quad.points()[0], left.points()[0])
+        assertEquals(quad.points()[2], right.points()[2])
+    }
+
+    @Test
+    fun edgeFractionProjectsOntoTheEdgeAndAvoidsCorners() {
+        val quad = fullCrop(200f, 100f)
+
+        assertEquals(0.25f, quad.edgeFraction(CropPoint(50f, 40f), topEdge = true), 1e-4f)
+        assertEquals(0.75f, quad.edgeFraction(CropPoint(150f, 60f), topEdge = false), 1e-4f)
+        assertEquals(SplitLine.MIN, quad.edgeFraction(CropPoint(-30f, 0f), topEdge = true))
+        assertEquals(SplitLine.MAX, quad.edgeFraction(CropPoint(500f, 100f), topEdge = false))
+    }
+
+    @Test
+    fun detectedFoldBecomesTheStartingLineOrTheMiddle() {
+        val quad = fullCrop(200f, 100f)
+
+        assertEquals(SplitLine(0.45f, 0.55f), quad.splitLineFor(floatArrayOf(90f, 0f, 110f, 100f)))
+        assertEquals(SplitLine.Middle, quad.splitLineFor(null))
+    }
 }

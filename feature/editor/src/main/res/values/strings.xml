@@ -93,4 +93,9 @@
     <string name="editor_tip_crop">Drag a corner or the middle of an edge to fix the crop. A magnifier shows where your finger is.</string>
     <string name="editor_tip_filter">Pinch to zoom into the preview. Hold to compare with the original.</string>
     <string name="viewer_tip_save">Share or save this enhanced page as an image from the top bar.</string>
+    <string name="editor_split">Split in two</string>
+    <string name="editor_split_confirm">Split</string>
+    <string name="editor_split_cancel">Cancel</string>
+    <string name="editor_split_hint">Drag the ends of the line onto the fold. The left side stays on this page and the right side becomes the next page.</string>
+    <string name="editor_split_error">Could not split this page. Try again.</string>
 </resources>
