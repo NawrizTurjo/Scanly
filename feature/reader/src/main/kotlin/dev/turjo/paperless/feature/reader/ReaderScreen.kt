@@ -1,6 +1,22 @@
 package dev.turjo.paperless.feature.reader
 
 import android.provider.OpenableColumns
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import dev.turjo.paperless.core.pdf.PdfDocumentHandle
+import kotlinx.coroutines.delay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -110,27 +126,98 @@ fun ReaderScreen(
     val document = state.document
     var showThumbnails by remember(tab?.tabId) { mutableStateOf(false) }
 
+    val searches = viewModel.searches
+    val crops = viewModel.crops
+    val drafts = viewModel.drafts
+    var searchMode by rememberSaveable { mutableStateOf(false) }
+    var showOutline by remember(tab?.tabId) { mutableStateOf(false) }
+    var jump by remember(tab?.tabId, document) { mutableStateOf<PageJump?>(null) }
+    var closePending by remember { mutableStateOf<String?>(null) }
+    var splitRequested by rememberSaveable { mutableStateOf(false) }
+    var rightId by rememberSaveable { mutableStateOf<String?>(null) }
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val split = landscape && splitRequested
+    val search = tab?.let { searches[it.tabId] } ?: SearchState()
+    val crop = tab?.let { crops[it.tabId] } ?: CropMode.OFF
+    LaunchedEffect(tab?.tabId, document, search.query, searchMode) {
+        if (tab == null || document == null || !searchMode || search.query.isBlank() || search.status != SearchStatus.PENDING) {
+            return@LaunchedEffect
+        }
+        delay(250)
+        val result = readerResult {
+            val matches = document.search(search.query)
+            val status = if (matches.isNotEmpty()) null else {
+                val hasText = (0 until document.pageCount).any { document.pageText(it).isNotBlank() }
+                if (hasText) SearchStatus.NO_MATCHES else SearchStatus.NO_TEXT
+            }
+            SearchState(search.query, matches, status = status)
+        } ?: SearchState(search.query, status = SearchStatus.ERROR)
+        searches[tab.tabId] = result
+        result.current?.let { jump = PageJump(it.page, it) }
+    }
+    BackHandler(enabled = searchMode && tab != null && !showOutline) { searchMode = false }
+    closePending?.let { id ->
+        AlertDialog(
+            onDismissRequest = { closePending = null },
+            title = { Text("Discard unsaved bookmarks?") },
+            confirmButton = { TextButton({ closePending = null; viewModel.close(id) }) { Text("Discard and close") } },
+            dismissButton = { TextButton({ closePending = null }) { Text("Keep editing") } },
+        )
+    }
+    if (tab != null && showOutline) {
+        ReaderOutlineSheet(tab, drafts[tab.tabId],
+            { if (it == null) drafts.remove(tab.tabId) else drafts[tab.tabId] = it },
+            viewModel, { jump = PageJump(it); showOutline = false }, { showOutline = false })
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.reader_title)) },
-                actions = {
-                    if (tab != null && document != null) {
-                        ReaderMenu(
-                            tab,
-                            onViewMode = { viewModel.toggleViewMode(tab.tabId) },
-                            onNight = { viewModel.toggleNightMode(tab.tabId) },
-                            onThumbnails = { showThumbnails = true },
-                        )
+            if (searchMode && tab != null) {
+                Column(Modifier.statusBarsPadding()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ReaderIcon("×", "Close search") { searchMode = false }
+                        OutlinedTextField(search.query, {
+                            searches[tab.tabId] = SearchState(it, status = if (it.isBlank()) null else SearchStatus.PENDING)
+                        }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Find in PDF") })
+                        if (search.matches.isNotEmpty()) Text("${search.index + 1} / ${search.matches.size}")
+                        for ((symbol, delta) in listOf("↑" to -1, "↓" to 1)) {
+                            ReaderIcon(symbol, if (delta < 0) "Previous match" else "Next match",
+                                enabled = search.current != null) {
+                                val next = search.step(delta)
+                                searches[tab.tabId] = next
+                                next.current?.let { jump = PageJump(it.page, it) }
+                            }
+                        }
                     }
-                },
-            )
+                    search.status?.let { Text(it.label, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                }
+            } else {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.reader_title)) },
+                    actions = {
+                        if (tab != null && document != null) {
+                            ReaderIcon("⌕", "Search") { searchMode = true }
+                            ReaderIcon("☰", "Bookmarks") { showOutline = true }
+                            ReaderMenu(
+                                tab, crop, landscape, split,
+                                onViewMode = { viewModel.toggleViewMode(tab.tabId) },
+                                onNight = { viewModel.toggleNightMode(tab.tabId) },
+                                onThumbnails = { showThumbnails = true },
+                                onCrop = { crops[tab.tabId] = it },
+                                onSplit = { splitRequested = !splitRequested },
+                            )
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.tabs.isNotEmpty()) {
-                TabStrip(state.tabs, state.activeTabId, viewModel::switch, viewModel::close, pickPdf)
+                TabStrip(state.tabs, state.activeTabId, viewModel::switch, { id ->
+                    if (drafts[id]?.dirty == true) closePending = id else viewModel.close(id)
+                }, pickPdf)
             }
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val openError = state.openError
@@ -142,16 +229,30 @@ fun ReaderScreen(
                         Modifier.padding(24.dp),
                     )
                     document == null -> CircularProgressIndicator()
-                    else -> key(tab.tabId, document) {
-                        ReaderPages(
-                            document = document,
-                            tab = tab,
-                            horizontalOffset = viewModel.horizontalOffset(tab.tabId),
-                            showThumbnails = showThumbnails,
-                            onDismissThumbnails = { showThumbnails = false },
-                            onPosition = { page, offset -> viewModel.updatePosition(tab.tabId, page, offset) },
-                            onZoom = { zoom, offset -> viewModel.updateZoom(tab.tabId, zoom, offset) },
-                        )
+                    else -> {
+                        val primary: @Composable () -> Unit = {
+                            key(tab.tabId, document) {
+                                ReaderPages(
+                                    document = document,
+                                    tab = tab,
+                                    horizontalOffset = viewModel.horizontalOffset(tab.tabId),
+                                    search = if (searchMode) search else SearchState(),
+                                    requestedJump = jump,
+                                    onJumpConsumed = { jump = null },
+                                    crop = crop,
+                                    showThumbnails = showThumbnails,
+                                    onDismissThumbnails = { showThumbnails = false },
+                                    onPosition = { page, offset -> viewModel.updatePosition(tab.tabId, page, offset) },
+                                    onZoom = { zoom, offset -> viewModel.updateZoom(tab.tabId, zoom, offset) },
+                                )
+                            }
+                        }
+                        if (split) {
+                            val right = state.tabs.firstOrNull { it.tabId == rightId }
+                                ?: state.tabs.firstOrNull { it.tabId != tab.tabId } ?: tab
+                            SplitReader(state.tabs, tab, right, document, viewModel, crops[right.tabId] ?: CropMode.OFF,
+                                { rightId = it }, primary)
+                        } else primary()
                     }
                 }
             }
@@ -208,7 +309,7 @@ private fun TabStrip(
                 }
             }
         }
-        ReaderIcon("+", stringResource(R.string.open_pdf), onAdd)
+        ReaderIcon("+", stringResource(R.string.open_pdf), onClick = onAdd)
         if (tabs.size > 5) {
             var expanded by remember { mutableStateOf(false) }
             Box {
@@ -228,11 +329,25 @@ private fun TabStrip(
 }
 
 @Composable
-private fun ReaderMenu(tab: TabState, onViewMode: () -> Unit, onNight: () -> Unit, onThumbnails: () -> Unit) {
+private fun ReaderMenu(
+    tab: TabState, crop: CropMode, landscape: Boolean, split: Boolean,
+    onViewMode: () -> Unit, onNight: () -> Unit, onThumbnails: () -> Unit,
+    onCrop: (CropMode) -> Unit, onSplit: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         ReaderIcon("⋮", stringResource(R.string.reader_options)) { expanded = true }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+            CropMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text("Crop margins · ${mode.label}" + if (crop == mode) " ✓" else "") },
+                    onClick = { expanded = false; onCrop(mode) },
+                )
+            }
+            if (landscape) DropdownMenuItem(
+                text = { Text(if (split) "Exit side-by-side" else "Side-by-side") },
+                onClick = { expanded = false; onSplit() },
+            )
             DropdownMenuItem(
                 text = {
                     Text(stringResource(
@@ -255,8 +370,8 @@ private fun ReaderMenu(tab: TabState, onViewMode: () -> Unit, onNight: () -> Uni
 }
 
 @Composable
-private fun ReaderIcon(symbol: String, label: String, onClick: () -> Unit) {
-    IconButton(onClick, modifier = Modifier.semantics { contentDescription = label }) {
+internal fun ReaderIcon(symbol: String, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(onClick, modifier = Modifier.semantics { contentDescription = label }, enabled = enabled) {
         Text(symbol, style = MaterialTheme.typography.titleLarge)
     }
 }
@@ -322,4 +437,85 @@ internal fun JumpDialog(currentPage: Int, count: Int, onDismiss: () -> Unit, onJ
         },
         dismissButton = { TextButton(onDismiss) { Text(stringResource(android.R.string.cancel)) } },
     )
+}
+
+
+@Composable
+private fun SplitReader(
+    tabs: List<TabState>,
+    left: TabState,
+    right: TabState,
+    activeDocument: PdfDocumentHandle,
+    viewModel: ReaderViewModel,
+    crop: CropMode,
+    onRight: (String) -> Unit,
+    primary: @Composable () -> Unit,
+) {
+    var fraction by rememberSaveable { mutableStateOf(0.5f) }
+    val same = left.pdfKey == right.pdfKey
+    val opened = key(right.pdfKey, same) {
+        val other by produceState<Pair<Boolean, PdfDocumentHandle?>>(false to null) {
+            if (!same) value = true to viewModel.openPane(right.pdfKey)
+        }
+        other
+    }
+    DisposableEffect(right.pdfKey, same) {
+        onDispose { if (!same) viewModel.releasePane(right.pdfKey) }
+    }
+    val document = if (same) activeDocument else opened.second
+    val positions = viewModel.secondaryPositions
+    val pans = viewModel.secondaryPans
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val width = with(LocalDensity.current) { maxWidth.toPx().coerceAtLeast(1f) }
+        Row(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(fraction)) {
+                PanePicker(tabs, left, viewModel::switch)
+                Box(Modifier.weight(1f)) { primary() }
+            }
+            Box(Modifier.width(12.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant)
+                .pointerInput(width) {
+                    detectHorizontalDragGestures { change, pixels ->
+                        change.consume()
+                        fraction = (fraction + pixels / width).coerceIn(0.25f, 0.75f)
+                    }
+                })
+            Column(Modifier.weight(1f - fraction)) {
+                PanePicker(tabs, right, onRight)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if (document == null) {
+                        if (opened.first) Text(stringResource(R.string.reader_open_error))
+                        else CircularProgressIndicator()
+                    } else key(right.tabId, document) {
+                        val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode, nightMode = right.nightMode)
+                        ReaderPages(
+                            document, pane, pans[right.tabId] ?: 0f,
+                            viewModel.searches[right.tabId] ?: SearchState(), null, {}, crop, false, {},
+                            onPosition = { page, offset ->
+                                positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
+                                if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)
+                            },
+                            onZoom = { zoom, offset ->
+                                positions[right.tabId] = (positions[right.tabId] ?: pane).copy(zoom = zoom)
+                                pans[right.tabId] = offset
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PanePicker(tabs: List<TabState>, tab: TabState, choose: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton({ expanded = true }) { Text(tab.title + " ▾", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        DropdownMenu(expanded, { expanded = false }) {
+            tabs.forEach { option ->
+                DropdownMenuItem(text = { Text(option.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = { expanded = false; choose(option.tabId) })
+            }
+        }
+    }
 }

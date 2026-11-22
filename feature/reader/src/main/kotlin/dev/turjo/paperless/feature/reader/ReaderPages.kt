@@ -1,7 +1,6 @@
 package dev.turjo.paperless.feature.reader
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,7 +9,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,9 +56,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.turjo.paperless.core.model.PageRect
+import dev.turjo.paperless.core.model.PageLink
+import dev.turjo.paperless.core.model.TextMatch
 import dev.turjo.paperless.core.model.ReaderViewMode
 import dev.turjo.paperless.core.model.TabState
 import dev.turjo.paperless.core.pdf.PdfDocumentHandle
@@ -70,30 +69,67 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
+internal class PageJump(val page: Int, val match: TextMatch? = null)
+
 @Composable
 internal fun ReaderPages(
     document: PdfDocumentHandle,
     tab: TabState,
     horizontalOffset: Float,
+    search: SearchState,
+    requestedJump: PageJump?,
+    onJumpConsumed: () -> Unit,
+    crop: CropMode,
     showThumbnails: Boolean,
     onDismissThumbnails: () -> Unit,
     onPosition: (Int, Int) -> Unit,
     onZoom: (Float, Float) -> Unit,
 ) {
     var showJump by remember { mutableStateOf(false) }
-    var jump by remember { mutableStateOf<Int?>(null) }
+    var localJump by remember { mutableStateOf<PageJump?>(null) }
+    val jump = requestedJump ?: localJump
+    val consumed = { if (requestedJump != null) onJumpConsumed() else localJump = null }
+    var history by remember { mutableStateOf(LinkHistory()) }
+    var external by remember { mutableStateOf<String?>(null) }
+    var linkError by remember { mutableStateOf(false) }
+    LaunchedEffect(history) {
+        if (history.previous != null) {
+            delay(10_000)
+            history = LinkHistory()
+        }
+    }
+    var uniform by remember(document, crop) { mutableStateOf<PageRect?>(null) }
+    LaunchedEffect(document, crop) {
+        if (crop == CropMode.UNIFORM) {
+            var bounds: PageRect? = null
+            for (page in 0 until document.pageCount) {
+                val box = readerResult { document.contentBox(page) } ?: continue
+                bounds = bounds?.union(box) ?: box
+            }
+            uniform = bounds
+        }
+    }
     val onJump = { page: Int ->
-        jump = page
+        localJump = PageJump(page)
         showJump = false
         onDismissThumbnails()
     }
+    val onLink: (Int, PageLink) -> Unit = { sourcePage, link ->
+        val target = link.targetPage
+        if (target != null && target in 0 until document.pageCount) {
+            history = history.follow(sourcePage)
+            onJump(target)
+        } else {
+            external = link.uri?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
+        }
+    }
     Box(Modifier.fillMaxSize()) {
-        key(tab.viewMode) {
+        key(tab.viewMode, crop, uniform) {
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
-                    document, tab, horizontalOffset, jump, { jump = null }, onPosition, onZoom,
+                    document, tab, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
                 )
-                ReaderViewMode.SINGLE_PAGE -> SinglePages(document, tab, jump, { jump = null }, onPosition)
+                ReaderViewMode.SINGLE_PAGE -> SinglePages(document, tab, jump, consumed, onPosition, search, crop, uniform, onLink)
             }
         }
         val displayPage = tab.page.coerceIn(0, document.pageCount - 1)
@@ -101,6 +137,18 @@ internal fun ReaderPages(
             onClick = { showJump = true },
             modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
         ) { Text(stringResource(R.string.reader_page_indicator, displayPage + 1, document.pageCount)) }
+        history.previous?.let { previous ->
+            FilledTonalButton(
+                onClick = { history = history.back(); onJump(previous) },
+                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            ) { Text("← p. ${previous + 1}") }
+        }
+        external?.let { ExternalLinkDialog(it, { external = null }, { linkError = true }) }
+        if (linkError) androidx.compose.material3.AlertDialog(
+            onDismissRequest = { linkError = false },
+            text = { Text("No browser could open this link.") },
+            confirmButton = { androidx.compose.material3.TextButton({ linkError = false }) { Text("OK") } },
+        )
         if (showJump) JumpDialog(displayPage, document.pageCount, { showJump = false }, onJump)
         if (showThumbnails) {
             ThumbnailSheet(document, tab.nightMode, displayPage, onDismissThumbnails, onJump)
@@ -113,15 +161,19 @@ private fun ContinuousPages(
     document: PdfDocumentHandle,
     tab: TabState,
     horizontalOffset: Float,
-    jump: Int?,
+    jump: PageJump?,
     onJumpConsumed: () -> Unit,
     onPosition: (Int, Int) -> Unit,
     onZoom: (Float, Float) -> Unit,
+    search: SearchState,
+    crop: CropMode,
+    uniform: PageRect?,
+    onLink: (Int, PageLink) -> Unit,
 ) {
     val startingPage = remember { tab.page.coerceIn(0, document.pageCount - 1) }
     val startingOffset = remember { tab.scrollOffsetPx }
-    val ratios = remember { mutableMapOf<Int, Float>() }
-    val initialAspect = pageAspect(document, startingPage, ratios)
+    val geometries = remember { mutableMapOf<Int, PageGeometry>() }
+    val initialAspect = pageGeometry(document, startingPage, crop, uniform, geometries)?.aspect
     // Restore after measuring the starting page so its placeholder cannot clamp the saved offset.
     if (initialAspect == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -143,22 +195,28 @@ private fun ContinuousPages(
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (page, offset) -> reportPosition(page, offset) }
     }
-    LaunchedEffect(jump) {
-        if (jump != null) {
-            if (jump != startingPage) {
-                ratios[jump] = ratios[jump] ?: readAspect(document, jump)
-            }
-            list.scrollToItem(jump)
-            onJumpConsumed()
-        }
-    }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val viewportWidth = constraints.maxWidth.coerceAtLeast(1)
         val viewportHeight = constraints.maxHeight
-        val lastAspect = pageAspect(document, document.pageCount - 1, ratios)
+        val lastAspect = pageGeometry(document, document.pageCount - 1, crop, uniform, geometries)?.aspect
         val shownWidth = (viewportWidth * zoom).roundToInt()
+        LaunchedEffect(jump) {
+            if (jump != null) {
+                val geometry = geometries[jump.page] ?: readGeometry(document, jump.page, crop, uniform)
+                    .also { geometries[jump.page] = it }
+                val height = pageHeight(shownWidth, geometry.aspect)
+                val transform = PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat())
+                val bounds = jump.match?.rects?.firstOrNull()?.let(transform::map)
+                if (bounds != null) {
+                    panX = (bounds.left - viewportWidth / 4f).coerceIn(0f, (shownWidth - viewportWidth).toFloat())
+                    reportZoom(zoom, panX)
+                }
+                val offset = bounds?.let { (it.top - viewportHeight / 3f).roundToInt() } ?: 0
+                list.scrollToItem(jump.page, offset.coerceIn(0, height - 1))
+                onJumpConsumed()
+            }
+        }
         val renderWidth = (viewportWidth * settledZoom).roundToInt()
         val endPadding = lastAspect?.let {
             with(density) { (viewportHeight - pageHeight(shownWidth, it)).coerceAtLeast(0).toDp() }
@@ -184,11 +242,6 @@ private fun ContinuousPages(
         val currentTransform by rememberUpdatedState(::transform)
         val gestures = Modifier
             .pointerInput(list) {
-                detectTapGestures(onDoubleTap = { point ->
-                    currentTransform(point, Offset.Zero, if (zoom > 1f) 1f else 2.5f)
-                })
-            }
-            .pointerInput(list) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var motion = Offset.Zero
@@ -204,14 +257,16 @@ private fun ContinuousPages(
                             event.changes.forEach { it.consume() }
                         } else if (pinching) {
                             event.changes.forEach { it.consume() }
-                        } else if (zoom > 1f && fingers == 1 && event.changes.none { it.isConsumed }) {
+                        } else if (zoom > 1f && fingers == 1) {
+                            val afterChildren = awaitPointerEvent(PointerEventPass.Main)
+                            if (afterChildren.changes.any { it.isConsumed }) break
                             motion += pan
                             if (abs(motion.x) > viewConfiguration.touchSlop && abs(motion.x) > abs(motion.y)) {
                                 horizontalDrag = true
                             }
                             if (horizontalDrag) {
                                 currentTransform(Offset.Zero, Offset(pan.x, 0f), zoom)
-                                event.changes.forEach { it.consume() }
+                                afterChildren.changes.forEach { it.consume() }
                             }
                         }
                     } while (event.changes.any { it.pressed } && (pinching || horizontalDrag || event.changes.none { it.isConsumed }))
@@ -225,11 +280,10 @@ private fun ContinuousPages(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(document.pageCount) { page ->
-                val measuredAspect = pageAspect(document, page, ratios)
-                val aspect = measuredAspect ?: initialAspect
-                val height = pageHeight(shownWidth, aspect)
-                val width = boundedRenderWidth(renderWidth, aspect)
-                val render = if (measuredAspect == null) PageRender() else pageBitmap(document, page, width, tab.nightMode)
+                val geometry = pageGeometry(document, page, crop, uniform, geometries)
+                val height = pageHeight(shownWidth, geometry?.aspect ?: initialAspect)
+                val render = geometry?.let { pageBitmap(document, page, fullRenderWidth(renderWidth, it), tab.nightMode) }
+                    ?: PageRender()
                 val label = stringResource(R.string.reader_page_label, page + 1)
                 val maxPan = (shownWidth - viewportWidth).coerceAtLeast(0).toFloat()
                 Box(
@@ -239,14 +293,14 @@ private fun ContinuousPages(
                     contentAlignment = Alignment.Center,
                 ) {
                     val bitmap = render.bitmap
-                    if (bitmap != null) {
-                        val image = remember(bitmap) { bitmap.asImageBitmap() }
-                        Canvas(Modifier.fillMaxSize()) {
-                            drawImage(
-                                image,
-                                dstOffset = IntOffset(-panX.coerceIn(0f, maxPan).roundToInt(), 0),
-                                dstSize = IntSize(shownWidth, height),
-                            )
+                    if (bitmap != null && geometry != null) {
+                        PageOverlay(
+                            document, page, bitmap, geometry,
+                            PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat(), -panX.coerceIn(0f, maxPan)),
+                            search, { onLink(page, it) },
+                        ) { point ->
+                            val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }?.offset ?: 0
+                            currentTransform(point + Offset(0f, top.toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
                         }
                     } else if (render.failed) {
                         PageRenderError(tab.nightMode)
@@ -261,32 +315,42 @@ private fun ContinuousPages(
 private fun SinglePages(
     document: PdfDocumentHandle,
     tab: TabState,
-    jump: Int?,
+    jump: PageJump?,
     onJumpConsumed: () -> Unit,
     onPosition: (Int, Int) -> Unit,
+    search: SearchState,
+    crop: CropMode,
+    uniform: PageRect?,
+    onLink: (Int, PageLink) -> Unit,
 ) {
     val pager = rememberPagerState(tab.page.coerceIn(0, document.pageCount - 1)) { document.pageCount }
     val reportPosition by rememberUpdatedState(onPosition)
-    val ratios = remember { mutableMapOf<Int, Float>() }
+    val geometries = remember { mutableMapOf<Int, PageGeometry>() }
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { reportPosition(it, 0) } }
     LaunchedEffect(jump) {
         if (jump != null) {
-            pager.scrollToPage(jump)
+            pager.scrollToPage(jump.page)
             onJumpConsumed()
         }
     }
     HorizontalPager(pager, Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) { page ->
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val aspect = pageAspect(document, page, ratios)
-            if (aspect == null) {
+            val geometry = pageGeometry(document, page, crop, uniform, geometries)
+            if (geometry == null) {
                 CircularProgressIndicator()
             } else {
-                val width = minOf(constraints.maxWidth, (constraints.maxHeight / aspect).roundToInt()).coerceAtLeast(1)
+                val width = minOf(constraints.maxWidth, (constraints.maxHeight / geometry.aspect).roundToInt()).coerceAtLeast(1)
+                val height = pageHeight(width, geometry.aspect)
                 val density = LocalDensity.current
-                PagePreview(
-                    document, page, boundedRenderWidth(width, aspect), tab.nightMode,
-                    with(density) { Modifier.width(width.toDp()).height(pageHeight(width, aspect).toDp()) },
-                )
+                val render = pageBitmap(document, page, fullRenderWidth(width, geometry), tab.nightMode)
+                Box(with(density) { Modifier.width(width.toDp()).height(height.toDp()) }
+                    .clipToBounds().background(paperColor(tab.nightMode))) {
+                    render.bitmap?.let {
+                        PageOverlay(document, page, it, geometry,
+                            PageTransform(geometry.crop, width.toFloat(), height.toFloat()), search, { link -> onLink(page, link) })
+                    }
+                    if (render.failed) PageRenderError(tab.nightMode)
+                }
             }
         }
     }
@@ -419,3 +483,42 @@ private fun pageHeight(width: Int, aspect: Float): Int = (width * aspect).coerce
 // One exceptional page or a 5x zoom should not allocate an unbounded bitmap.
 private fun boundedRenderWidth(width: Int, aspect: Float): Int =
     minOf(width, sqrt(8_000_000f / aspect).toInt(), (16_000f / aspect).toInt()).coerceAtLeast(1)
+
+
+@Composable
+private fun pageGeometry(
+    document: PdfDocumentHandle,
+    page: Int,
+    mode: CropMode,
+    uniform: PageRect?,
+    cache: MutableMap<Int, PageGeometry>,
+): PageGeometry? {
+    var geometry by remember(document, page, mode, uniform) { mutableStateOf(cache[page]) }
+    LaunchedEffect(document, page, mode, uniform) {
+        geometry = cache[page] ?: readGeometry(document, page, mode, uniform).also { cache[page] = it }
+    }
+    return geometry
+}
+
+private suspend fun readGeometry(document: PdfDocumentHandle, page: Int, mode: CropMode, uniform: PageRect?): PageGeometry {
+    val size = readerResult { document.pageSize(page) }
+    val full = PageRect(0f, 0f, size?.width?.coerceAtLeast(1f) ?: 1f, size?.height?.coerceAtLeast(1f) ?: DEFAULT_ASPECT)
+    val detected = when (mode) {
+        CropMode.OFF -> null
+        CropMode.PAGE -> readerResult { document.contentBox(page) }
+        CropMode.UNIFORM -> uniform
+    }
+    val crop = detected?.let {
+        PageRect(maxOf(it.left, full.left), maxOf(it.top, full.top), minOf(it.right, full.right), minOf(it.bottom, full.bottom))
+    }?.takeIf { it.right > it.left && it.bottom > it.top } ?: full
+    return PageGeometry(full, crop)
+}
+
+private fun fullRenderWidth(width: Int, geometry: PageGeometry): Int {
+    val full = geometry.full
+    val crop = geometry.crop
+    return boundedRenderWidth(
+        (width * full.right / (crop.right - crop.left)).roundToInt(),
+        full.bottom / full.right,
+    )
+}

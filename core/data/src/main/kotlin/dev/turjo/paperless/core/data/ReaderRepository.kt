@@ -32,6 +32,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 interface ReaderRepository {
+    /** Where the PDF behind [key] can be read: the stored SAF uri for externals, the cached export for scans. */
+    suspend fun resolveUri(key: PdfKey): Uri
+
     fun observeTabs(): Flow<List<TabState>>
     fun observeActiveTabId(): Flow<String?>
     suspend fun saveTabs(tabs: List<TabState>, activeTabId: String?)
@@ -121,7 +124,7 @@ class RoomReaderRepository internal constructor(
         else dao.markDocumentOpened(documentId, now, pageCount, lastPage)
     }
 
-    internal suspend fun resolveUri(key: PdfKey): Uri {
+    override suspend fun resolveUri(key: PdfKey): Uri {
         val documentId = key.documentId()
         val uri = if (documentId != null) {
             Uri.fromFile(ensureDocumentPdf(documentId))
