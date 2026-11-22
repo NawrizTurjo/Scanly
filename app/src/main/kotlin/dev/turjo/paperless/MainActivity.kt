@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                             ScanlyNavigation(
                                 initialStack, model.entries, model::documentOpened,
                                 model::openDocumentInReader, model::openPdf, preparingPdf,
+                                model::openFileInReader,
                             )
                         }
                     }

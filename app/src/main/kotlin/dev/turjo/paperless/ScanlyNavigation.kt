@@ -106,6 +106,7 @@ internal fun ScanlyNavigation(
     onOpenDocumentInReader: (String) -> Unit,
     onOpenPdf: (PdfKey) -> Unit,
     preparingPdf: Boolean,
+    onOpenFile: (java.io.File) -> Unit = {},
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val snackbar = remember { SnackbarHostState() }
@@ -184,7 +185,7 @@ internal fun ScanlyNavigation(
                         openRequestTitle = pendingPdfTitle,
                     )
                 }
-                entry<ToolsRoute> { ToolsScreen() }
+                entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile) }
                 entry<SettingsRoute> { SettingsScreen() }
                 entry<CameraRoute> { key ->
                     CameraScreen(

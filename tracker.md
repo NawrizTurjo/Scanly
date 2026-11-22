@@ -12,7 +12,7 @@ Update at the end of every session: tick boxes, add a log row, and note surprise
 - [x] **P4** Folders · favourites · search · rename/duplicate · recycle bin · append pages · export sheet · share-to · QS tile/shortcuts · app lock (2) · done 2026-11-22 (tests + emulator UI check); share/tile/biometric pending Pixel check
 - [x] **P5** Multi-tab reader: tabs + restore · LRU sessions · zoom/scroll · open-with · 300-page test (2) · done 2026-11-22 (emulator: Open in Reader renders; 300-page render test on emulator)
 - [ ] **P5b** Reader features: outline · bookmark editor · auto chapters · find/select/copy · links · crop margins · progress · side-by-side (3.5–4)
-- [ ] **P6** Merge · split · compress · rotate/reorder · img↔pdf · same width · page edits · password · N-up print layout · page numbers · metadata · sanitize · grayscale · batch (3.5)
+- [x] **P6** Merge · split · compress · rotate/reorder · img↔pdf · same width · page edits · password · N-up print layout · page numbers · metadata · sanitize · grayscale · batch (3.5) · done 2026-11-22 (fixture tests; same width matches the PyMuPDF oracle; real duplex print check pending user)
 - [ ] **P7** Annotations + flattening (1.5–2)
 - [ ] **P7b** Plain-file backup/restore · content search (1)
 - [ ] **P8** Polish · performance · signed release APK · full regression (1–1.5)

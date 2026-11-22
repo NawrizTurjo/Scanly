@@ -147,6 +147,20 @@ class MainViewModel @Inject constructor(
         entryEvents.trySend(EntryEvent(pdfKey = key))
     }
 
+    /** A tool's output file (cache) opens as a Reader tab like any external PDF. */
+    internal fun openFileInReader(file: java.io.File) {
+        viewModelScope.launch {
+            try {
+                val key = reader.registerExternal(android.net.Uri.fromFile(file), file.name)
+                entryEvents.send(EntryEvent(pdfKey = key, pdfTitle = file.nameWithoutExtension))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                entryEvents.send(EntryEvent(message = R.string.pdf_open_error))
+            }
+        }
+    }
+
     internal fun openDocumentInReader(id: String) {
         if (documentExport?.isActive == true) return
         documentExport = viewModelScope.launch {
