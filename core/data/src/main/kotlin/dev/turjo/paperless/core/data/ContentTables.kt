@@ -51,6 +51,9 @@ interface AnnotationDao {
     @Upsert
     suspend fun upsert(items: List<AnnotationEntity>)
 
+    @Insert
+    suspend fun insert(items: List<AnnotationEntity>)
+
     @Query("DELETE FROM annotations WHERE id IN (:ids)")
     suspend fun delete(ids: List<String>)
 
@@ -71,6 +74,30 @@ interface PageTextDao {
             "FROM page_text WHERE page_text MATCH :query LIMIT :limit",
     )
     suspend fun search(query: String, limit: Int = 100): List<PageTextHit>
+
+    @Query("""
+        SELECT p.pdfKey, COALESCE(e.displayName, d.title, '') AS title, p.pageIndex,
+            snippet(page_text, '[', ']', '…', 2, 12) AS snippet
+        FROM page_text p
+        LEFT JOIN external_pdfs e ON e.id = p.pdfKey
+        LEFT JOIN documents d ON 'doc:' || d.id = p.pdfKey
+        LEFT JOIN folders f ON f.id = d.folderId
+        LEFT JOIN folders parent ON parent.id = f.parentId
+        WHERE p.text MATCH :query
+          AND (e.id IS NOT NULL OR (
+            d.id IS NOT NULL AND d.isDraft = 0 AND d.deletedAt IS NULL
+            AND COALESCE(f.isPrivate, 0) = 0 AND COALESCE(parent.isPrivate, 0) = 0
+          ))
+        ORDER BY p.pdfKey, CAST(p.pageIndex AS INTEGER)
+        LIMIT 100
+    """)
+    suspend fun searchLibrary(query: String): List<TitledTextHit>
+
+    @Query("SELECT id.pdfs, (SELECT COUNT(*) FROM page_text) AS pages FROM (SELECT COUNT(*) AS pdfs FROM indexed_pdfs WHERE hasText = 1) id")
+    fun observeCounts(): Flow<IndexCounts>
+
+    @Query("SELECT pdfKey FROM indexed_pdfs")
+    suspend fun indexedKeys(): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun markIndexed(row: IndexedPdfEntity)

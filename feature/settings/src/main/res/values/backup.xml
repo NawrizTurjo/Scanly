@@ -1,0 +1,13 @@
+<resources>
+    <string name="backup_section">Backup &amp; restore</string>
+    <string name="backup_choose_folder">Choose folder</string>
+    <string name="backup_now">Back up now</string>
+    <string name="backup_restore">Restore…</string>
+    <string name="backup_choose_contents">Choose folders to back up</string>
+    <string name="backup_all">Back up entire library</string>
+    <string name="backup_selected">Back up selected folders</string>
+    <string name="backup_access_error">Could not keep access to the selected folder.</string>
+    <string name="search_index_section">Search index</string>
+    <string name="search_index_counts">%1$d PDFs, %2$d pages indexed</string>
+    <string name="search_index_rebuild">Rebuild index</string>
+</resources>

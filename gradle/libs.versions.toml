@@ -26,6 +26,7 @@ reorderable = "3.1.0"
 serialization = "1.13.0"
 
 [libraries]
+work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version = "2.12.0" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }

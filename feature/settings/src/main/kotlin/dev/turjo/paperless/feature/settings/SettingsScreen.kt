@@ -146,6 +146,8 @@ fun SettingsScreen(
             }
 
             HorizontalDivider()
+            BackupSettings()
+            HorizontalDivider()
             SectionHeading(R.string.appearance)
             SettingLabel(R.string.theme)
             Column(Modifier.selectableGroup()) {
