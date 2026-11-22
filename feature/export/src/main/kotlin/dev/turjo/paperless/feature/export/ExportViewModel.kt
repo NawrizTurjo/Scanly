@@ -44,7 +44,10 @@ internal class ExportViewModel @AssistedInject constructor(
 
     private val mutableState = MutableStateFlow(ExportState())
     val state = mutableState.asStateFlow()
-    val options = preferences.options
+    private val password = MutableStateFlow<String?>(null)
+    val options = combine(preferences.options, password) { options, password ->
+        options.copy(extras = options.extras.copy(password = password))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, preferences.options.value)
     private var operation: Job? = null
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -70,6 +73,8 @@ internal class ExportViewModel @AssistedInject constructor(
     }
 
     fun select(value: ExportOptions) {
+        if (mutableState.value.running) return
+        password.value = value.extras.password
         preferences.select(value)
         mutableState.update { it.copy(saved = null) }
     }
@@ -84,13 +89,20 @@ internal class ExportViewModel @AssistedInject constructor(
 
     fun dismiss() {
         cancel()
+        clearPassword()
         mutableState.update { it.copy(saved = null, failed = false) }
+    }
+
+    fun clearPassword() {
+        password.value = null
     }
 
     fun export(name: String, share: ((List<File>, String) -> Unit)? = null) {
         if (mutableState.value.running) return
         val document = mutableState.value.document ?: return
-        val selection = options.value
+        val defaults = preferences.options.value
+        val selection = defaults.copy(extras = defaults.extras.copy(password = password.value))
+        if (!selection.canExport) return
         mutableState.update { it.copy(running = true, failed = false, saved = null) }
         operation = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {

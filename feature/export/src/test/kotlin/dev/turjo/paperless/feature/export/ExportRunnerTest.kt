@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.export
 
+import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.model.*
@@ -10,8 +11,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -72,6 +75,42 @@ class ExportRunnerTest {
     }
 
     @Test
+    fun extrasApplyOnlyToPdfOutputs() = runTest {
+        for (format in ExportFormat.entries) {
+            val ops = RecordingExtraOps()
+            val options = ExportOptions(format = format, extras = PdfExtras(grayscale = true))
+            runner(extraOps = ops).share(document, options, "Receipt") { files, _ ->
+                assertEquals(format.pdf, files.any { it.extension == "pdf" })
+                files.forEach {
+                    assertEquals(if (it.extension == "pdf") "pdf grayscale" else "jpg", it.readText())
+                }
+                assertEquals(files.toSet(), requireNotNull(files.first().parentFile).listFiles().orEmpty().toSet())
+            }
+            assertEquals(if (format.pdf) listOf("grayscale") else emptyList<String>(), ops.calls)
+        }
+    }
+
+    @Test
+    fun dismissClearsPasswordAndKeepsOtherExtras() {
+        val preferences = ExportPreferences()
+        val model = ExportViewModel("doc", repository, runner(), preferences)
+        try {
+            val extras = PdfExtras(grayscale = true, password = "")
+            model.select(ExportOptions(extras = extras))
+            assertFalse(model.options.value.canExport)
+            model.select(ExportOptions(extras = extras.copy(password = "secret")))
+            assertEquals("secret", model.options.value.extras.password)
+            assertNull(preferences.options.value.extras.password)
+
+            model.dismiss()
+            assertEquals(PdfExtras(grayscale = true), model.options.value.extras)
+            assertTrue(model.options.value.canExport)
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
     fun estimatesFromFirstPageRatioAndCachesPerQuality() = runTest {
         val runner = runner()
         assertEquals(300L, runner.estimate(document, QualityPreset.HIGH))
@@ -108,6 +147,7 @@ class ExportRunnerTest {
     }
 
     private fun runner(
+        extraOps: ExtraOps = RecordingExtraOps(),
         writePdf: suspend (List<ExportPage>, ExportOptions, File, String) -> Unit =
             { sources, _, file, _ ->
                 pdfSources = sources.map(ExportPage::jpeg)
@@ -121,6 +161,7 @@ class ExportRunnerTest {
             sources.mapIndexed { index, _ -> File(folder, "${name}_${index + 1}.jpg").apply { writeText("jpg") } }
         },
         { _, _ -> error("Unexpected MediaStore call") },
+        extraOps,
     )
 
     private inner class FakeProcessing : PageProcessing {
@@ -150,7 +191,7 @@ class ExportRunnerTest {
         val pages = mutableMapOf<String, Page>()
         override suspend fun getPage(id: String) = pages[id]
         override fun observeLibrary() = unsupported()
-        override fun observeDocument(id: String) = unsupported()
+        override fun observeDocument(id: String) = flowOf(null)
         override suspend fun updatePage(page: Page) = unsupported()
         override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?) =
             unsupported()

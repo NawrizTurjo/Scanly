@@ -28,6 +28,9 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val options by model.options.collectAsStateWithLifecycle()
     val estimate by model.estimate.collectAsStateWithLifecycle()
+    DisposableEffect(model) {
+        onDispose { model.clearPassword() }
+    }
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val error = stringResource(R.string.export_error)
@@ -46,7 +49,10 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
         }
     }
     LaunchedEffect(state.loaded, state.document) {
-        if (state.loaded && state.document == null) onDismiss()
+        if (state.loaded && state.document == null) {
+            model.dismiss()
+            onDismiss()
+        }
     }
 
     ModalBottomSheet(
@@ -129,6 +135,9 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
                     )
                 }
             }
+            if (options.format.pdf) {
+                PdfExtrasSection(options, enabled) { model.select(options.copy(extras = it)) }
+            }
             if (!state.loaded) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             } else if (state.running) {
@@ -136,12 +145,12 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
                 TextButton(onClick = model::cancel) { Text(stringResource(R.string.export_cancel)) }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = enabled, onClick = {
+                    Button(enabled = enabled && options.canExport, onClick = {
                         model.export(name) { files, mime ->
                             context.startActivity(ShareIntents.forFiles(context, files, mime))
                         }
                     }) { Text(stringResource(R.string.export_share)) }
-                    OutlinedButton(enabled = enabled, onClick = { model.export(name) }) {
+                    OutlinedButton(enabled = enabled && options.canExport, onClick = { model.export(name) }) {
                         Text(stringResource(R.string.export_save))
                     }
                 }

@@ -14,6 +14,7 @@ import dev.turjo.paperless.core.pdf.tools.PageWidthNormalizer
 import dev.turjo.paperless.core.pdf.tools.WidthTarget
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,10 @@ internal data class ExportOptions(
     val quality: QualityPreset = QualityPreset.MEDIUM,
     /** EX-5: with Auto page size each page takes its photo's shape; scale them to one width (GoodNotes zoom fix). */
     val sameWidth: Boolean = true,
-)
+    val extras: PdfExtras = PdfExtras(),
+) {
+    val canExport get() = !format.pdf || extras.password != ""
+}
 
 @Singleton
 internal class ExportPreferences @Inject constructor() {
@@ -44,7 +48,7 @@ internal class ExportPreferences @Inject constructor() {
     val options = selection.asStateFlow()
 
     fun select(options: ExportOptions) {
-        selection.value = options
+        selection.value = options.copy(extras = options.extras.copy(password = null))
     }
 }
 
@@ -60,6 +64,7 @@ class ExportRunner internal constructor(
     private val writePdf: suspend (List<ExportPage>, ExportOptions, File, String) -> Unit,
     private val writeImages: suspend (List<ExportPage>, ExportOptions, File, String) -> List<File>,
     private val saveFile: suspend (File, String) -> Uri,
+    private val extraOps: ExtraOps,
 ) {
     @Inject
     constructor(
@@ -106,6 +111,7 @@ class ExportRunner internal constructor(
             val saver = MediaStoreSaver(context)
             if (mime == PDF_MIME) saver.savePdf(file, file.name) else saver.saveImage(file, file.name, mime)
         },
+        PdfExtraOps(context),
     )
 
     private data class EstimateKey(
@@ -180,6 +186,10 @@ class ExportRunner internal constructor(
                 if (options.format.pdf) {
                     val pdf = File(dir, "$baseName.pdf")
                     writePdf(pages, options, pdf, document.document.title)
+                    val result = applyExtras(pdf, options.extras, dir, extraOps)
+                    if (result != pdf) {
+                        Files.move(result.toPath(), pdf.toPath(), REPLACE_EXISTING)
+                    }
                     add(pdf)
                 }
                 if (options.format.imageMime != null) addAll(writeImages(pages, options, dir, baseName))
