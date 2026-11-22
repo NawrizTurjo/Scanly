@@ -158,3 +158,30 @@ Bookmarks (RD-2), page edits (PT-10), password (PT-11), page numbers (PT-14), me
 ### 7.5 Library additions
 - Backup (DM-8): write `library.json` (schema version, folders, documents, page params, bookmarks, annotations, reading state) plus files laid out as `<folder>/<doc title>/` with `<doc>.pdf`, `orig/`, and `proc/`. Restore validates the schema and merges by document id. It runs as a WorkManager job.
 - Content search (DM-10): a Room FTS4 table `PageText(pdfKey, pageIndex, text)`. An indexer job extracts text with PdfBox when a PDF is imported or changed. A page with no text layer is skipped (scans aren't searchable; OCR is dropped). Results show highlighted snippets.
+
+## 8. As built (2026-11-22): where the implementation differs from the proposal above
+- **Modules:** as in §1 plus `feature:camera`, `feature:editor`, `feature:export`, `feature:settings`; no `feature:annotate`
+  (annotations live in `feature:reader`). `core:data` depends on `core:imaging` (page processing) and `core:pdf` (exports,
+  backup, text index): those produce data the repositories own.
+- **Navigation:** Navigation 3 (`rememberNavBackStack` with `@Serializable` routes) in `:app`; the bottom bar shows only on
+  the four tab roots; Library sub-screens (folders, recycle bin) navigate inside `LibraryScreen`.
+- **Files:** page files are stored **by page id**, `filesDir/pages/<pageId>/{orig.jpg, proc.jpg, thumb.webp,
+  preview-src.jpg}`, so moving pages between documents never moves files. Scans exported for the Reader are cached as
+  `cacheDir/pdf/<documentId>.pdf` and re-exported only when the document changes.
+- **Scan sessions:** a session is a hidden **draft document** (`Document.isDraft`) from the first capture, so a scan
+  survives process death; saving commits the draft or moves its pages into the target document (`commitDraft`).
+- **Room:** v1 base · v2 `Page.deskew`/`inkRemoval` · v3 `ExternalPdf`, `ReaderTab`, document reading progress · v4
+  `annotations`, `page_text` (FTS4), `indexed_pdfs`. Every step has a real migration and a test built from the exported
+  schema JSON (MigrationTestHelper is unusable under Robolectric on Windows).
+- **Processing:** `PageProcessing` (core:data) is the single entry point: auto-detect on the still, render processed JPEG
+  + thumbnail, previews from a cached 1600 px upright copy, all full-resolution work serialised on an app-wide scope
+  (≤ 1 full-res page in memory). Quads are in upright (EXIF-applied) original pixels.
+- **Detection:** the stills detector adds real-photo cues: gradient support measured across each side on
+  text-suppressed Lab channels, frame-clipped sides, and overlap with the bright paper region. The live overlay uses a
+  luma-only 480 px variant on 640×480 CameraX analysis frames (~11 ms on the emulator) with a median smoother that also
+  reports stability, sharpness and a 16×16 fingerprint for auto-capture.
+- **Build:** AGP 9.5.2 (built-in Kotlin), compileSdk **37.1** (Compose 1.13 requires it), JDK **21** for Gradle (the
+  bundled JBR 25 crashed the daemon's C2 compiler), NDK 30 pinned for stripping; release = arm64 only, R8, signed with the
+  local keystore from `keystore.properties`.
+- **Permissions (merged manifest):** CAMERA, USE_BIOMETRIC, POST_NOTIFICATIONS, FOREGROUND_SERVICE(_DATA_SYNC), WAKE_LOCK,
+  RECEIVE_BOOT_COMPLETED (WorkManager), no INTERNET (WorkManager's ACCESS_NETWORK_STATE is removed).
