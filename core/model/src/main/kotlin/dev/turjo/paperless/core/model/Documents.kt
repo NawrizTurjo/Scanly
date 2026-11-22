@@ -103,9 +103,18 @@ data class DocumentSummary(
     val coverThumbPath: String?,
     val updatedAt: Long,
     val isFavorite: Boolean,
+    val tags: List<Tag> = emptyList(),
 )
 
 data class DocumentWithPages(val document: Document, val pages: List<Page>)
+
+data class Tag(val id: String, val name: String, val colorIndex: Int, val createdAt: Long) {
+    companion object {
+        const val COLOR_COUNT = 8
+    }
+}
+
+data class TagSummary(val tag: Tag, val documentCount: Int)
 
 data class FolderSummary(val folder: Folder, val documentCount: Int)
 
@@ -118,4 +127,5 @@ data class LibraryFilter(
     val favouritesOnly: Boolean = false,
     val query: String = "",
     val sort: LibrarySort = LibrarySort.UPDATED_DESC,
+    val tagId: String? = null,
 )

@@ -70,7 +70,7 @@
     <string name="library_delete_forever_message">Permanently delete this document and its pages?</string>
     <string name="library_restore">Restore</string>
     <string name="library_undo">Undo</string>
-    <string name="library_moved_to_bin">Moved to recycle bin</string>
+    <string name="library_moved_to_bin">Moved to bin</string>
     <string name="library_bin_age">%1$s · %2$s</string>
     <plurals name="library_selected">
         <item quantity="one">%d selected</item>
@@ -96,4 +96,18 @@
     <string name="library_discard_scan">Discard</string>
     <string name="library_discard_scan_title">Discard unsaved scan?</string>
     <string name="library_discard_scan_message">Its pages will be permanently deleted.</string>
+    <string name="library_tags">Tags…</string>
+    <string name="library_tags_title">Tags</string>
+    <string name="library_manage_tags">Manage tags</string>
+    <string name="library_new_tag">New tag</string>
+    <string name="library_tag_exists">A tag with this name already exists.</string>
+    <string name="library_empty_tag">No documents match this tag.</string>
+    <string name="library_more_tags">+%1$d</string>
+    <string name="library_rename_tag">Rename tag</string>
+    <string name="library_tag_name">Tag name</string>
+    <string name="library_delete_tag">Delete %1$s?</string>
+    <string name="library_delete_tag_message">This tag will be removed from every document.</string>
+    <string name="library_no_tags">No tags yet. Add a tag from a document.</string>
+    <string name="library_tag_count">%1$d</string>
+    <string name="library_close">Close</string>
 </resources>

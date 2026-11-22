@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -27,7 +28,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 1)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         try {
@@ -44,7 +45,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v2-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 2)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
         try {
             val document = requireNotNull(db.documentDao().document("d1"))
@@ -64,7 +65,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v3-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 3)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_3_4)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
             .build()
         try {
             db.annotationDao().upsert(listOf(AnnotationEntity("a1", "k", 0, "INK", "[]", 0, 2f, 1)))
@@ -76,6 +77,22 @@ class MigrationTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test
+    fun v4DocumentsCanBeTaggedAfterMigration() = runBlocking {
+        val file = context.getDatabasePath("migration-v4-test.db").apply { parentFile?.mkdirs(); delete() }
+        createDatabase(file, 4)
+        Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
+            .addMigrations(MIGRATION_4_5)
+            .build()
+            .withDatabase { db ->
+                assertEquals("p1", db.documentDao().pages("d1").single().id)
+                val tag = TagEntity("t1", "Physics", 0, 1)
+                db.tagDao().insert(tag)
+                db.tagDao().insertLinks(listOf(DocumentTagEntity("d1", tag.id)))
+                assertEquals(listOf(tag), db.tagDao().observeDocumentTags("d1").first())
+            }
     }
 
     private fun createDatabase(file: File, version: Int) {

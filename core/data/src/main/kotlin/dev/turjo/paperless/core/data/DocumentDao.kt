@@ -2,11 +2,13 @@ package dev.turjo.paperless.core.data
 
 import androidx.room.Dao
 import androidx.room.Embedded
+import androidx.room.Junction
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.Flow
 
 data class LibraryRow(
@@ -18,6 +20,16 @@ data class LibraryRow(
     val folderName: String?,
     val updatedAt: Long,
     val isFavorite: Boolean,
+)
+
+data class TaggedLibraryRow(
+    @Embedded val row: LibraryRow,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(DocumentTagEntity::class, parentColumn = "documentId", entityColumn = "tagId"),
+    )
+    val tags: List<TagEntity>,
 )
 
 data class DocumentPagesRow(
@@ -33,6 +45,7 @@ interface DocumentDao {
     @Query("SELECT id FROM documents WHERE deletedAt IS NULL")
     suspend fun liveDocumentIds(): List<String>
 
+    @Transaction
     @Query(
         """
         SELECT d.id, d.title, d.updatedAt, d.isFavorite, d.createdAt, f.name AS folderName,
@@ -45,10 +58,14 @@ interface DocumentDao {
         WHERE d.isDraft = 0 AND d.deletedAt IS NULL
           AND (:folderId IS NULL OR d.folderId = :folderId)
           AND (:favouritesOnly = 0 OR d.isFavorite = 1)
+          AND (:tagId IS NULL OR EXISTS (SELECT 1 FROM document_tags dt WHERE dt.documentId = d.id AND dt.tagId = :tagId))
         ORDER BY d.updatedAt DESC, d.id
         """,
     )
-    fun observeLibrary(folderId: String?, favouritesOnly: Boolean): Flow<List<LibraryRow>>
+    fun observeTaggedLibrary(folderId: String?, favouritesOnly: Boolean, tagId: String?): Flow<List<TaggedLibraryRow>>
+
+    fun observeLibrary(folderId: String?, favouritesOnly: Boolean): Flow<List<LibraryRow>> =
+        observeTaggedLibrary(folderId, favouritesOnly, null).map { rows -> rows.map(TaggedLibraryRow::row) }
 
     @Query("SELECT id, title, deletedAt FROM documents WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC, id")
     fun observeDeleted(): Flow<List<dev.turjo.paperless.core.model.DeletedDocument>>

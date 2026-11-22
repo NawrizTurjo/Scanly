@@ -51,6 +51,7 @@ fun DocumentScreen(
     val snackbar = remember { SnackbarHostState() }
     val error = stringResource(R.string.detail_error)
     val document = state.document
+    var editTags by rememberSaveable(documentId) { mutableStateOf(false) }
     var move by rememberSaveable(documentId) { mutableStateOf(false) }
     var shownCopies by rememberSaveable(documentId) { mutableIntStateOf(0) }
     val duplicateDone = stringResource(R.string.library_duplicate_done)
@@ -160,6 +161,10 @@ fun DocumentScreen(
                                 onClick = { moreMenu = false; move = true },
                             )
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.library_tags)) },
+                                onClick = { moreMenu = false; editTags = true },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.detail_delete_document)) },
                                 onClick = { moreMenu = false; deleteDocument = true },
                             )
@@ -184,6 +189,14 @@ fun DocumentScreen(
                     CircularProgressIndicator()
                 }
             }
+        }
+    }
+
+    if (editTags && document != null) {
+        val tags by model.tags.collectAsStateWithLifecycle()
+        EditTagsDialog(model.documentTags, tags, onDismiss = { editTags = false }) { ids, name ->
+            model.setTags(ids, name)
+            editTags = false
         }
     }
 

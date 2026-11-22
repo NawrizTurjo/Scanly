@@ -55,6 +55,9 @@ internal class DocumentViewModel @AssistedInject constructor(
     val state = mutableState.asStateFlow()
     val folderList = folders.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val tags = documents.observeTags()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val documentTags = documents.observeDocumentTags(id)
     val busyPageIds = processing.busyPageIds
     private val mutations = Mutex()
 
@@ -129,6 +132,10 @@ internal class DocumentViewModel @AssistedInject constructor(
 
     fun moveToNewFolder(name: String) = change {
         folders.moveDocumentsToNewFolder(setOf(id), name)
+    }
+
+    fun setTags(tagIds: Set<String>, newName: String?) = change {
+        documents.setDocumentTags(id, tagIds, newName)
     }
 
     fun deleteDocument() = change { documents.softDelete(id) }

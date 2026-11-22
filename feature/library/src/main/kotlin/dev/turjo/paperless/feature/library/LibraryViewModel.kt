@@ -2,6 +2,7 @@ package dev.turjo.paperless.feature.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
@@ -12,6 +13,7 @@ import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.LibraryFilter
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.feature.export.ExportRunner
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -71,6 +73,7 @@ internal class LibraryViewModel(
     private val sessions: ScanSessionRepository,
     private val awaitIdle: suspend (Collection<String>) -> Unit,
     val thumbnailFile: (String) -> File,
+    private val exports: Lazy<ExportRunner>,
 ) : ViewModel() {
     @Inject
     constructor(
@@ -80,7 +83,8 @@ internal class LibraryViewModel(
         sessions: ScanSessionRepository,
         processing: PageProcessing,
         files: FileStore,
-    ) : this(documents, folders, reader, sessions, processing::awaitIdle, files::thumbFile)
+        exports: Lazy<ExportRunner>,
+    ) : this(documents, folders, reader, sessions, processing::awaitIdle, files::thumbFile, exports)
 
     private val mutableFilter = MutableStateFlow(LibraryFilter())
     val filter = mutableFilter.asStateFlow()
@@ -115,6 +119,8 @@ internal class LibraryViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val folderList = folders.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val tags = documents.observeTags()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val deleted = documents.observeDeleted()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -123,6 +129,28 @@ internal class LibraryViewModel(
     }
 
     fun updateFilter(transform: (LibraryFilter) -> LibraryFilter) = mutableFilter.update(transform)
+
+    fun toggleTag(id: String) = updateFilter { active ->
+        active.copy(tagId = id.takeUnless { it == active.tagId })
+    }
+
+    fun documentTags(id: String) = documents.observeDocumentTags(id)
+
+    fun setTags(id: String, tagIds: Set<String>, newName: String?) =
+        change { documents.setDocumentTags(id, tagIds, newName) }
+
+    fun renameTag(id: String, name: String) = change { documents.renameTag(id, name) }
+
+    fun deleteTag(id: String) = change {
+        documents.deleteTag(id)
+        updateFilter { if (it.tagId == id) it.copy(tagId = null) else it }
+    }
+
+    fun share(id: String, launch: (List<File>, String) -> Unit) = change {
+        val document = documents.observeDocument(id).first()
+            ?.takeIf { it.document.deletedAt == null && it.pages.isNotEmpty() } ?: return@change
+        exports.get().quickShare(document, launch)
+    }
 
     fun toggleLayout() = mutableListLayout.update { !it }
 
@@ -140,8 +168,11 @@ internal class LibraryViewModel(
         }
     }
 
-    fun deleteSelected() {
-        val ids = selection.value.keys
+    fun deleteSelected() = deleteDocuments(selection.value.keys)
+
+    fun deleteDocument(id: String) = deleteDocuments(setOf(id))
+
+    private fun deleteDocuments(ids: Set<String>) {
         if (ids.isEmpty()) return
         change {
             documents.softDelete(ids)
@@ -152,21 +183,19 @@ internal class LibraryViewModel(
 
     fun undoDelete(ids: Set<String>) = change { documents.restore(ids) }
 
-    fun moveSelected(folderId: String?) {
-        val ids = selection.value.keys
-        change {
-            folders.moveDocuments(ids, folderId)
-            removeSelection(ids)
-        }
+    fun moveDocuments(ids: Set<String>, folderId: String?) = change {
+        folders.moveDocuments(ids, folderId)
+        removeSelection(ids)
     }
 
-    fun moveSelectedToNewFolder(name: String) {
-        val ids = selection.value.keys
-        change {
-            folders.moveDocumentsToNewFolder(ids, name)
-            removeSelection(ids)
-        }
+    fun moveDocumentsToNewFolder(ids: Set<String>, name: String) = change {
+        folders.moveDocumentsToNewFolder(ids, name)
+        removeSelection(ids)
     }
+
+    fun moveSelected(folderId: String?) = moveDocuments(selection.value.keys, folderId)
+
+    fun moveSelectedToNewFolder(name: String) = moveDocumentsToNewFolder(selection.value.keys, name)
 
     fun createFolder(name: String, parentId: String?) = change { folders.create(name, parentId) }
     fun renameFolder(id: String, name: String) = change { folders.rename(id, name) }
