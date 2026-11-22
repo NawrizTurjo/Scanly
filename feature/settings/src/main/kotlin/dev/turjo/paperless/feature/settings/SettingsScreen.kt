@@ -1,6 +1,7 @@
 package dev.turjo.paperless.feature.settings
 
 import android.app.KeyguardManager
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -52,6 +53,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showLicences by rememberSaveable { mutableStateOf(false) }
+    if (showLicences) OpenSourceLicences { showLicences = false }
 
     Column(modifier.fillMaxSize()) {
         TopAppBar(title = { Text(stringResource(R.string.settings_title)) })
@@ -182,6 +185,9 @@ fun SettingsScreen(
             ListItem(
                 supportingContent = { Text(stringResource(R.string.about_summary)) },
             ) { Text(stringResource(R.string.about)) }
+            ListItem(modifier = Modifier.clickable { showLicences = true }) {
+                Text(stringResource(R.string.open_source_licences))
+            }
         }
     }
 }

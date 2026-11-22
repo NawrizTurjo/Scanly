@@ -147,9 +147,13 @@ internal class PdfToolOps(private val context: Context) : ToolOps {
     }
 }
 
-internal fun Exception.toolMessage(removingPassword: Boolean = false): String = when (this) {
-    is ToolError.Encrypted -> if (removingPassword) "The password is incorrect" else "This PDF is password-protected"
-    is ToolError.Corrupt -> message ?: "This PDF could not be read"
-    is ToolError.Invalid, is IllegalArgumentException -> message ?: "Check the tool options"
-    else -> message ?: "The operation could not be completed"
+internal fun Exception.toolMessage(context: Context, removingPassword: Boolean = false): String = when (this) {
+    is ToolError.Encrypted -> context.getString(
+        if (removingPassword) R.string.tools_wrong_password else R.string.tools_password_protected,
+    )
+    is ToolError.Corrupt -> context.getString(R.string.tools_corrupt_pdf)
+    is ToolError.Invalid -> message ?: context.getString(R.string.tools_check_options)
+    is IllegalArgumentException -> context.getString(R.string.tools_check_options)
+    is SecurityException -> context.getString(R.string.tools_access_error)
+    else -> context.getString(R.string.tools_operation_error)
 }

@@ -34,7 +34,7 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableStateOf(EditorTab.Crop) }
     var discard by rememberSaveable { mutableStateOf(false) }
-    val enabled = !state.saving && !state.detecting && !state.saved
+    val enabled = state.original != null && !state.loading && !state.saving && !state.detecting && !state.saved
     val back = {
         if (state.dirty) discard = true else onBack()
     }
@@ -71,9 +71,10 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
             }
             val page = state.page
             val edits = state.edits
-            if (page == null || edits == null) {
-                if (state.loading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EditorProgress() }
+            if (state.loading || page == null || edits == null || state.original == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (state.loading) EditorProgress()
+                    else Text(stringResource(R.string.editor_load_error))
                 }
             } else {
                 when (tab) {
@@ -119,6 +120,8 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                                 )
                             } else if (rendering) {
                                 EditorProgress()
+                            } else {
+                                Text(stringResource(R.string.editor_preview_error))
                             }
                         }
 

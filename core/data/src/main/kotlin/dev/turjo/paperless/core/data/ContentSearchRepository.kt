@@ -3,6 +3,7 @@ package dev.turjo.paperless.core.data
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import android.provider.DocumentsContract
 import androidx.room.withTransaction
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
@@ -57,7 +58,7 @@ class TextIndexer @Inject constructor(
         val resolver = context.contentResolver
         val readerCache = File(context.cacheDir, "pdf")
         val sources = database.readerDao().externalPdfs().map {
-            PdfKey(it.id) to Uri.parse(it.uri)
+            PdfKey(it.id) to it.uri.toUri()
         } + database.documentDao().observeLibrary(null, false).first().mapNotNull {
             val pdf = restoredReaderPdf(context, it.id, it.updatedAt) ?: File(readerCache, "${it.id}.pdf")
             if (pdf.isFile && (pdf.parentFile != readerCache || pdf.lastModified() >= it.updatedAt)) {

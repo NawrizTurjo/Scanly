@@ -54,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -159,9 +160,9 @@ fun ReaderScreen(
     closePending?.let { id ->
         AlertDialog(
             onDismissRequest = { closePending = null },
-            title = { Text("Discard unsaved bookmarks?") },
-            confirmButton = { TextButton({ closePending = null; viewModel.close(id) }) { Text("Discard and close") } },
-            dismissButton = { TextButton({ closePending = null }) { Text("Keep editing") } },
+            title = { Text(stringResource(R.string.reader_discard_bookmarks)) },
+            confirmButton = { TextButton({ closePending = null; viewModel.close(id) }) { Text(stringResource(R.string.reader_discard_and_close)) } },
+            dismissButton = { TextButton({ closePending = null }) { Text(stringResource(R.string.reader_keep_editing)) } },
         )
     }
     if (tab != null && showOutline) {
@@ -178,7 +179,7 @@ fun ReaderScreen(
                         ReaderIcon("×", "Close search") { searchMode = false }
                         OutlinedTextField(search.query, {
                             searches[tab.tabId] = SearchState(it, status = if (it.isBlank()) null else SearchStatus.PENDING)
-                        }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Find in PDF") })
+                        }, Modifier.weight(1f), singleLine = true, placeholder = { Text(stringResource(R.string.reader_find_in_pdf)) })
                         if (search.matches.isNotEmpty()) Text("${search.index + 1} / ${search.matches.size}")
                         for ((symbol, delta) in listOf("↑" to -1, "↓" to 1)) {
                             ReaderIcon(symbol, if (delta < 0) "Previous match" else "Next match",
@@ -451,7 +452,7 @@ private fun SplitReader(
     onRight: (String) -> Unit,
     primary: @Composable () -> Unit,
 ) {
-    var fraction by rememberSaveable { mutableStateOf(0.5f) }
+    var fraction by rememberSaveable { mutableFloatStateOf(0.5f) }
     val same = left.pdfKey == right.pdfKey
     val opened = key(right.pdfKey, same) {
         val other by produceState<Pair<Boolean, PdfDocumentHandle?>>(false to null) {

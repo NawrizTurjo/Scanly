@@ -121,8 +121,12 @@ fun ReviewScreen(
                 state.pages, state.groups, canAct, onEditPage, vm::reorder, vm::rotate, vm::delete,
                 vm::splitHere, vm::join, vm::renameGroup, vm::restoreSeparator,
             )
-            if (state.loading || state.changing) {
-                Box(Modifier.align(Alignment.Center)) { EditorProgress() }
+            when {
+                state.loading || state.changing -> Box(Modifier.align(Alignment.Center)) { EditorProgress() }
+                state.session == null && !state.discarded && state.savedId == null ->
+                    Text(stringResource(R.string.review_load_error), Modifier.align(Alignment.Center))
+                state.session != null && state.pages.isEmpty() ->
+                    Text(stringResource(R.string.review_empty), Modifier.align(Alignment.Center))
             }
         }
     }

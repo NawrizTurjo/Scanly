@@ -29,4 +29,9 @@
         <item quantity="other">Enter a positive whole number. The saved delay is %1$d minutes.</item>
     </plurals>
     <string name="lock_needs_credential">Set up a device PIN, pattern, or password to enable app lock.</string>
+    <string name="open_source_licences">Open-source licences</string>
+    <string name="licence_texts">Licence texts</string>
+    <string name="licences_read_error">Could not load the bundled licence information.</string>
+    <string name="licences_back">Back</string>
+    <string name="licences_close">Close</string>
 </resources>

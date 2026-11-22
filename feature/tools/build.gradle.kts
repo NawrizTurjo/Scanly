@@ -1,5 +1,7 @@
 plugins { id("paperless.android.feature") }
 
+android { testOptions.unitTests.isIncludeAndroidResources = true }
+
 dependencies {
     implementation(project(":core:pdf"))
     implementation(libs.activity.compose)

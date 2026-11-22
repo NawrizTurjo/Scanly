@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.OneTimeWorkRequestBuilder
@@ -107,7 +109,7 @@ internal class ToolsModel(
                 }
             }
         }.orEmpty()
-        require(pdfs.isNotEmpty()) { "No PDFs found in this folder" }
+        if (pdfs.isEmpty()) throw ToolError.Invalid(context.getString(R.string.tools_no_pdfs))
         pdfs.map { copy(it) }
     }
 
@@ -193,7 +195,7 @@ internal class ToolsModel(
             if (mime == null) saver.savePdf(output.file, output.file.name)
             else saver.saveImage(output.file, output.file.name, mime)
         }
-        set(current.copy(message = "Saved to Paperless"))
+        set(current.copy(message = context.getString(R.string.tools_saved)))
     }
 
     fun shareable(outputs: List<Output>, share: (List<File>) -> Unit) = launch {
@@ -219,7 +221,7 @@ internal class ToolsModel(
                 input.copy(file = target)
             }
             store.prepare(ToolRequest(tool, inputs, options))
-            preferences.edit().putString("latest_batch", request.id.toString()).apply()
+            preferences.edit { putString("latest_batch", request.id.toString()) }
             work.enqueue(request).result.get()
         }
         observeBatch(request.id)
@@ -227,7 +229,7 @@ internal class ToolsModel(
 
     fun latestBatch() = launch {
         val id = withContext(Dispatchers.IO) { preferences.getString("latest_batch", null) }
-        if (id == null) set(current.copy(message = "No batch jobs yet"))
+        if (id == null) set(current.copy(message = context.getString(R.string.tools_no_batch_jobs)))
         else observeBatch(UUID.fromString(id))
     }
 
@@ -241,12 +243,12 @@ internal class ToolsModel(
                     val (items, stopped) = withContext(Dispatchers.IO) { store.results() to store.cancelled() }
                     val active = info != null && !info.state.isFinished
                     set(current.copy(batchItems = items, batchRunning = active, stopping = stopped,
-                        error = if (info?.state == WorkInfo.State.FAILED) "Batch stopped unexpectedly" else null))
+                        error = if (info?.state == WorkInfo.State.FAILED) context.getString(R.string.tools_batch_failed) else null))
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                set(current.copy(error = error.toolMessage(), batchRunning = false))
+                set(current.copy(error = error.toolMessage(context), batchRunning = false))
             }
         }
     }
@@ -294,7 +296,7 @@ internal class ToolsModel(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                set(current.copy(error = error.toolMessage(removingPassword)))
+                set(current.copy(error = error.toolMessage(context, removingPassword)))
             } finally {
                 set(current.copy(busy = false))
             }
@@ -319,8 +321,8 @@ internal suspend fun thumbnail(file: File, index: Int): Bitmap = withContext(thu
         PdfRenderer(descriptor).use { renderer ->
             renderer.openPage(index).use { page ->
                 val scale = 160f / maxOf(page.width, page.height)
-                Bitmap.createBitmap((page.width * scale).roundToInt().coerceAtLeast(1),
-                    (page.height * scale).roundToInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888).apply {
+                createBitmap((page.width * scale).roundToInt().coerceAtLeast(1),
+                    (page.height * scale).roundToInt().coerceAtLeast(1)).apply {
                     eraseColor(android.graphics.Color.WHITE)
                     page.render(this, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 }

@@ -3,6 +3,7 @@ package dev.turjo.paperless.core.pdf
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrixColorFilter
@@ -256,7 +257,7 @@ class AndroidPdfSessionManager(
             val height = (width.toDouble() * page.height / page.width).roundToInt().coerceAtLeast(1)
             val scale = width.toFloat() / page.width
             val transform = Matrix().apply { setScale(scale, scale) }
-            return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            return createBitmap(width, height).apply {
                 eraseColor(Color.WHITE)
                 page.render(this, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             }
@@ -271,7 +272,7 @@ class AndroidPdfSessionManager(
                     0f, 0f, 0f, 1f, 0f,
                 ))
             }
-            return Bitmap.createBitmap(day.width, day.height, Bitmap.Config.ARGB_8888).apply {
+            return createBitmap(day.width, day.height).apply {
                 Canvas(this).drawBitmap(day, 0f, 0f, paint)
             }
         }

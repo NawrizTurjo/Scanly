@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.tools
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -21,7 +22,7 @@ internal fun ToolOptions(tool: Tool, values: MutableMap<String, String>, count: 
                 Pick("Split by", values, listOf("Ranges", "Every N pages", "Pick pages"))
                 when (values["Split by"]) {
                     "Every N pages" -> Field("Pages per file", values, "1")
-                    "Pick pages" -> Text("Select the pages to save as separate PDFs.")
+                    "Pick pages" -> Text(stringResource(R.string.tools_split_pick_pages))
                     else -> Field("Pages", values, label = "Page ranges (1-3, 5, 8-10)")
                 }
             }
@@ -55,7 +56,7 @@ internal fun ToolOptions(tool: Tool, values: MutableMap<String, String>, count: 
                 }
             }
             Tool.SANITIZE -> Toggle("Remove XMP", values, true)
-            Tool.GRAYSCALE -> Text("Text and vector colours stay as they are")
+            Tool.GRAYSCALE -> Text(stringResource(R.string.tools_grayscale_note))
             Tool.FROM_IMAGES -> {
                 PickEnum("Page size", values, PageSizeOption.entries) { if (it == PageSizeOption.A4) "A4" else enumLabel(it) }
                 PickEnum("Quality", values, QualityPreset.entries)
@@ -94,7 +95,7 @@ private fun PrintOptions(values: MutableMap<String, String>, count: Int) {
         val margin = values["Margin in pt"]?.toFloatOrNull() ?: 18f
         val gap = values["Gap in pt"]?.toFloatOrNull() ?: 12f
         val cutLine = values["Cut line"].toBoolean()
-        Text("Sheet 1", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.tools_first_sheet), style = MaterialTheme.typography.titleMedium)
         SheetSide("Front", it.front, margin, gap, cutLine)
         if (it.back.isNotEmpty()) SheetSide("Back", it.back, margin, gap, cutLine)
     }

@@ -146,8 +146,8 @@ internal fun ReaderPages(
         external?.let { ExternalLinkDialog(it, { external = null }, { linkError = true }) }
         if (linkError) androidx.compose.material3.AlertDialog(
             onDismissRequest = { linkError = false },
-            text = { Text("No browser could open this link.") },
-            confirmButton = { androidx.compose.material3.TextButton({ linkError = false }) { Text("OK") } },
+            text = { Text(stringResource(R.string.reader_link_open_failed)) },
+            confirmButton = { androidx.compose.material3.TextButton({ linkError = false }) { Text(stringResource(R.string.reader_ok)) } },
         )
         if (showJump) JumpDialog(displayPage, document.pageCount, { showJump = false }, onJump)
         if (showThumbnails) {

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.util.AtomicFile
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
@@ -69,7 +70,9 @@ object LibraryJobs {
     private suspend fun lastBackupResult(context: Context): String? = withContext(Dispatchers.IO) {
         val file = summaryFile(context)
         try {
-            JSONObject(String(AtomicFile(file).readFully(), Charsets.UTF_8)).getString("message")
+            val summary = JSONObject(String(AtomicFile(file).readFully(), Charsets.UTF_8))
+            if (summary.optString("status") == "failed") context.getString(R.string.backup_job_failed)
+            else summary.getString("message")
         } catch (_: java.io.FileNotFoundException) {
             null
         }
@@ -131,8 +134,8 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
             throw cancelled
         } catch (error: Exception) {
-            val operation = if (restore) "Restore" else "Backup"
-            saveResult("failed", "$operation failed · ${error.localizedMessage ?: "Unknown error"}")
+            Log.w("BackupWorker", if (restore) "Restore failed" else "Backup failed", error)
+            saveResult("failed", applicationContext.getString(R.string.backup_job_failed))
             Result.failure()
         }
     }

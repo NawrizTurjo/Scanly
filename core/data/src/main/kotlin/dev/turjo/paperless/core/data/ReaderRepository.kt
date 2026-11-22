@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.turjo.paperless.core.model.PdfKey
@@ -129,7 +130,7 @@ class RoomReaderRepository internal constructor(
         val uri = if (documentId != null) {
             Uri.fromFile(ensureDocumentPdf(documentId))
         } else {
-            Uri.parse(dao.externalUri(key.value) ?: throw FileNotFoundException("Unknown external PDF ${key.value}"))
+            (dao.externalUri(key.value) ?: throw FileNotFoundException("Unknown external PDF ${key.value}")).toUri()
         }
         enqueueIndex()
         return uri
@@ -159,7 +160,7 @@ class RoomReaderRepository internal constructor(
             if (target.isFile && target.lastModified() >= document.updatedAt) return@withLock target
 
             Files.createDirectories(directory.toPath())
-            val temp = Files.createTempFile(directory.toPath(), "reader-", ".pdf")
+            val temp = Files.createTempFile(directory.toPath(), "reader-", ".tmp")
             try {
                 val exportedRevision = writePdf(document, temp.toFile())
                 // Use the exported revision so an edit during export stays eligible for refresh.

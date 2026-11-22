@@ -99,6 +99,7 @@ internal class BatchStore(context: Context, id: String) {
 }
 
 internal suspend fun runBatch(
+    context: Context,
     request: ToolRequest,
     ops: ToolOps,
     completed: List<BatchItem>,
@@ -110,8 +111,8 @@ internal suspend fun runBatch(
     if (request.tool == Tool.MERGE) {
         if (completed.size == inputs.size) return
         val sorted = inputs.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-        val result = if (cancelled()) BatchItem("", BatchStatus.SKIPPED, "Cancelled") else
-            runBatchItem(request.copy(inputs = sorted), ops, outputDirectory(0))
+        val result = if (cancelled()) BatchItem("", BatchStatus.SKIPPED, context.getString(R.string.tools_cancelled)) else
+            runBatchItem(context, request.copy(inputs = sorted), ops, outputDirectory(0))
         publish(inputs.mapIndexed { index, input ->
             result.copy(name = input.name, outputs = if (index == 0) result.outputs else emptyList())
         })
@@ -122,12 +123,12 @@ internal suspend fun runBatch(
     for (index in completed.size until inputs.size) {
         val input = inputs[index]
         results += if (cancelled()) BatchItem(input.name, BatchStatus.SKIPPED, "Cancelled")
-        else runBatchItem(request.copy(inputs = listOf(input)), ops, outputDirectory(index))
+        else runBatchItem(context, request.copy(inputs = listOf(input)), ops, outputDirectory(index))
         publish(results.toList())
     }
 }
 
-private suspend fun runBatchItem(request: ToolRequest, ops: ToolOps, directory: File): BatchItem {
+private suspend fun runBatchItem(context: Context, request: ToolRequest, ops: ToolOps, directory: File): BatchItem {
     val name = request.inputs.first().name
     return try {
         directory.deleteRecursively()
@@ -141,7 +142,7 @@ private suspend fun runBatchItem(request: ToolRequest, ops: ToolOps, directory: 
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {
-        BatchItem(name, BatchStatus.FAILED, error.toolMessage(request.options["Action"] == "Remove"))
+        BatchItem(name, BatchStatus.FAILED, error.toolMessage(context, request.options["Action"] == "Remove"))
     }
 }
 
@@ -159,7 +160,7 @@ class BatchWorker(context: Context, parameters: WorkerParameters) : CoroutineWor
             val total = request.inputs.size
             setForeground(progressNotification(notifications, completed.size, total))
             val ops = PdfToolOps(applicationContext)
-            runBatch(request, ops, completed, store::cancelled, { index -> File(store.directory, "out/$index") }) {
+            runBatch(applicationContext, request, ops, completed, store::cancelled, { index -> File(store.directory, "out/$index") }) {
                 store.save(it)
                 setProgress(workDataOf("processed" to it.size))
                 setForeground(progressNotification(notifications, it.size, total))

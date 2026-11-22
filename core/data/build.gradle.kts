@@ -4,6 +4,8 @@ plugins {
 }
 
 android {
+    defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    sourceSets["androidTest"].assets.srcDir(rootProject.file("test-data/imaging-goldens/inputs"))
     // Room exports schemas here; migration tests read them as test assets.
     sourceSets["test"].assets.srcDir(file("schemas"))
     testOptions.unitTests.isIncludeAndroidResources = true
@@ -20,6 +22,8 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    androidTestImplementation(libs.test.junit)
+    androidTestImplementation(libs.espresso.core)
     implementation(libs.room.runtime)
     implementation(libs.work.runtime.ktx)
     implementation(libs.pdfbox.android)
