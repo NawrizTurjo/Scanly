@@ -30,8 +30,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             buildTypes.named("debug") { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } }
             buildTypes.named("release") {
                 ndk { abiFilters += listOf("arm64-v8a") }
-                // Temporary until P8 adds the real release keystore: lets the user sideload a small arm64 APK now.
-                signingConfig = signingConfigs.getByName("debug")
+                signingConfig = releaseSigning(this@with) ?: signingConfigs.getByName("debug")
                 isMinifyEnabled = true
                 proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             }
@@ -79,6 +78,22 @@ class HiltConventionPlugin : Plugin<Project> {
         dependencies.add("implementation", library("hilt-android"))
         dependencies.add("ksp", library("hilt-compiler"))
         Unit
+    }
+}
+
+/**
+ * Release signing from the gitignored keystore.properties (storeFile, storePassword, keyAlias, keyPassword).
+ * Without it (fresh checkout) release builds fall back to the debug key so they still build.
+ */
+private fun ApplicationExtension.releaseSigning(project: Project): com.android.build.api.dsl.ApkSigningConfig? {
+    val file = project.rootProject.file("keystore.properties")
+    if (!file.isFile) return null
+    val props = java.util.Properties().apply { file.inputStream().use(::load) }
+    return signingConfigs.maybeCreate("release").apply {
+        storeFile = project.rootProject.file(props.getProperty("storeFile"))
+        storePassword = props.getProperty("storePassword")
+        keyAlias = props.getProperty("keyAlias")
+        keyPassword = props.getProperty("keyPassword")
     }
 }
 

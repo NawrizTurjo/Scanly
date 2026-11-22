@@ -25,3 +25,6 @@ shots/
 *.keystore
 *.jks
 keystore.properties
+
+# Built APKs handed to the user
+dist/
