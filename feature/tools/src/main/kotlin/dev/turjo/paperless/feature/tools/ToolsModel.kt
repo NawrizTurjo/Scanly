@@ -34,6 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -50,13 +51,14 @@ internal data class ToolsState(
     val batchRunning: Boolean = false,
     val stopping: Boolean = false,
     val busy: Boolean = false,
+    val progress: String? = null,
     val error: String? = null,
     val message: String? = null,
 )
 
 internal class ToolsModel(
     application: Application,
-    private val ops: ToolOps = PdfToolOps(application),
+    ops: ToolOps? = null,
     private val inspectPdf: (File, Boolean) -> Details = { file, metadata ->
         PdfBox.ensureInit(application)
         Details(PageWidthNormalizer.widths(file), if (metadata) PdfMetadata.read(file) else null)
@@ -65,6 +67,10 @@ internal class ToolsModel(
     private val context get() = getApplication<Application>()
     private val mutableState = MutableStateFlow(ToolsState())
     val state = mutableState.asStateFlow()
+    private val ops = ops ?: PdfToolOps(application) { position, total ->
+        val progress = application.getString(R.string.tools_enhancing_progress, position, total)
+        mutableState.update { it.copy(progress = progress) }
+    }
     private var task: Job? = null
     private var observer: Job? = null
     private val preferences get() = context.getSharedPreferences("pdf_tools", Context.MODE_PRIVATE)
@@ -298,7 +304,7 @@ internal class ToolsModel(
             } catch (error: Exception) {
                 set(current.copy(error = error.toolMessage(context, removingPassword)))
             } finally {
-                set(current.copy(busy = false))
+                set(current.copy(busy = false, progress = null))
             }
         }
     }

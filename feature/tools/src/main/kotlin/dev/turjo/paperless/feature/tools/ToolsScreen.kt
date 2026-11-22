@@ -140,6 +140,7 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
         when {
             state.busy -> item {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.progress?.let { Text(it) }
                 TextButton(onClick = model::back) { Text(stringResource(R.string.tools_cancel)) }
             }
             state.batchId != null -> {

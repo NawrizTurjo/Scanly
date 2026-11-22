@@ -58,6 +58,10 @@ internal fun ToolOptions(tool: Tool, values: MutableMap<String, String>, count: 
             Tool.SANITIZE -> Toggle("Remove XMP", values, true)
             Tool.GRAYSCALE -> Text(stringResource(R.string.tools_grayscale_note))
             Tool.FROM_IMAGES -> {
+                val labels = ImageEnhancement.entries.associateWith { stringResource(it.label) }
+                Choice(stringResource(R.string.tools_enhance), values.imageEnhancement(), ImageEnhancement.entries,
+                    { labels.getValue(it) }) { values[ENHANCE_OPTION] = it.name }
+                Text(stringResource(R.string.tools_enhance_hint), style = MaterialTheme.typography.bodySmall)
                 PickEnum("Page size", values, PageSizeOption.entries) { if (it == PageSizeOption.A4) "A4" else enumLabel(it) }
                 PickEnum("Quality", values, QualityPreset.entries)
             }

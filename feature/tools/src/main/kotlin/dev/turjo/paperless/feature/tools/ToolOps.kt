@@ -58,7 +58,10 @@ internal fun interface ToolOps {
     suspend fun run(request: ToolRequest, directory: File): List<Output>
 }
 
-internal class PdfToolOps(private val context: Context) : ToolOps {
+internal class PdfToolOps(
+    private val context: Context,
+    private val onEnhancing: (Int, Int) -> Unit = { _, _ -> },
+) : ToolOps {
     override suspend fun run(request: ToolRequest, directory: File): List<Output> {
         PdfBox.ensureInit(context)
         val (tool, inputs, options, pages) = request
@@ -134,9 +137,10 @@ internal class PdfToolOps(private val context: Context) : ToolOps {
             ), options["Clear all"].toBoolean(), out("metadata")).output())
             Tool.SANITIZE -> listOf(PdfSanitize.sanitize(input, options["Remove XMP"] != "false", out("sanitized")).output())
             Tool.GRAYSCALE -> listOf(PdfGrayscale.convert(input, out("grayscale")).output())
-            Tool.FROM_IMAGES -> listOf(ImagesToPdf.convert(
-                inputs.map { it.file }, PageSizeOption.valueOf(options.getOrDefault("Page size", "AUTO")),
-                quality, File(directory, "Images.pdf"),
+            Tool.FROM_IMAGES -> listOf(imagesToPdf(
+                context, inputs, options.imageEnhancement(),
+                PageSizeOption.valueOf(options.getOrDefault("Page size", "AUTO")),
+                quality, File(directory, "Images.pdf"), onEnhancing,
             ).output())
             Tool.TO_IMAGES -> PdfToImages.convert(
                 input, options.positiveInt("DPI", 150),
