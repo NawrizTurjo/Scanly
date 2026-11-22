@@ -141,11 +141,13 @@ internal fun ScanlyNavigation(
     var exportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     val top = backStack.lastOrNull()
     val currentTab = Tab.entries.firstOrNull { it.route == top }
+    var readerImmersive by remember { mutableStateOf(false) }
+    val immersive = top == ReaderRoute && readerImmersive
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (currentTab != null) {
+            if (currentTab != null && !immersive) {
                 NavigationBar {
                     for (tab in Tab.entries) {
                         NavigationBarItem(
@@ -160,7 +162,7 @@ internal fun ScanlyNavigation(
         },
     ) { padding ->
         // Only tab roots sit above the bottom bar; full-screen routes (camera, editor) handle their own insets.
-        val contentModifier = if (currentTab != null) {
+        val contentModifier = if (currentTab != null && !immersive) {
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         } else {
             Modifier.fillMaxSize()
@@ -187,6 +189,8 @@ internal fun ScanlyNavigation(
                         openRequest = pendingPdfKey,
                         onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
                         openRequestTitle = pendingPdfTitle,
+                        active = top == ReaderRoute,
+                        onImmersiveChanged = { readerImmersive = it },
                     )
                 }
                 entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile) }

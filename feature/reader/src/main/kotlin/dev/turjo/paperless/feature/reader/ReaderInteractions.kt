@@ -110,3 +110,18 @@ internal fun List<OutlineRow>.mergeSuggestions(suggestions: List<OutlineRow>): L
 }
 
 internal enum class CropMode(val label: String) { OFF("Off"), PAGE("Per page"), UNIFORM("Uniform") }
+
+internal enum class ReaderChrome {
+    VISIBLE, IMMERSIVE, LOCKED;
+
+    val immersive get() = this != VISIBLE
+    val locked get() = this == LOCKED
+
+    fun pageTap(annotating: Boolean) = when {
+        annotating || locked -> this
+        immersive -> VISIBLE
+        else -> IMMERSIVE
+    }
+
+    fun unlock() = if (locked) VISIBLE else this
+}

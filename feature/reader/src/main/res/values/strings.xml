@@ -1,4 +1,7 @@
 <resources>
+    <string name="reader_lock_full_screen">Lock full screen</string>
+    <string name="reader_unlock_full_screen">Unlock full screen</string>
+    <string name="reader_locked_hint">Locked. Long-press the lock to exit</string>
     <string name="reader_title">Reader</string>
     <string name="reader_pdf">PDF</string>
     <string name="no_pdfs">No PDFs open</string>
