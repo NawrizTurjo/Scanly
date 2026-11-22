@@ -37,7 +37,8 @@ fi
 
 if [ -d tools/pdf-fixwidth/tests ] && [ -n "$PY" ] && "$PY" -c "import fitz" 2>/dev/null; then
   step "pdf-fixwidth reference tests"
-  "$PY" -m unittest discover -s tools/pdf-fixwidth/tests
+  # A standalone script (exits 0 on success), not a unittest module.
+  "$PY" tools/pdf-fixwidth/tests/test_fixwidth.py
 fi
 
 step "Manifest guard: no INTERNET permission (merged manifest, libraries included)"
