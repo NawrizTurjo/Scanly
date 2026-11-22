@@ -14,7 +14,7 @@ Update at the end of every session: tick boxes, add a log row, and note surprise
 - [ ] **P5b** Reader features: outline · bookmark editor · auto chapters · find/select/copy · links · crop margins · progress · side-by-side (3.5–4)
 - [x] **P6** Merge · split · compress · rotate/reorder · img↔pdf · same width · page edits · password · N-up print layout · page numbers · metadata · sanitize · grayscale · batch (3.5) · done 2026-11-22 (fixture tests; same width matches the PyMuPDF oracle; real duplex print check pending user)
 - [ ] **P7** Annotations + flattening (1.5–2)
-- [ ] **P7b** Plain-file backup/restore · content search (1)
+- [x] **P7b** Plain-file backup/restore · content search (1) · done 2026-11-22 (Robolectric round trip + fixture search; SAF/notifications pending device check)
 - [ ] **P8** Polish · performance · signed release APK · full regression (1–1.5)
 
 ## Gate decisions (fill in at S1)

@@ -147,6 +147,15 @@ class MainViewModel @Inject constructor(
         entryEvents.trySend(EntryEvent(pdfKey = key))
     }
 
+    /** Content-search hit: store the page as the last-read page so the Reader resumes there, then open it. */
+    internal fun openPdfAtPage(key: PdfKey, page: Int) {
+        viewModelScope.launch {
+            val known = reader.observeRecent().first().firstOrNull { it.pdfKey == key }
+            reader.markOpened(key, known?.pageCount ?: 0, page)
+            entryEvents.send(EntryEvent(pdfKey = key, pdfTitle = known?.title))
+        }
+    }
+
     /** A tool's output file (cache) opens as a Reader tab like any external PDF. */
     internal fun openFileInReader(file: java.io.File) {
         viewModelScope.launch {
