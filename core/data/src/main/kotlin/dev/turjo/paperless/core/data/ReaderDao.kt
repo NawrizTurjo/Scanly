@@ -78,6 +78,9 @@ internal interface ReaderDao {
     @Query("SELECT uri FROM external_pdfs WHERE id = :id")
     suspend fun externalUri(id: String): String?
 
+    @Query("SELECT displayName FROM external_pdfs WHERE id = :id")
+    suspend fun externalTitle(id: String): String?
+
     @Insert
     suspend fun insertExternal(pdf: ExternalPdfEntity)
 

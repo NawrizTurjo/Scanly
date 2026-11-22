@@ -83,14 +83,9 @@ class RoomReaderRepository internal constructor(
     }.distinctUntilChanged()
 
     override suspend fun registerExternal(uri: Uri, displayName: String): PdfKey = withContext(Dispatchers.IO) {
-        val persisted = try {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            true
-        } catch (_: SecurityException) {
-            false
-        } catch (_: IllegalArgumentException) {
-            false
-        }
+        val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val persisted = persistPermission(uri, read or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ||
+            persistPermission(uri, read)
         database.withTransaction {
             val existing = dao.externalByUri(uri.toString())
             if (existing == null) {
@@ -126,6 +121,20 @@ class RoomReaderRepository internal constructor(
         return Uri.parse(uri)
     }
 
+    internal suspend fun readerTitle(key: PdfKey): String? {
+        val documentId = key.documentId()
+        return if (documentId == null) dao.externalTitle(key.value) else documents.readableDocument(documentId).title
+    }
+
+    private fun persistPermission(uri: Uri, flags: Int): Boolean = try {
+        context.contentResolver.takePersistableUriPermission(uri, flags)
+        true
+    } catch (_: SecurityException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
+    }
+
     private suspend fun ensureDocumentPdf(id: String): File = withContext(Dispatchers.IO) {
         require(id.isNotEmpty() && id != "." && id != ".." && '/' !in id && '\\' !in id)
         exportLock.withLock {
@@ -151,10 +160,11 @@ class RoomReaderRepository internal constructor(
     private fun PdfKey.documentId(): String? = value.takeIf { it.startsWith(DOCUMENT_PREFIX) }
         ?.removePrefix(DOCUMENT_PREFIX)
 
-    private companion object {
-        const val DOCUMENT_PREFIX = "doc:"
-    }
 }
+
+private const val DOCUMENT_PREFIX = "doc:"
+
+internal fun PdfKey.isLibraryDocument(): Boolean = value.startsWith(DOCUMENT_PREFIX)
 
 private suspend fun DocumentDao.readableDocument(id: String): DocumentEntity =
     document(id)?.takeIf { it.deletedAt == null && !it.isDraft }
