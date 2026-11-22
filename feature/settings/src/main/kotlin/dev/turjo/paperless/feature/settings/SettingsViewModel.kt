@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.SettingsRepository
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
+import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import javax.inject.Inject
@@ -31,6 +32,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { repository.setDynamicColor(enabled) }
+    }
+
+    fun setAmoledBlack(enabled: Boolean) {
+        viewModelScope.launch { repository.setAmoledBlack(enabled) }
+    }
+
+    fun setAccent(accent: AccentColor) {
+        viewModelScope.launch { repository.setAccent(accent) }
     }
 
     fun setAutoNamePattern(pattern: String) {

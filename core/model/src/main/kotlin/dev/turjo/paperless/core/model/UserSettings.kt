@@ -12,6 +12,8 @@ val AUTO_CAPTURE_DELAYS_MS = listOf(400, 700, 1200)
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+enum class AccentColor { BLUE, TEAL, GREEN, ORANGE, ROSE }
+
 data class UserSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
@@ -20,6 +22,8 @@ data class UserSettings(
     val lockAfterMinutes: Int = 5,
     val autoCaptureDelayMs: Int = 700,
     val autoCaptureSensitivity: AutoCaptureSensitivity = AutoCaptureSensitivity.NORMAL,
+    val amoledBlack: Boolean = false,
+    val accent: AccentColor = AccentColor.BLUE,
 )
 
 private val autoNameDate = DateTimeFormatter.ofPattern("uuuu-MM-dd", Locale.ROOT)

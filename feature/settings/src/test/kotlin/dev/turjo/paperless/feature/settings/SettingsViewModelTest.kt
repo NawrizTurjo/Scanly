@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import dev.turjo.paperless.core.data.SettingsRepository
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
+import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +109,21 @@ class SettingsViewModelTest {
         }
     }
 
+    @Test
+    fun savesAndExposesAppearancePreferences() = runTest(dispatcher) {
+        viewModel.uiState.test {
+            val initial = awaitItem().settings
+
+            viewModel.setAmoledBlack(true)
+            assertEquals(initial.copy(amoledBlack = true), awaitItem().settings)
+
+            viewModel.setAccent(AccentColor.ROSE)
+            val expected = initial.copy(amoledBlack = true, accent = AccentColor.ROSE)
+            assertEquals(expected, awaitItem().settings)
+            assertEquals(expected, repository.settings.value)
+        }
+    }
+
     private class FakeSettingsRepository : SettingsRepository {
         override val settings = MutableStateFlow(UserSettings())
 
@@ -117,6 +133,14 @@ class SettingsViewModelTest {
 
         override suspend fun setDynamicColor(enabled: Boolean) {
             settings.update { it.copy(dynamicColor = enabled) }
+        }
+
+        override suspend fun setAmoledBlack(enabled: Boolean) {
+            settings.update { it.copy(amoledBlack = enabled) }
+        }
+
+        override suspend fun setAccent(accent: AccentColor) {
+            settings.update { it.copy(accent = accent) }
         }
 
         override suspend fun setAutoNamePattern(pattern: String) {

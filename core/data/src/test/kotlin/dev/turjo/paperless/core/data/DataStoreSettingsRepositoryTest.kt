@@ -1,8 +1,11 @@
 package dev.turjo.paperless.core.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
+import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import java.io.File
@@ -62,8 +65,10 @@ class DataStoreSettingsRepositoryTest {
 
 
     @Test
-    fun scanningAndSecuritySettingsPersist() = runTest {
+    fun preferencesPersistAcrossDataStoreInstances() = runTest {
         val changes: List<Pair<UserSettings, suspend (SettingsRepository) -> Unit>> = listOf(
+            UserSettings(amoledBlack = true) to { it.setAmoledBlack(true) },
+            UserSettings(accent = AccentColor.ROSE) to { it.setAccent(AccentColor.ROSE) },
             UserSettings(autoNamePattern = "{n} {date}") to { it.setAutoNamePattern("{n} {date}") },
             UserSettings(appLock = AppLock.AFTER_MINUTES) to { it.setAppLock(AppLock.AFTER_MINUTES) },
             UserSettings(lockAfterMinutes = 12) to { it.setLockAfterMinutes(12) },
@@ -79,6 +84,14 @@ class DataStoreSettingsRepositoryTest {
 
             assertEquals(expected, repository(backgroundScope, file).settings.first())
         }
+    }
+
+    @Test
+    fun unknownAccentUsesDefault() = runTest {
+        val dataStore = PreferenceDataStoreFactory.create(scope = backgroundScope) { settingsFile() }
+        dataStore.edit { it[stringPreferencesKey("accent")] = "UNKNOWN" }
+
+        assertEquals(AccentColor.BLUE, DataStoreSettingsRepository(dataStore).settings.first().accent)
     }
 
     private fun settingsFile() = File(temp.root, "settings.preferences_pb")

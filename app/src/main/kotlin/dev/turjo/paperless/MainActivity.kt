@@ -66,7 +66,12 @@ class MainActivity : ComponentActivity() {
             val locked by model.locked.collectAsStateWithLifecycle()
             val settings = storedSettings ?: UserSettings()
             val navigationState = rememberSaveableStateHolder()
-            ScanlyTheme(settings.themeMode, settings.dynamicColor) {
+            ScanlyTheme(
+                themeMode = settings.themeMode,
+                dynamicColor = settings.dynamicColor,
+                amoledBlack = settings.amoledBlack,
+                accent = settings.accent,
+            ) {
                 val lightStatusBar = MaterialTheme.colorScheme.background.luminance() > 0.5f
                 val lightNavBar = NavigationBarDefaults.containerColor.luminance() > 0.5f
                 SideEffect {

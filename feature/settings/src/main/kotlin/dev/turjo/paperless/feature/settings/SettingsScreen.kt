@@ -10,7 +10,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
@@ -20,7 +19,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -53,6 +51,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showHelp by rememberSaveable { mutableStateOf(false) }
+    if (showHelp) HelpScreen(onBack = { showHelp = false })
+
     var showLicences by rememberSaveable { mutableStateOf(false) }
     if (showLicences) OpenSourceLicences { showLicences = false }
 
@@ -152,35 +153,37 @@ fun SettingsScreen(
             BackupSettings()
             HorizontalDivider()
             SectionHeading(R.string.appearance)
-            SettingLabel(R.string.theme)
-            Column(Modifier.selectableGroup()) {
-                ThemeMode.entries.forEach { mode ->
-                    val selected = mode == state.settings.themeMode
-                    val label = when (mode) {
-                        ThemeMode.SYSTEM -> R.string.theme_system
-                        ThemeMode.LIGHT -> R.string.theme_light
-                        ThemeMode.DARK -> R.string.theme_dark
-                    }
-                    ListItem(
-                        leadingContent = { RadioButton(selected = selected, onClick = null) },
-                        modifier = Modifier.selectable(
-                            selected = selected,
-                            role = Role.RadioButton,
-                            onClick = { viewModel.setThemeMode(mode) },
-                        ),
-                    ) { Text(stringResource(label)) }
-                }
+            SettingChoices(R.string.theme, ThemeMode.entries, settings.themeMode, viewModel::setThemeMode) {
+                stringResource(when (it) {
+                    ThemeMode.SYSTEM -> R.string.theme_system
+                    ThemeMode.LIGHT -> R.string.theme_light
+                    ThemeMode.DARK -> R.string.theme_dark
+                })
             }
+            val amoledEnabled = settings.themeMode != ThemeMode.LIGHT
             ListItem(
+                supportingContent = { Text(stringResource(R.string.amoled_black_hint)) },
                 trailingContent = {
-                    Switch(checked = state.settings.dynamicColor, onCheckedChange = null)
+                    Switch(checked = settings.amoledBlack, onCheckedChange = null, enabled = amoledEnabled)
                 },
                 modifier = Modifier.toggleable(
-                    value = state.settings.dynamicColor,
+                    value = settings.amoledBlack,
+                    enabled = amoledEnabled,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setAmoledBlack,
+                ),
+            ) { Text(stringResource(R.string.amoled_black)) }
+            ListItem(
+                trailingContent = {
+                    Switch(checked = settings.dynamicColor, onCheckedChange = null)
+                },
+                modifier = Modifier.toggleable(
+                    value = settings.dynamicColor,
                     role = Role.Switch,
                     onValueChange = viewModel::setDynamicColor,
                 ),
             ) { Text(stringResource(R.string.dynamic_color)) }
+            AccentChoices(settings.accent, enabled = !settings.dynamicColor, onSelect = viewModel::setAccent)
             HorizontalDivider()
             ListItem(
                 supportingContent = { Text(stringResource(R.string.about_summary)) },
@@ -188,6 +191,10 @@ fun SettingsScreen(
             ListItem(modifier = Modifier.clickable { showLicences = true }) {
                 Text(stringResource(R.string.open_source_licences))
             }
+            ListItem(
+                modifier = Modifier.clickable { showHelp = true },
+                supportingContent = { Text(stringResource(R.string.help_summary)) },
+            ) { Text(stringResource(R.string.help_title)) }
         }
     }
 }
@@ -221,7 +228,7 @@ private fun <T> SettingChoices(
 ) {
     SettingLabel(title)
     FlowRow(
-        modifier = Modifier.padding(horizontal = 16.dp),
+        modifier = Modifier.padding(horizontal = 16.dp).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         choices.forEach { choice ->
