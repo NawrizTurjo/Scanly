@@ -237,7 +237,7 @@ private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, e
     val size = state.size
     val ready = original != null && size != null
     BoxWithConstraints(
-        Modifier.weight(1f).fillMaxWidth().padding(24.dp),
+        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (original != null && size != null && maxWidth > 0.dp && maxHeight > 0.dp) {

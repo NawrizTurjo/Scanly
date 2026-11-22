@@ -11,8 +11,15 @@ internal data class CropPoint(val x: Float, val y: Float) {
     fun clamp(width: Float, height: Float) = CropPoint(x.coerceIn(0f, width), y.coerceIn(0f, height))
 }
 
-internal class CropFit(viewWidth: Float, viewHeight: Float, imageWidth: Float, imageHeight: Float) {
-    val scale = minOf(viewWidth / imageWidth, viewHeight / imageHeight)
+/** Fits the image into the view, keeping [inset] free on every side so handles on the image border stay touchable. */
+internal class CropFit(
+    viewWidth: Float,
+    viewHeight: Float,
+    imageWidth: Float,
+    imageHeight: Float,
+    inset: Float = 0f,
+) {
+    val scale = minOf((viewWidth - 2 * inset) / imageWidth, (viewHeight - 2 * inset) / imageHeight)
     val width = imageWidth * scale
     val height = imageHeight * scale
     val origin = CropPoint((viewWidth - width) / 2, (viewHeight - height) / 2)
