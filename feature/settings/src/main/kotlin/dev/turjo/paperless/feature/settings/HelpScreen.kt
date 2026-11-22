@@ -10,11 +10,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
@@ -27,6 +33,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import dev.turjo.paperless.core.designsystem.TipStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val toolDescriptions = listOf(
     R.string.help_tool_merge,
@@ -69,6 +79,10 @@ internal fun HelpScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HelpContent(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val resetMessage = stringResource(R.string.help_tips_reset)
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         TopAppBar(
             title = { Text(stringResource(R.string.help_title)) },
@@ -82,6 +96,7 @@ private fun HelpContent(onBack: () -> Unit) {
             },
         )
         LazyColumn(
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
@@ -98,7 +113,19 @@ private fun HelpContent(onBack: () -> Unit) {
             }
             item { HelpSection(R.string.help_library, R.string.help_library_body) }
             item { HelpSection(R.string.help_privacy, R.string.help_privacy_body) }
+            item {
+                TextButton(onClick = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { TipStore(context).resetAll() }
+                        snackbar.currentSnackbarData?.dismiss()
+                        snackbar.showSnackbar(resetMessage)
+                    }
+                }) {
+                    Text(stringResource(R.string.help_show_tips))
+                }
+            }
         }
+        SnackbarHost(snackbar)
     }
 }
 

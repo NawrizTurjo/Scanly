@@ -31,14 +31,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import dev.turjo.paperless.core.pdf.PdfDocumentHandle
+import dev.turjo.paperless.core.designsystem.FirstRunTip
 import kotlinx.coroutines.delay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -217,6 +221,11 @@ fun ReaderScreen(
     BackHandler(enabled = searchMode && tab != null && !showOutline) { searchMode = false }
     BackHandler(enabled = annotating) { tab?.let { viewModel.finishAnnotations(it.tabId) } }
     val lockedHint = stringResource(R.string.reader_locked_hint)
+    val unlock: () -> Unit = {
+        snackbar.currentSnackbarData?.takeIf { it.visuals.message == lockedHint }?.dismiss()
+        changeChrome(chrome.unlock())
+    }
+    val latestUnlock by rememberUpdatedState(unlock)
     BackHandler(enabled = chrome.immersive) {
         if (chrome.locked) {
             revealLock()
@@ -252,6 +261,21 @@ fun ReaderScreen(
 
     Box(Modifier.fillMaxSize()) {
         val lockedTaps = if (chrome.locked) Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                // Observe before child handlers so long-press also works on rendered pages.
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val releasedOrMoved = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pointer = event.changes.firstOrNull { it.id == down.id }
+                    } while (pointer != null && pointer.pressed &&
+                        (pointer.position - down.position).getDistance() <= viewConfiguration.touchSlop &&
+                        event.changes.count { it.pressed } == 1)
+                    true
+                }
+                if (releasedOrMoved == null) latestUnlock()
+            }
+        }.pointerInput(Unit) {
             detectTapGestures { revealLock() }
         } else Modifier
         Box(Modifier.fillMaxSize().then(lockedTaps), contentAlignment = Alignment.Center) {
@@ -387,10 +411,27 @@ fun ReaderScreen(
                 ready = topOverlay.isIdle && !topOverlay.currentState,
                 Modifier.align(Alignment.TopEnd)
                     .windowInsetsPadding(systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
-            ) {
-                snackbar.currentSnackbarData?.takeIf { it.visuals.message == lockedHint }?.dismiss()
-                changeChrome(chrome.unlock())
-            }
+                onUnlock = unlock,
+            )
+        }
+        if (chrome.locked) {
+            FirstRunTip(
+                "reader_lock",
+                stringResource(R.string.reader_tip_lock),
+                visible = active,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 72.dp),
+                alignment = Alignment.TopCenter,
+            )
+        } else {
+            FirstRunTip(
+                "reader_tap",
+                stringResource(R.string.reader_tip_tap),
+                visible = canImmerse && document != null && state.openError == null &&
+                    !state.restoring && !chrome.immersive && !searchMode && !showOutline && !showThumbnails,
+                modifier = Modifier.padding(horizontal = 16.dp)
+                    .padding(top = pagePadding.calculateTopPadding() + 12.dp),
+                alignment = Alignment.TopCenter,
+            )
         }
         SnackbarHost(
             snackbar,

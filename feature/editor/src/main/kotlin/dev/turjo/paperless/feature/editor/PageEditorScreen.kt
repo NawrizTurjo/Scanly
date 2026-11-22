@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
 import kotlinx.coroutines.delay
@@ -85,12 +86,19 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                 }
             } else {
                 when (tab) {
-                    EditorTab.Crop -> CropPanel(state, vm, enabled)
+                    EditorTab.Crop -> CropPanel(state, vm, enabled, showTip = !discard)
                     EditorTab.Filter, EditorTab.Rotate -> {
-                        FilterPreview(
-                            edits.applyTo(page), vm, enabled && tab == EditorTab.Filter,
-                            Modifier.weight(1f).fillMaxWidth().padding(12.dp),
-                        )
+                        Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+                            FilterPreview(
+                                edits.applyTo(page), vm, enabled && tab == EditorTab.Filter,
+                                Modifier.fillMaxSize(),
+                            )
+                            FirstRunTip(
+                                "filter_zoom",
+                                stringResource(R.string.editor_tip_filter),
+                                visible = tab == EditorTab.Filter && enabled && !discard,
+                            )
+                        }
 
                         if (tab == EditorTab.Filter) {
                             Text(
@@ -232,7 +240,7 @@ private fun clampPreviewOffset(offset: Offset, scale: Float, viewport: Size, asp
 }
 
 @Composable
-private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, enabled: Boolean) {
+private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, enabled: Boolean, showTip: Boolean) {
     val original = state.original
     val size = state.size
     val ready = original != null && size != null
@@ -249,6 +257,12 @@ private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, e
             }
         }
         if (state.detecting || state.loading) EditorProgress()
+        FirstRunTip(
+            "crop_handles",
+            stringResource(R.string.editor_tip_crop),
+            visible = enabled && ready && showTip,
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 48.dp),
+        )
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         TextButton(vm::autoCrop, enabled = enabled && ready) { Text(stringResource(R.string.editor_auto)) }
