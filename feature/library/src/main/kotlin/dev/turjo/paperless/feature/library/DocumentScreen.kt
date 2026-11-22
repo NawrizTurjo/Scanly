@@ -39,6 +39,7 @@ fun DocumentScreen(
     onOpenPage: (pageId: String) -> Unit,
     onAddPages: (documentId: String, insertAt: Int?) -> Unit,
     onExport: (documentId: String) -> Unit,
+    onOpenInReader: ((String) -> Unit)? = null,
 ) {
     val model = hiltViewModel<DocumentViewModel, DocumentViewModel.Factory>(key = documentId) {
         it.create(documentId)
@@ -140,6 +141,16 @@ fun DocumentScreen(
                     Box {
                         GlyphButton(R.string.detail_more_icon, stringResource(R.string.detail_more)) { moreMenu = true }
                         DropdownMenu(moreMenu, { moreMenu = false }) {
+                            if (onOpenInReader != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.detail_open_in_reader)) },
+                                    enabled = !state.savingOrder,
+                                    onClick = {
+                                        moreMenu = false
+                                        onOpenInReader(documentId)
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.library_duplicate)) },
                                 onClick = { moreMenu = false; model.duplicate() },

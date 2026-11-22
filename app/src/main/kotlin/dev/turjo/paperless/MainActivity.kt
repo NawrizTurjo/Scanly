@@ -1,5 +1,6 @@
 package dev.turjo.paperless
 
+import android.content.ContentResolver
 import android.content.Intent
 import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -56,7 +57,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setRecentsPreviewAllowed(false)
         val initialStack = startBackStack(intent.getStringExtra(ROUTE_EXTRA))
-        if (savedInstanceState == null) receiveShare(intent)
+        if (savedInstanceState == null) receiveFileIntent(intent)
 
         setContent {
             val storedSettings by model.settings.collectAsStateWithLifecycle()
@@ -85,7 +86,11 @@ class MainActivity : ComponentActivity() {
                     else -> {
                         SideEffect { attemptedUnlock = false }
                         navigationState.SaveableStateProvider("navigation") {
-                            ScanlyNavigation(initialStack, model.entries, model::documentOpened)
+                            val preparingPdf by model.preparingPdf.collectAsStateWithLifecycle()
+                            ScanlyNavigation(
+                                initialStack, model.entries, model::documentOpened,
+                                model::openDocumentInReader, model::openPdf, preparingPdf,
+                            )
                         }
                     }
                 }
@@ -95,7 +100,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (!receiveShare(intent)) model.openRoute(intent.getStringExtra(ROUTE_EXTRA))
+        if (!receiveFileIntent(intent)) model.openRoute(intent.getStringExtra(ROUTE_EXTRA))
     }
 
     override fun onStart() {
@@ -135,11 +140,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun receiveShare(intent: Intent): Boolean {
-        if (intent.action != Intent.ACTION_SEND && intent.action != Intent.ACTION_SEND_MULTIPLE) return false
-        val type = intent.type ?: return false
-        if (!type.startsWith("image/") && type != "application/pdf") return false
-        model.receiveShare(intent)
+    private fun receiveFileIntent(intent: Intent): Boolean {
+        val needsContentType = intent.action == Intent.ACTION_VIEW && intent.type == null &&
+            intent.scheme == ContentResolver.SCHEME_CONTENT
+        if (!needsContentType && !acceptsFileIntent(intent.action, intent.type)) return false
+        model.receiveFileIntent(intent)
         return true
     }
 

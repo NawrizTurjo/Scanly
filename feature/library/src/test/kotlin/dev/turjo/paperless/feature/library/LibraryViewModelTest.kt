@@ -1,15 +1,22 @@
 package dev.turjo.paperless.feature.library
 
+import android.net.Uri
+import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FolderRepository
+import dev.turjo.paperless.core.data.ReaderRepository
 import dev.turjo.paperless.core.model.DeletedDocument
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibraryFilter
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.core.model.RecentPdf
+import dev.turjo.paperless.core.model.TabState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
@@ -39,7 +46,7 @@ class LibraryViewModelTest {
     @Test
     fun stateReflectsInitialAndUpdatedLibrary() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val viewModel = LibraryViewModel(repository, TestFolders())
+        val viewModel = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
         val document = DocumentSummary("doc", "Receipt", 1, null, 100, true)
 
         viewModel.uiState.test {
@@ -52,9 +59,42 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun continueReadingShowsFiveReadableEntriesWithOneBasedClampedProgress() = runTest(dispatcher) {
+        val reader = TestReaderRepository()
+        val model = LibraryViewModel(FakeRepository(), TestFolders(), reader)
+        val pdfs = listOf(
+            RecentPdf(PdfKey("unknown"), "Unknown page count", 7, 0, 0),
+            RecentPdf(PdfKey("pdf"), "Manual", 6, 340, 11),
+            RecentPdf(PdfKey("doc:scan"), "Scan", 5, 10, 100),
+            RecentPdf(PdfKey("start"), "Start", 4, 10, -1),
+            RecentPdf(PdfKey("fourth"), "Fourth", 3, 20, 1),
+            RecentPdf(PdfKey("fifth"), "Fifth", 2, 20, 2),
+            RecentPdf(PdfKey("sixth"), "Sixth", 1, 20, 3),
+        )
+
+        try {
+            model.continueReading.test {
+                assertEquals(emptyList<ContinueReadingItem>(), awaitItem())
+                reader.recent.value = pdfs
+                val items = awaitItem()
+                assertEquals(pdfs.subList(1, 6).map(RecentPdf::pdfKey), items.map(ContinueReadingItem::pdfKey))
+                assertEquals("Manual", items.first().title)
+                assertEquals(340, items.first().pageCount)
+                assertEquals(listOf(12, 10, 1, 2, 3), items.map(ContinueReadingItem::page))
+                assertEquals(12f / 340, items.first().progress, 0.0001f)
+                assertEquals(1f, items[1].progress, 0.0001f)
+                reader.recent.value = emptyList()
+                assertEquals(emptyList<ContinueReadingItem>(), awaitItem())
+            }
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
     fun deletingSelectionEmitsUndoForExactlyThoseDocuments() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val model = LibraryViewModel(repository, TestFolders())
+        val model = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
         val first = DocumentSummary("first", "First", 1, null, 0, false)
         val second = first.copy(id = "second")
         val excluded = first.copy(id = "excluded")
@@ -79,7 +119,7 @@ class LibraryViewModelTest {
     @Test
     fun mixedSelectionFavouritesAllAndAllFavouritesAreCleared() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val model = LibraryViewModel(repository, TestFolders())
+        val model = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
         val first = DocumentSummary("first", "First", 1, null, 0, false)
         val second = first.copy(id = "second", isFavorite = true)
         model.toggleSelection(first)
@@ -99,7 +139,7 @@ class LibraryViewModelTest {
     @Test
     fun movesSelectionToExistingAndNewFolders() = runTest(dispatcher) {
         val folders = TestFolders()
-        val model = LibraryViewModel(FakeRepository(), folders)
+        val model = LibraryViewModel(FakeRepository(), folders, TestReaderRepository())
         val document = DocumentSummary("doc", "Receipt", 1, null, 0, false)
         model.toggleSelection(document)
         model.moveSelected("existing")
@@ -112,6 +152,18 @@ class LibraryViewModelTest {
         assertEquals("Receipts", folders.createdName)
         assertEquals(setOf("doc") to "new", folders.lastMove)
         assertEquals(emptyMap<String, Boolean>(), model.selection.value)
+    }
+
+    private class TestReaderRepository : ReaderRepository {
+        val recent = MutableStateFlow<List<RecentPdf>>(emptyList())
+
+        override fun observeRecent() = recent
+        override fun observeTabs() = error("Unexpected tab query")
+        override fun observeActiveTabId() = error("Unexpected active tab query")
+        override suspend fun saveTabs(tabs: List<TabState>, activeTabId: String?): Unit = error("Unexpected tab save")
+        override suspend fun registerExternal(uri: Uri, displayName: String): PdfKey = error("Unexpected registration")
+        override suspend fun pdfKeyForDocument(documentId: String): PdfKey = error("Unexpected export")
+        override suspend fun markOpened(key: PdfKey, pageCount: Int, lastPage: Int): Unit = error("Unexpected open")
     }
 
     internal open class FakeRepository : DocumentRepository {

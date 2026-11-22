@@ -15,6 +15,7 @@ import dev.turjo.paperless.core.pdf.PdfSessionManager
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,7 @@ class ReaderViewModel @Inject constructor(
     private class ReadingProgress(val count: Int, val page: Int)
 
     private val pendingProgress = MutableStateFlow<Map<PdfKey, ReadingProgress>>(emptyMap())
+    private val recentLoaded = CompletableDeferred<Unit>()
     private var savedTabs = emptyList<TabState>() to (null as String?)
 
     init {
@@ -68,8 +70,12 @@ class ReaderViewModel @Inject constructor(
         }
         viewModelScope.launch {
             attempt(ReaderError.OPEN) {
-                repository.observeRecent().collect { state.value = state.value.copy(recent = it) }
+                repository.observeRecent().collect {
+                    state.value = state.value.copy(recent = it)
+                    recentLoaded.complete(Unit)
+                }
             }
+            recentLoaded.complete(Unit)
         }
         viewModelScope.launch {
             state.map { current ->
@@ -135,6 +141,7 @@ class ReaderViewModel @Inject constructor(
 
     suspend fun open(key: PdfKey, title: String? = null, page: Int? = null) {
         state.first { !it.restoring }
+        if (page == null) recentLoaded.await()
         val current = state.value
         val existing = current.tabs.firstOrNull { it.pdfKey == key }
         if (existing != null) {

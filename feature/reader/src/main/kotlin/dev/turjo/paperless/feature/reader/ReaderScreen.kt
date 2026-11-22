@@ -68,13 +68,14 @@ import kotlinx.coroutines.withContext
 fun ReaderScreen(
     openRequest: PdfKey? = null,
     onOpenRequestConsumed: () -> Unit = {},
+    openRequestTitle: String? = null,
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val consumed by rememberUpdatedState(onOpenRequestConsumed)
     LaunchedEffect(openRequest) {
         if (openRequest != null) {
-            viewModel.open(openRequest)
+            viewModel.open(openRequest, title = openRequestTitle)
             consumed()
         }
     }

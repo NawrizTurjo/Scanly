@@ -1,9 +1,16 @@
 package dev.turjo.paperless
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -16,9 +23,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -30,6 +40,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import dev.turjo.paperless.core.designsystem.R as DesignR
+import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.feature.camera.CameraScreen
 import dev.turjo.paperless.feature.editor.PageEditorScreen
 import dev.turjo.paperless.feature.editor.ReviewScreen
@@ -53,6 +64,16 @@ import kotlinx.serialization.Serializable
 @Serializable data class ReviewRoute(val draftDocumentId: String) : Route
 @Serializable data class PageEditorRoute(val pageId: String) : Route
 @Serializable data class DocumentRoute(val documentId: String) : Route
+
+internal data class PendingPdf(val key: PdfKey, val title: String? = null)
+
+internal fun List<PendingPdf>.consumePdf(key: PdfKey?): List<PendingPdf> =
+    if (key != null && firstOrNull()?.key == key) drop(1) else this
+
+private val pendingPdfsSaver = listSaver<List<PendingPdf>, String>(
+    save = { requests -> requests.flatMap { listOf(it.key.value, it.title.orEmpty()) } },
+    restore = { saved -> saved.chunked(2).map { PendingPdf(PdfKey(it[0]), it[1].ifEmpty { null }) } },
+)
 
 private enum class Tab(val route: Route, val label: Int, val icon: Int) {
     LIBRARY(LibraryRoute, R.string.tab_library, DesignR.drawable.ic_library),
@@ -82,17 +103,31 @@ internal fun ScanlyNavigation(
     initialStack: List<Route>,
     entries: Flow<EntryEvent>,
     onDocumentOpened: (String) -> Unit,
+    onOpenDocumentInReader: (String) -> Unit,
+    onOpenPdf: (PdfKey) -> Unit,
+    preparingPdf: Boolean,
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val resources = LocalResources.current
+    var pendingPdfs by rememberSaveable(stateSaver = pendingPdfsSaver) {
+        mutableStateOf(emptyList<PendingPdf>())
+    }
+    val pendingPdfKey = pendingPdfs.firstOrNull()?.key
+    val pendingPdfTitle = pendingPdfs.firstOrNull()?.title
     LaunchedEffect(entries, resources) {
         entries.collect { event ->
             when (val route = event.route) {
                 is ReviewRoute -> backStack.showReview(route.draftDocumentId)
                 null -> Unit
                 else -> backStack.replaceAll(LibraryRoute, route)
+            }
+            event.pdfKey?.let { key ->
+                if (pendingPdfs.none { it.key == key }) pendingPdfs += PendingPdf(key, event.pdfTitle)
+                if (backStack.size != 1 || backStack.lastOrNull() != ReaderRoute) {
+                    backStack.replaceAll(ReaderRoute)
+                }
             }
             event.message?.let { message ->
                 scope.launch { snackbar.showSnackbar(resources.getString(message)) }
@@ -139,9 +174,16 @@ internal fun ScanlyNavigation(
                     LibraryScreen(
                         onScan = { backStack.add(CameraRoute()) },
                         onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                        onOpenRecent = onOpenPdf,
                     )
                 }
-                entry<ReaderRoute> { ReaderScreen() }
+                entry<ReaderRoute> {
+                    ReaderScreen(
+                        openRequest = pendingPdfKey,
+                        onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
+                        openRequestTitle = pendingPdfTitle,
+                    )
+                }
                 entry<ToolsRoute> { ToolsScreen() }
                 entry<SettingsRoute> { SettingsScreen() }
                 entry<CameraRoute> { key ->
@@ -173,10 +215,23 @@ internal fun ScanlyNavigation(
                         onOpenPage = { backStack.add(PageEditorRoute(it)) },
                         onAddPages = { id, insertAt -> backStack.add(CameraRoute(targetDocumentId = id, insertAt = insertAt)) },
                         onExport = { exportDocumentId = it },
+                        onOpenInReader = onOpenDocumentInReader,
                     )
                 }
             },
         )
+    }
+    if (preparingPdf) {
+        Surface(Modifier.fillMaxWidth().safeDrawingPadding(), tonalElevation = 4.dp) {
+            Row(
+                Modifier.padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp))
+                Text(stringResource(R.string.pdf_preparing))
+            }
+        }
     }
     exportDocumentId?.let { id -> ExportSheet(documentId = id, onDismiss = { exportDocumentId = null }) }
 }

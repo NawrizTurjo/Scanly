@@ -9,7 +9,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
@@ -36,6 +39,7 @@ import coil3.compose.AsyncImage
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibrarySort
+import dev.turjo.paperless.core.model.PdfKey
 import java.io.File
 import dev.turjo.paperless.core.designsystem.R as DesignR
 
@@ -45,9 +49,11 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
     onScan: () -> Unit = {},
     onOpenDocument: (String) -> Unit = {},
+    onOpenRecent: ((PdfKey) -> Unit)? = null,
 ) {
     val model: LibraryViewModel = hiltViewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
+    val recent by model.continueReading.collectAsStateWithLifecycle()
     val filter by model.filter.collectAsStateWithLifecycle()
     val selection by model.selection.collectAsStateWithLifecycle()
     val listLayout by model.listLayout.collectAsStateWithLifecycle()
@@ -214,13 +220,15 @@ fun LibraryScreen(
         },
     ) { padding ->
         val content = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+        val showRecent = onOpenRecent != null && recent.isNotEmpty() && !folderMode && !selecting &&
+            filter.folderId == null && filter.query.isBlank() && !filter.favouritesOnly
         val visibleFolders = if (folderMode && filter.query.isBlank()) childFolders else emptyList()
         when {
             bin -> RecycleBin(content, deleted, model::restore, model::deleteForever)
             !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId) -> Box(content, contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            visibleFolders.isEmpty() && (folderGrid || state.documents.isEmpty()) -> {
+            !showRecent && visibleFolders.isEmpty() && (folderGrid || state.documents.isEmpty()) -> {
                 if (!folderMode && filter.query.isBlank() && !filter.favouritesOnly) EmptyLibrary(content)
                 else Box(content, contentAlignment = Alignment.Center) {
                     val label = if (folderGrid) R.string.library_no_folders else R.string.no_documents
@@ -235,6 +243,11 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (showRecent) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            ContinueReadingRow(recent, onOpenRecent)
+                        }
+                    }
                     items(visibleFolders, key = { "folder-" + it.folder.id }) { summary ->
                         FolderCard(
                             summary,
@@ -310,6 +323,27 @@ private fun LibraryMenu(label: Int, items: @Composable ColumnScope.(() -> Unit) 
             TextButton(onClick = { open = true }) { Text(stringResource(label)) }
         }
         DropdownMenu(open, { open = false }) { items { open = false } }
+    }
+}
+
+@Composable
+private fun ContinueReadingRow(recent: List<ContinueReadingItem>, onOpen: (PdfKey) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.library_continue_reading), style = MaterialTheme.typography.titleMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(recent, key = { it.pdfKey.value }) { pdf ->
+                Card(onClick = { onOpen(pdf.pdfKey) }, modifier = Modifier.width(176.dp)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(pdf.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            stringResource(R.string.library_reading_page, pdf.page, pdf.pageCount),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        LinearProgressIndicator(progress = { pdf.progress }, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
     }
 }
 

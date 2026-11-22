@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FolderRepository
+import dev.turjo.paperless.core.data.ReaderRepository
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.LibraryFilter
+import dev.turjo.paperless.core.model.PdfKey
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +33,15 @@ internal data class LibraryUiState(
     val filter: LibraryFilter = LibraryFilter(),
 )
 
+internal data class ContinueReadingItem(
+    val pdfKey: PdfKey,
+    val title: String,
+    val page: Int,
+    val pageCount: Int,
+) {
+    val progress: Float get() = page.toFloat() / pageCount
+}
+
 internal sealed interface LibraryNotice {
     data class Deleted(val ids: Set<String>) : LibraryNotice
     data object Error : LibraryNotice
@@ -41,6 +52,7 @@ internal sealed interface LibraryNotice {
 internal class LibraryViewModel @Inject constructor(
     private val documents: DocumentRepository,
     private val folders: FolderRepository,
+    reader: ReaderRepository,
 ) : ViewModel() {
     private val mutableFilter = MutableStateFlow(LibraryFilter())
     val filter = mutableFilter.asStateFlow()
@@ -57,6 +69,11 @@ internal class LibraryViewModel @Inject constructor(
             LibraryUiState(documents = it, isLoading = false, filter = active)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
+    val continueReading = reader.observeRecent().map { recent ->
+        recent.asSequence().filter { it.pageCount > 0 }.take(5).map {
+            ContinueReadingItem(it.pdfKey, it.title, it.lastPage.coerceIn(0, it.pageCount - 1) + 1, it.pageCount)
+        }.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val folderList = folders.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val deleted = documents.observeDeleted()
