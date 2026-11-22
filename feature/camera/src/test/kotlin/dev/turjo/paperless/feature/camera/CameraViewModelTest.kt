@@ -226,6 +226,31 @@ class CameraViewModelTest {
         assertEquals(CameraEvent.Error, model.events.first())
     }
 
+    @Test fun confirmedDeletionRemovesOnlyTheSelectedPage() = runTest {
+        sessions.current = session
+        val pages = List(3) { documents.addExistingPage().id }
+        createModel()
+        runCurrent()
+
+        model.requestPageDeletion(pages[1])
+        assertEquals(pages[1], model.state.value.pageToDelete)
+        assertFalse(model.state.value.canEdit)
+        assertEquals(pages, model.state.value.pageIds)
+        model.dismissPageDeletion()
+        model.confirmPageDeletion()
+        runCurrent()
+        assertEquals(pages, model.state.value.pageIds)
+        assertTrue(steps.isEmpty())
+
+        model.requestPageDeletion(pages[1])
+        model.confirmPageDeletion()
+        runCurrent()
+
+        assertEquals(listOf("idle"), steps)
+        assertEquals(listOf(pages.first(), pages.last()), model.state.value.pageIds)
+        assertTrue(model.state.value.canEdit)
+    }
+
     @Test fun emptyCloseDiscardsWithoutPrompt() = runTest {
         createModel()
         runCurrent()
@@ -447,7 +472,10 @@ class CameraViewModelTest {
                 pages.getValue(id).copy(index = index)
             })
         }
-        override suspend fun deletePage(pageId: String): Unit = unused()
+        override suspend fun deletePage(pageId: String) {
+            val remaining = draft.value.pages.filterNot { it.id == pageId }
+            draft.value = draft.value.copy(pages = remaining.mapIndexed { index, page -> page.copy(index = index) })
+        }
         override suspend fun rotatePage(pageId: String, delta: Int): Unit = unused()
         override suspend fun rename(id: String, title: String): Unit = unused()
         override suspend fun setFavorite(id: String, isFavorite: Boolean): Unit = unused()

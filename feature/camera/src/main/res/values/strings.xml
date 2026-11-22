@@ -9,6 +9,9 @@
     <string name="camera_capture">Capture page</string>
     <string name="camera_gallery">Import images</string>
     <string name="camera_review">Review scanned pages</string>
+    <string name="camera_page_number">Page %1$d</string>
+    <string name="camera_delete_page">Delete</string>
+    <string name="camera_delete_page_title">Delete page %1$d?</string>
     <string name="camera_importing">Importing images</string>
     <string name="camera_permission_title">Camera access</string>
     <string name="camera_permission_message">Allow camera access to scan pages.</string>

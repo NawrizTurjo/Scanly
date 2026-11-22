@@ -65,6 +65,7 @@ internal data class CameraState(
     val importing: Boolean = false,
     val closing: Boolean = false,
     val confirmDiscard: Boolean = false,
+    val pageToDelete: String? = null,
     val pendingScan: PendingScan? = null,
     val confirmDiscardPrevious: Boolean = false,
     val confirmDuplexMismatch: Boolean = false,
@@ -74,7 +75,7 @@ internal data class CameraState(
     val autoCapture: Boolean = false,
     val autoCaptureProgress: Float? = null,
 ) {
-    val canEdit get() = ready && !capturing && !importing && !closing && !confirmDiscard && !confirmDuplexMismatch
+    val canEdit get() = ready && !capturing && !importing && !closing && !confirmDiscard && !confirmDuplexMismatch && pageToDelete == null
 }
 
 internal sealed interface CameraEvent {
@@ -330,6 +331,32 @@ internal class CameraViewModel internal constructor(
     fun review() {
         val current = state.value
         if (current.canEdit && !current.idBack && current.pageIds.isNotEmpty()) prepareReview()
+    }
+
+    fun requestPageDeletion(pageId: String) {
+        val current = state.value
+        if (current.canEdit && !current.idBack && pageId in current.pageIds) {
+            mutableState.update { it.copy(pageToDelete = pageId) }
+        }
+    }
+
+    fun dismissPageDeletion() {
+        mutableState.update { it.copy(pageToDelete = null) }
+    }
+
+    fun confirmPageDeletion() {
+        val pageId = state.value.pageToDelete ?: return
+        mutableState.update { it.copy(pageToDelete = null, closing = true) }
+        viewModelScope.launch {
+            try {
+                reportErrors {
+                    processing.awaitIdle(latestPageIds())
+                    if (pageId in latestPageIds()) documents.deletePage(pageId)
+                }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
     }
 
     fun close() {
