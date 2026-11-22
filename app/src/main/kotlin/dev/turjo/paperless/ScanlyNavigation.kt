@@ -43,6 +43,7 @@ import dev.turjo.paperless.core.designsystem.R as DesignR
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.feature.camera.CameraScreen
 import dev.turjo.paperless.feature.editor.PageEditorScreen
+import dev.turjo.paperless.feature.editor.PageViewerScreen
 import dev.turjo.paperless.feature.editor.ReviewScreen
 import dev.turjo.paperless.feature.export.ExportSheet
 import dev.turjo.paperless.feature.library.DocumentScreen
@@ -62,6 +63,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object SettingsRoute : Route
 @Serializable data class CameraRoute(val targetDocumentId: String? = null, val insertAt: Int? = null, val single: Boolean = false) : Route
 @Serializable data class ReviewRoute(val draftDocumentId: String) : Route
+@Serializable data class PageViewerRoute(val documentId: String, val startPageId: String) : Route
 @Serializable data class PageEditorRoute(val pageId: String) : Route
 @Serializable data class DocumentRoute(val documentId: String) : Route
 
@@ -201,10 +203,18 @@ internal fun ScanlyNavigation(
                 entry<ReviewRoute> { key ->
                     ReviewScreen(
                         draftDocumentId = key.draftDocumentId,
-                        onEditPage = { backStack.add(PageEditorRoute(it)) },
+                        onViewPage = { backStack.add(PageViewerRoute(key.draftDocumentId, it)) },
                         onAddMore = { backStack.add(CameraRoute()) },
                         onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
                         onBack = { backStack.removeAt(backStack.lastIndex) },
+                    )
+                }
+                entry<PageViewerRoute> { key ->
+                    PageViewerScreen(
+                        documentId = key.documentId,
+                        startPageId = key.startPageId,
+                        onBack = { if (backStack.lastOrNull() == key) backStack.removeAt(backStack.lastIndex) },
+                        onEdit = { if (backStack.lastOrNull() == key) backStack.add(PageEditorRoute(it)) },
                     )
                 }
                 entry<PageEditorRoute> { key ->
@@ -215,7 +225,7 @@ internal fun ScanlyNavigation(
                     DocumentScreen(
                         documentId = key.documentId,
                         onBack = { backStack.removeAt(backStack.lastIndex) },
-                        onOpenPage = { backStack.add(PageEditorRoute(it)) },
+                        onViewPage = { backStack.add(PageViewerRoute(key.documentId, it)) },
                         onAddPages = { id, insertAt -> backStack.add(CameraRoute(targetDocumentId = id, insertAt = insertAt)) },
                         onExport = { exportDocumentId = it },
                         onOpenInReader = onOpenDocumentInReader,

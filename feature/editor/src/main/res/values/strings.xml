@@ -79,4 +79,10 @@
         <item quantity="other">Document %1$d · %2$d pages</item>
     </plurals>
     <string name="review_empty">No pages yet. Add a page to continue.</string>
+    <string name="viewer_page_position">Page %1$d of %2$d</string>
+    <string name="viewer_edit">Edit</string>
+    <string name="viewer_rotate">Rotate</string>
+    <string name="viewer_delete_title">Delete page?</string>
+    <string name="viewer_delete_body">This page will be removed. If it is the only page of a saved document, the document moves to the recycle bin.</string>
+    <string name="viewer_change_failed">Could not update the page.</string>
 </resources>
