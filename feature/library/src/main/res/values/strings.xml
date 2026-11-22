@@ -91,4 +91,9 @@
     <string name="detail_open_in_reader">Open in Reader</string>
     <string name="library_continue_reading">Continue reading</string>
     <string name="library_reading_page">p. %1$d of %2$d</string>
+    <string name="library_unsaved_scan">Unsaved scan · %1$s · %2$s</string>
+    <string name="library_continue_scan">Continue</string>
+    <string name="library_discard_scan">Discard</string>
+    <string name="library_discard_scan_title">Discard unsaved scan?</string>
+    <string name="library_discard_scan_message">Its pages will be permanently deleted.</string>
 </resources>

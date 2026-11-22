@@ -14,4 +14,5 @@
     <string name="pdf_default_title">PDF</string>
     <string name="pdf_preparing">Preparing PDF…</string>
     <string name="share_import_error">Some shared images could not be imported.</string>
+    <string name="share_previous_scan_saved">Previous unsaved scan saved to Library</string>
 </resources>

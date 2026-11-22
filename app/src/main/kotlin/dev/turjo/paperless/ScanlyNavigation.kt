@@ -61,7 +61,12 @@ import kotlinx.serialization.Serializable
 @Serializable data object ReaderRoute : Route
 @Serializable data object ToolsRoute : Route
 @Serializable data object SettingsRoute : Route
-@Serializable data class CameraRoute(val targetDocumentId: String? = null, val insertAt: Int? = null, val single: Boolean = false) : Route
+@Serializable data class CameraRoute(
+    val targetDocumentId: String? = null,
+    val insertAt: Int? = null,
+    val single: Boolean = false,
+    val resumeDraftId: String? = null,
+) : Route
 @Serializable data class ReviewRoute(val draftDocumentId: String) : Route
 @Serializable data class PageViewerRoute(val documentId: String, val startPageId: String) : Route
 @Serializable data class PageEditorRoute(val pageId: String) : Route
@@ -123,7 +128,10 @@ internal fun ScanlyNavigation(
     LaunchedEffect(entries, resources) {
         entries.collect { event ->
             when (val route = event.route) {
-                is ReviewRoute -> backStack.showReview(route.draftDocumentId)
+                is ReviewRoute -> {
+                    if (event.previousScanSaved) backStack.replaceAll(LibraryRoute, route)
+                    else backStack.showReview(route.draftDocumentId)
+                }
                 null -> Unit
                 else -> backStack.replaceAll(LibraryRoute, route)
             }
@@ -133,8 +141,11 @@ internal fun ScanlyNavigation(
                     backStack.replaceAll(ReaderRoute)
                 }
             }
-            event.message?.let { message ->
-                scope.launch { snackbar.showSnackbar(resources.getString(message)) }
+            scope.launch {
+                if (event.previousScanSaved) {
+                    snackbar.showSnackbar(resources.getString(R.string.share_previous_scan_saved))
+                }
+                event.message?.let { snackbar.showSnackbar(resources.getString(it)) }
             }
         }
     }
@@ -178,6 +189,7 @@ internal fun ScanlyNavigation(
                     LibraryScreen(
                         onScan = { backStack.add(CameraRoute()) },
                         onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                        onOpenDraft = { backStack.showReview(it) },
                         onOpenRecent = onOpenPdf,
                         onOpenPdfAtPage = onOpenPdfAtPage,
                     )
@@ -196,6 +208,7 @@ internal fun ScanlyNavigation(
                         targetDocumentId = key.targetDocumentId,
                         insertAt = key.insertAt,
                         singleMode = key.single,
+                        resumeDraftId = key.resumeDraftId,
                         onReview = { draftId -> backStack.showReview(draftId) },
                         onClose = { backStack.removeAt(backStack.lastIndex) },
                     )
@@ -204,7 +217,7 @@ internal fun ScanlyNavigation(
                     ReviewScreen(
                         draftDocumentId = key.draftDocumentId,
                         onViewPage = { backStack.add(PageViewerRoute(key.draftDocumentId, it)) },
-                        onAddMore = { backStack.add(CameraRoute()) },
+                        onAddMore = { backStack.add(CameraRoute(resumeDraftId = key.draftDocumentId)) },
                         onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
                         onBack = { backStack.removeAt(backStack.lastIndex) },
                     )

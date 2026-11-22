@@ -111,6 +111,9 @@ interface ScanSessionDao {
     @Insert
     suspend fun insert(session: ScanSessionEntity)
 
+    @Update
+    suspend fun update(session: ScanSessionEntity)
+
     @Query("DELETE FROM scan_sessions WHERE id = :id")
     suspend fun delete(id: String)
 }

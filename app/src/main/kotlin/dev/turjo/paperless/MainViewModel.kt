@@ -43,6 +43,7 @@ internal data class EntryEvent(
     val message: Int? = null,
     val pdfKey: PdfKey? = null,
     val pdfTitle: String? = null,
+    val previousScanSaved: Boolean = false,
 )
 
 @HiltViewModel
@@ -104,6 +105,7 @@ class MainViewModel @Inject constructor(
                     entryEvents.send(EntryEvent(
                         route = result.draftId?.let(::ReviewRoute),
                         message = R.string.share_import_error.takeIf { result.hadErrors },
+                        previousScanSaved = result.previousScanSaved,
                     ))
                 }
             }
