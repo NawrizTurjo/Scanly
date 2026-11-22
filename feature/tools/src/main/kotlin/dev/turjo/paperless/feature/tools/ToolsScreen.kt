@@ -1,66 +1,356 @@
 package dev.turjo.paperless.feature.tools
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import android.Manifest
+import android.app.Application
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import dev.turjo.paperless.core.pdf.ShareIntents
+import dev.turjo.paperless.core.pdf.tools.*
+import java.io.File
+import kotlinx.coroutines.CancellationException
+import kotlin.math.roundToInt
 
-private val tools = listOf(
-    R.string.tool_merge,
-    R.string.tool_split,
-    R.string.tool_page_edits,
-    R.string.tool_compress,
-    R.string.tool_same_width,
-    R.string.tool_print_layout,
-    R.string.tool_page_numbers,
-    R.string.tool_password,
-    R.string.tool_metadata,
-    R.string.tool_sanitize,
-    R.string.tool_grayscale,
-    R.string.tool_images_to_pdf,
-    R.string.tool_pdf_to_images,
-    R.string.tool_batch,
-)
+private val batchTools = listOf(Tool.COMPRESS, Tool.WIDTH, Tool.GRAYSCALE, Tool.NUMBERS, Tool.SANITIZE, Tool.PASSWORD, Tool.MERGE)
+private val pdf = arrayOf("application/pdf")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ToolsScreen(modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(stringResource(R.string.tools_title)) })
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 160.dp),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(tools, key = { it }) { title ->
-                OutlinedCard(onClick = {}, enabled = false) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            stringResource(R.string.coming_soon),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+fun ToolsScreen(onOpenPdf: (File) -> Unit = {}) {
+    val context = LocalContext.current
+    val model: ToolsModel = viewModel(factory = viewModelFactory {
+        initializer { ToolsModel(context.applicationContext as Application) }
+    })
+    val state by model.state.collectAsStateWithLifecycle()
+    val tool = state.tool
+    BackHandler(tool != null, model::back)
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(stringResource(tool?.title ?: R.string.tools_title)) },
+            navigationIcon = { if (tool != null) TextButton(onClick = model::back) { Text("Back") } },
+        )
+        if (tool == null) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(160.dp),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(Tool.entries, key = { it.name }) { item ->
+                    OutlinedCard(onClick = { model.select(item) }) {
+                        Text(stringResource(item.title), Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
+        } else {
+            ToolFlow(tool, state, model, onOpenPdf)
+        }
+    }
+}
+
+@Composable
+private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (File) -> Unit) {
+    val context = LocalContext.current
+    var batchTool by rememberSaveable { mutableStateOf(Tool.COMPRESS) }
+    val operation = if (tool == Tool.BATCH) batchTool else tool
+    val single = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { model.pick(listOf(it)) }
+    }
+    val multiple = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), model::pick)
+    val photo = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(), model::pick)
+    val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let { model.pickFolder(it) }
+    }
+    var insertAt by rememberSaveable { mutableIntStateOf(-1) }
+    var insertRange by rememberSaveable { mutableStateOf("") }
+    val insert = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { model.insert(it, insertAt, insertRange) }
+        insertAt = -1
+    }
+    val notes = state.details.firstOrNull()?.metadata
+    val options = remember(state.inputs, operation, notes) {
+        mutableStateMapOf<String, String>().apply {
+            notes?.let {
+                put("Title", it.title.orEmpty())
+                put("Author", it.author.orEmpty())
+                put("Subject", it.subject.orEmpty())
+                put("Keywords", it.keywords.orEmpty())
+            }
+        }
+    }
+    val selection = remember(state.inputs, operation) { mutableStateListOf<Int>() }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        model.startBatch(operation, options.toMap())
+        options.remove("Password")
+    }
+    val share: (List<Output>) -> Unit = { outputs ->
+        model.shareable(outputs) { files ->
+            val mimes = files.map { it.imageMime() ?: "application/pdf" }.distinct()
+            context.startActivity(ShareIntents.forFiles(context, files, mimes.singleOrNull() ?: "*/*"))
+        }
+    }
+
+    if (insertAt >= 0) {
+        AlertDialog(
+            onDismissRequest = { insertAt = -1 },
+            title = { Text("Insert pages") },
+            text = {
+                OutlinedTextField(insertRange, { insertRange = it },
+                    label = { Text("Page ranges (blank for all pages)") }, singleLine = true)
+            },
+            confirmButton = { TextButton(onClick = { insert.launch(pdf) }) { Text("Choose PDF") } },
+            dismissButton = { TextButton(onClick = {
+                model.run(emptyMap(), listOf(PageOp.InsertBlank(insertAt)))
+                insertAt = -1
+            }) { Text("Insert blank page") } },
+        )
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        state.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
+        state.message?.let { message -> item { Text(message) } }
+        when {
+            state.busy -> item {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                TextButton(onClick = model::back) { Text("Cancel") }
+            }
+            state.batchId != null -> {
+                if (state.batchRunning) item {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("${state.batchItems.size} files processed")
+                    TextButton(onClick = model::stopBatch, enabled = !state.stopping) {
+                        Text(if (state.stopping) "Stopping after current file" else "Cancel")
+                    }
+                }
+                items(state.batchItems) { entry ->
+                    val status = when (entry.status) {
+                        BatchStatus.DONE -> "✓ Done"
+                        BatchStatus.SKIPPED -> "– Skipped"
+                        BatchStatus.FAILED -> "✗ Failed"
+                    }
+                    Text("${entry.name} · $status")
+                    entry.reason?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    entry.outputs.forEach { ResultFile(it, model, share, open) }
+                }
+            }
+            state.outputs.isNotEmpty() -> {
+                items(state.outputs) {
+                    if (tool == Tool.COMPRESS) {
+                        val before = state.inputBytes
+                        if (before != null) {
+                            val from = android.text.format.Formatter.formatFileSize(context, before)
+                            val to = android.text.format.Formatter.formatFileSize(context, it.bytes)
+                            Text("$from → $to")
+                        }
+                    }
+                    ResultFile(it, model, share, open)
+                }
+                if (state.outputs.size > 1) item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { share(state.outputs) }) { Text("Share all") }
+                        OutlinedButton(onClick = { model.save(state.outputs) }) { Text("Save all") }
+                    }
+                }
+            }
+            state.inputs.isEmpty() -> item {
+                Button(onClick = {
+                    when (tool) {
+                        Tool.FROM_IMAGES -> photo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        Tool.MERGE, Tool.WIDTH, Tool.BATCH -> multiple.launch(pdf)
+                        else -> single.launch(pdf)
+                    }
+                }) {
+                    Text(when (tool) {
+                        Tool.FROM_IMAGES -> "Choose photos"
+                        Tool.MERGE, Tool.WIDTH, Tool.BATCH -> "Choose PDFs"
+                        else -> "Choose PDF"
+                    })
+                }
+                if (tool == Tool.BATCH) {
+                    OutlinedButton(onClick = { folder.launch(null) }) { Text("Choose folder") }
+                    TextButton(onClick = model::latestBatch) { Text("Latest batch job") }
+                }
+            }
+            state.locked != null -> item {
+                var password by remember(state.locked) { mutableStateOf("") }
+                Text("${state.inputs[checkNotNull(state.locked)].name} is password-protected")
+                OutlinedTextField(password, { password = it }, label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                Button(onClick = { model.unlock(password) }) {
+                    Text(if (tool == Tool.PASSWORD) "Remove password" else "Unlock")
+                }
+            }
+            else -> {
+                items(state.inputs.size) { index ->
+                    val input = state.inputs[index]
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(input.name)
+                            if (tool == Tool.WIDTH) {
+                                val widths = state.details.getOrNull(index)?.widths.orEmpty()
+                                Text(widths.groupingBy { it.roundToInt() }.eachCount().entries
+                                    .sortedByDescending { it.value }.joinToString(", ") { (width, count) ->
+                                        "$count ${if (count == 1) "page" else "pages"} at $width pt"
+                                    })
+                            }
+                        }
+                        if (tool == Tool.MERGE || tool == Tool.FROM_IMAGES) {
+                            TextButton(onClick = { model.move(index, -1) }, enabled = index > 0) { Text("Up") }
+                            TextButton(onClick = { model.move(index, 1) }, enabled = index < state.inputs.lastIndex) { Text("Down") }
+                        }
+                    }
+                }
+                if (tool == Tool.BATCH) item {
+                    val names = batchTools.associateWith { stringResource(it.title) }
+                    Choice("Operation", batchTool, batchTools, { names.getValue(it) }) { batchTool = it }
+                    if (batchTool == Tool.MERGE) Text("PDFs are merged in name order.")
+                }
+                val pageCount = state.details.firstOrNull()?.widths?.size ?: 0
+                item { ToolOptions(operation, options, pageCount, tool == Tool.BATCH) }
+                val pickPages = tool == Tool.SPLIT && options["Split by"] == "Pick pages"
+                if (tool == Tool.PAGES || pickPages) {
+                    val input = state.inputs.first().file
+                    if (tool == Tool.PAGES) item {
+                        PageEditActions(selection.toList(), pageCount, model)
+                        TextButton(onClick = { insertRange = ""; insertAt = 0 }) { Text("+ Insert before page 1") }
+                    }
+                    items((pageCount + 2) / 3) { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (index in row * 3 until minOf(pageCount, row * 3 + 3)) {
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    PageTile(input, index, index in selection) {
+                                        if (!selection.remove(index)) selection.add(index)
+                                    }
+                                    if (tool == Tool.PAGES) TextButton(onClick = { insertRange = ""; insertAt = index + 1 }) {
+                                        Text("+ Insert")
+                                    }
+                                }
+                            }
+                            repeat((3 - (pageCount - row * 3)).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                if (tool != Tool.PAGES) item {
+                    Button(
+                        enabled = (!pickPages || selection.isNotEmpty()) &&
+                            (operation != Tool.MERGE || state.inputs.size >= 2) &&
+                            (tool == Tool.BATCH || tool == Tool.FROM_IMAGES || state.details.size == state.inputs.size),
+                        onClick = {
+                            val chosen = options.toMap()
+                            if (tool == Tool.BATCH) {
+                                if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
+                                        Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                    permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    model.startBatch(operation, chosen)
+                                    options.remove("Password")
+                                }
+                            } else {
+                                model.run(if (pickPages) chosen + ("Pages" to selection.sorted().joinToString { "${it + 1}" }) else chosen)
+                                options.remove("Password")
+                            }
+                        },
+                    ) { Text(if (tool == Tool.BATCH) "Start batch" else "Run") }
+                    if (tool == Tool.PRINT) OutlinedButton(onClick = {
+                        model.run(options.toMap() + ("Test sheet" to "true"))
+                    }) { Text("Print test sheet") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultFile(output: Output, model: ToolsModel, share: (List<Output>) -> Unit, open: (File) -> Unit) {
+    val context = LocalContext.current
+    val image = output.file.imageMime() != null
+    Column {
+        Text(output.file.name, style = MaterialTheme.typography.titleMedium)
+        Text(android.text.format.Formatter.formatFileSize(context, output.bytes))
+        output.note?.let { Text(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { share(listOf(output)) }) { Text("Share") }
+            TextButton(onClick = { model.save(listOf(output)) }) { Text("Save") }
+            if (!image) TextButton(onClick = { open(output.file) }) { Text("Open in Reader") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PageTile(file: File, index: Int, selected: Boolean, click: () -> Unit) {
+    val bitmap by produceState<Bitmap?>(null, file, index) {
+        try {
+            value = thumbnail(file, index)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            value = null
+        }
+    }
+    FilterChip(selected, click, label = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            bitmap?.let { Image(it.asImageBitmap(), null, Modifier.height(96.dp)) }
+            Text("Page ${index + 1}")
+        }
+    })
+}
+
+@Composable
+private fun PageEditActions(selected: List<Int>, count: Int, model: ToolsModel) {
+    var destination by rememberSaveable { mutableStateOf("") }
+    val at = destination.toIntOrNull()?.minus(1)
+    val pages = selected.toSet()
+    Column {
+        Row {
+            TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Delete(pages))) },
+                enabled = pages.isNotEmpty() && pages.size < count) { Text("Delete") }
+            TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Extract(selected.sorted()))) },
+                enabled = pages.isNotEmpty()) { Text("Extract") }
+            TextButton(onClick = { model.run(emptyMap(), selected.sortedDescending().map { PageOp.Duplicate(it) }) },
+                enabled = pages.isNotEmpty()) { Text("Duplicate") }
+        }
+        Row {
+            TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Rotate(pages, -90))) },
+                enabled = pages.isNotEmpty()) { Text("Rotate left") }
+            TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Rotate(pages, 90))) },
+                enabled = pages.isNotEmpty()) { Text("Rotate right") }
+        }
+        if (selected.size == 1 && count > 1) {
+            OutlinedTextField(destination, { destination = it }, singleLine = true, label = { Text("New page position") })
+            TextButton(enabled = at != null && at in 0 until count, onClick = {
+                val order = (0 until count).toMutableList()
+                order.add(checkNotNull(at), order.removeAt(selected.single()))
+                model.run(emptyMap(), listOf(PageOp.Reorder(order)))
+            }) { Text("Move page") }
         }
     }
 }
