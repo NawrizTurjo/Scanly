@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -143,6 +144,7 @@ internal fun AnnotationOverlay(
     transform: PageTransform,
     layer: AnnotationLayer,
     onGesture: AnnotationGesture?,
+    night: Boolean,
 ) {
     val mapping by rememberUpdatedState(transform)
     val commit by rememberUpdatedState(onGesture)
@@ -186,9 +188,9 @@ internal fun AnnotationOverlay(
     } else Modifier
 
     Canvas(Modifier.fillMaxSize().then(gestures)) {
-        pageMarks.forEach { drawAnnotation(it, transform) }
+        pageMarks.forEach { drawAnnotation(it, transform, night) }
         if (preview.isNotEmpty()) {
-            drawAnnotation(Annotation("", PdfKey(""), page, checkNotNull(tool.type), color, width, preview), transform)
+            drawAnnotation(Annotation("", PdfKey(""), page, checkNotNull(tool.type), color, width, preview), transform, night)
         }
     }
     noteAnchor?.let { point ->
@@ -209,28 +211,40 @@ internal fun AnnotationOverlay(
 
 }
 
-private fun DrawScope.drawAnnotation(mark: Annotation, transform: PageTransform) {
+private fun DrawScope.drawAnnotation(mark: Annotation, transform: PageTransform, night: Boolean) {
     fun point(x: Float, y: Float) = Offset(transform.mapX(x), transform.mapY(y))
     val color = Color(mark.color).let { if (mark.type == AnnotationType.HIGHLIGHT) it.copy(alpha = 0.35f) else it }
+    // Dark marks need a light edge against inverted paper to retain their original color.
+    val edge = if (night && color.luminance() < 0.12f) 1.dp.toPx() else 0f
+    val edgeColor = Color.White.copy(alpha = 0.75f)
     val width = transform.mapX(mark.width) - transform.mapX(0f)
     for (rect in mark.rects) {
         val bounds = transform.map(rect)
         if (mark.type == AnnotationType.HIGHLIGHT) {
-            drawRect(color, Offset(bounds.left, bounds.top), Size(bounds.right - bounds.left, bounds.bottom - bounds.top))
+            val topLeft = Offset(bounds.left, bounds.top)
+            val size = Size(bounds.right - bounds.left, bounds.bottom - bounds.top)
+            drawRect(color, topLeft, size)
+            if (edge > 0f) drawRect(edgeColor, topLeft, size, style = Stroke(edge))
         } else {
             val y = if (mark.type == AnnotationType.UNDERLINE) bounds.bottom else (bounds.top + bounds.bottom) / 2
-            drawLine(color, Offset(bounds.left, y), Offset(bounds.right, y), width, StrokeCap.Round)
+            val start = Offset(bounds.left, y)
+            val end = Offset(bounds.right, y)
+            if (edge > 0f) drawLine(edgeColor, start, end, width + 2 * edge, StrokeCap.Round)
+            drawLine(color, start, end, width, StrokeCap.Round)
         }
     }
     val first = mark.points.firstOrNull() ?: return
     val start = point(first.x, first.y)
     if (mark.type == AnnotationType.NOTE) {
         val end = point(first.x + 9, first.y + 9)
-        drawRect(color, start, Size(end.x - start.x, end.y - start.y))
+        val size = Size(end.x - start.x, end.y - start.y)
+        drawRect(color, start, size)
+        if (edge > 0f) drawRect(edgeColor, start, size, style = Stroke(edge))
         for (line in listOf(3f, 6f)) {
             drawLine(Color.White, point(first.x + 2, first.y + line), point(first.x + 7, first.y + line), width / mark.width)
         }
     } else if (mark.points.size == 1) {
+        if (edge > 0f) drawCircle(edgeColor, width / 2 + edge, start)
         drawCircle(color, width / 2, start)
     } else {
         val path = Path().apply {
@@ -244,6 +258,10 @@ private fun DrawScope.drawAnnotation(mark: Annotation, transform: PageTransform)
             val end = point(last.x, last.y)
             lineTo(end.x, end.y)
         }
-        drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        val stroke = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        if (edge > 0f) {
+            drawPath(path, edgeColor, style = Stroke(width + 2 * edge, cap = stroke.cap, join = stroke.join))
+        }
+        drawPath(path, color, style = stroke)
     }
 }

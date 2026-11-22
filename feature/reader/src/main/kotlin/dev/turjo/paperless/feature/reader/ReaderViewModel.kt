@@ -429,8 +429,6 @@ class ReaderViewModel @Inject constructor(
         it.copy(viewMode = mode, scrollOffsetPx = 0)
     }
 
-    fun toggleNightMode(id: String) = updateActive(id) { it.copy(nightMode = !it.nightMode) }
-
     fun dismissNotice() {
         state.value = state.value.copy(notice = null)
     }

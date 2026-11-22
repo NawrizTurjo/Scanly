@@ -65,6 +65,7 @@ internal fun PageOverlay(
     document: PdfDocumentHandle,
     page: Int,
     bitmap: android.graphics.Bitmap,
+    tone: PageTone,
     geometry: PageGeometry,
     transform: PageTransform,
     search: SearchState,
@@ -76,6 +77,7 @@ internal fun PageOverlay(
     onSelectionChanged: (Boolean) -> Unit,
     onDoubleTap: ((Offset) -> Unit)? = null,
 ) {
+    val colorFilter = rememberPageToneFilter(tone)
     val image = remember(bitmap) { bitmap.asImageBitmap() }
     val pageMatches = remember(search.matches, page) {
         search.matches.withIndex().filter { it.value.page == page }
@@ -161,6 +163,7 @@ internal fun PageOverlay(
         Canvas(Modifier.fillMaxSize()) {
             val full = transform.map(geometry.full)
             drawImage(image,
+                colorFilter = colorFilter,
                 dstOffset = IntOffset(full.left.roundToInt(), full.top.roundToInt()),
                 dstSize = IntSize((full.right - full.left).roundToInt(), (full.bottom - full.top).roundToInt()),
             )
@@ -175,7 +178,7 @@ internal fun PageOverlay(
             }
             if (!locked) selection?.second?.forEach { highlight(it, Color(0x664888FF)) }
         }
-        if (annotationLayer != null) AnnotationOverlay(page, transform, annotationLayer, onAnnotation)
+        if (annotationLayer != null) AnnotationOverlay(page, transform, annotationLayer, onAnnotation, night = tone == PageTone.NIGHT)
         note?.let { text ->
             AlertDialog(
                 onDismissRequest = { note = null },

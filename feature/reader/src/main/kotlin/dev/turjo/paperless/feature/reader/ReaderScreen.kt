@@ -1,6 +1,8 @@
 package dev.turjo.paperless.feature.reader
 
 import android.provider.OpenableColumns
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -20,6 +22,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -87,6 +91,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.turjo.paperless.core.model.PdfKey
@@ -118,6 +123,16 @@ fun ReaderScreen(
     }
 
     val context = LocalContext.current
+    var tone by remember { mutableStateOf(PageTone.NORMAL) }
+    val tonePreferences by produceState<SharedPreferences?>(null, context.applicationContext) {
+        val (preferences, savedTone) = withContext(Dispatchers.IO) {
+            val preferences = context.applicationContext.getSharedPreferences("reader", Context.MODE_PRIVATE)
+            val stored = preferences.getString("page_tone", null)
+            preferences to (PageTone.entries.firstOrNull { it.name == stored } ?: PageTone.NORMAL)
+        }
+        tone = savedTone
+        value = preferences
+    }
     val scope = rememberCoroutineScope()
     val defaultTitle = stringResource(R.string.reader_pdf)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -255,6 +270,7 @@ fun ReaderScreen(
                             ReaderPages(
                                 document = document,
                                 tab = tab,
+                                tone = tone,
                                 horizontalOffset = viewModel.horizontalOffset(tab.tabId),
                                 search = if (searchMode) search else SearchState(),
                                 requestedJump = jump,
@@ -279,7 +295,7 @@ fun ReaderScreen(
                     }
                     if (right != null) {
                         SplitReader(tab, right, document, viewModel, crops[right.tabId] ?: CropMode.OFF,
-                            chrome, pagePadding, systemBars.only(WindowInsetsSides.Horizontal),
+                            tone, chrome, pagePadding, systemBars.only(WindowInsetsSides.Horizontal),
                             onPageTap, if (chrome.locked) revealLock else null,
                             onSelectionChanged, primary)
                     } else primary()
@@ -337,9 +353,12 @@ fun ReaderScreen(
                                 ReaderIcon("⌕", "Search") { searchMode = true }
                                 ReaderIcon("☰", "Bookmarks") { showOutline = true }
                                 ReaderMenu(
-                                    tab, crop, landscape, split,
+                                    tab, crop, landscape, split, tone, tonePreferences != null,
                                     onViewMode = { viewModel.toggleViewMode(tab.tabId) },
-                                    onNight = { viewModel.toggleNightMode(tab.tabId) },
+                                    onTone = { selectedTone ->
+                                        tone = selectedTone
+                                        tonePreferences?.edit { putString("page_tone", selectedTone.name) }
+                                    },
                                     onThumbnails = { showThumbnails = true },
                                     onCrop = { crops[tab.tabId] = it },
                                     onSplit = { splitRequested = !splitRequested },
@@ -453,10 +472,12 @@ private fun TabStrip(
 @Composable
 private fun ReaderMenu(
     tab: TabState, crop: CropMode, landscape: Boolean, split: Boolean,
-    onViewMode: () -> Unit, onNight: () -> Unit, onThumbnails: () -> Unit,
+    tone: PageTone, toneReady: Boolean,
+    onViewMode: () -> Unit, onTone: (PageTone) -> Unit, onThumbnails: () -> Unit,
     onCrop: (CropMode) -> Unit, onSplit: () -> Unit, onLock: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showTones by remember { mutableStateOf(false) }
     Box {
         ReaderIcon("⋮", stringResource(R.string.reader_options)) { expanded = true }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
@@ -480,8 +501,9 @@ private fun ReaderMenu(
                 onClick = { expanded = false; onViewMode() },
             )
             DropdownMenuItem(
-                text = { Text(stringResource(if (tab.nightMode) R.string.reader_night_off else R.string.reader_night_on)) },
-                onClick = { expanded = false; onNight() },
+                text = { Text(stringResource(R.string.reader_page_tone)) },
+                enabled = toneReady,
+                onClick = { expanded = false; showTones = true },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.reader_thumbnails)) },
@@ -491,6 +513,21 @@ private fun ReaderMenu(
                 text = { Text(stringResource(R.string.reader_lock_full_screen)) },
                 onClick = { expanded = false; onLock() },
             )
+        }
+        DropdownMenu(showTones, onDismissRequest = { showTones = false }) {
+            PageTone.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(option.label)) },
+                    leadingIcon = {
+                        Box(Modifier.size(16.dp)
+                            .background(if (option == PageTone.NORMAL) Color.White else option.paperColor)
+                            .border(1.dp, MaterialTheme.colorScheme.outline))
+                    },
+                    trailingIcon = if (option == tone) ({ Text("✓") }) else null,
+                    modifier = Modifier.semantics { selected = option == tone },
+                    onClick = { showTones = false; onTone(option) },
+                )
+            }
         }
     }
 }
@@ -578,6 +615,7 @@ private fun SplitReader(
     activeDocument: PdfDocumentHandle,
     viewModel: ReaderViewModel,
     crop: CropMode,
+    tone: PageTone,
     chrome: ReaderChrome,
     pagePadding: PaddingValues,
     overlayInsets: WindowInsets,
@@ -617,10 +655,10 @@ private fun SplitReader(
                     if (opened.first) Text(stringResource(R.string.reader_open_error))
                     else CircularProgressIndicator()
                 } else key(right.tabId, document) {
-                    val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode, nightMode = right.nightMode)
+                    val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode)
                     ReaderPages(
                         annotationLayer = viewModel.annotationLayers[right.tabId],
-                        document = document, tab = pane, horizontalOffset = pans[right.tabId] ?: 0f,
+                        document = document, tab = pane, tone = tone, horizontalOffset = pans[right.tabId] ?: 0f,
                         search = viewModel.searches[right.tabId] ?: SearchState(),
                         requestedJump = null, onJumpConsumed = {}, crop = crop, showThumbnails = false,
                         onDismissThumbnails = {},

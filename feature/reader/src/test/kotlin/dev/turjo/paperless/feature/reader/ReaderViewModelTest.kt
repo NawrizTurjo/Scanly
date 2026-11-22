@@ -75,7 +75,6 @@ class ReaderViewModelTest {
             vm.open(pdf(index), "PDF ${index + 1}")
             runCurrent()
             val id = checkNotNull(vm.uiState.value.activeTabId)
-            if (index % 2 == 0) vm.toggleNightMode(id)
             if (index == 2) vm.toggleViewMode(id)
             vm.updatePosition(id, index + 4, index * 13)
             vm.updateZoom(id, 1f + index / 2f, index * 9f)
@@ -92,7 +91,6 @@ class ReaderViewModelTest {
             assertEquals(index * 13, active.scrollOffsetPx)
             assertEquals(1f + index / 2f, active.zoom, 0f)
             assertEquals(index * 9f, vm.horizontalOffset(tab.tabId), 0f)
-            assertEquals(index % 2 == 0, active.nightMode)
             assertEquals(
                 if (index == 2) ReaderViewMode.SINGLE_PAGE else ReaderViewMode.CONTINUOUS,
                 active.viewMode,
@@ -157,7 +155,6 @@ class ReaderViewModelTest {
         val firstId = checkNotNull(vm.uiState.value.activeTabId)
         vm.updatePosition(firstId, 31, 125)
         vm.updateZoom(firstId, 4f, 20f)
-        vm.toggleNightMode(firstId)
         vm.open(pdf(1), "Second")
         runCurrent()
         val secondId = checkNotNull(vm.uiState.value.activeTabId)
