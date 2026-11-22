@@ -1,5 +1,25 @@
 <resources>
+    <string name="reader_title">Reader</string>
+    <string name="reader_pdf">PDF</string>
     <string name="no_pdfs">No PDFs open</string>
     <string name="open_pdf">Open PDF</string>
-    <string name="reader_phase">Reader arrives in Phase 5</string>
+    <string name="reader_close_tab">Close %1$s</string>
+    <string name="reader_all_tabs">All tabs</string>
+    <string name="reader_options">Reader options</string>
+    <string name="reader_single_page">Single page</string>
+    <string name="reader_continuous">Continuous scroll</string>
+    <string name="reader_night_on">Turn on night mode</string>
+    <string name="reader_night_off">Turn off night mode</string>
+    <string name="reader_thumbnails">Thumbnails</string>
+    <string name="reader_recent">Recently opened</string>
+    <string name="reader_recent_progress">p. %1$d of %2$d</string>
+    <string name="reader_page_indicator">%1$d / %2$d</string>
+    <string name="reader_jump">Jump to page</string>
+    <string name="reader_page_range">Page (1–%1$d)</string>
+    <string name="reader_page_label">Page %1$d</string>
+    <string name="reader_go">Go</string>
+    <string name="reader_encrypted">This PDF is password-protected (unlocking arrives in Phase 6)</string>
+    <string name="reader_open_error">Can\'t open this PDF</string>
+    <string name="reader_save_error">Couldn\'t save reader state</string>
+    <string name="reader_render_error">Couldn\'t render this page</string>
 </resources>
