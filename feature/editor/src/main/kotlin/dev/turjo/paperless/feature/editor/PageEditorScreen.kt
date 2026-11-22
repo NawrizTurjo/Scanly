@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.turjo.paperless.core.designsystem.FirstRunTip
+import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
 import kotlinx.coroutines.delay
@@ -86,7 +87,7 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                 }
             } else {
                 when (tab) {
-                    EditorTab.Crop -> CropPanel(state, vm, enabled, showTip = !discard)
+                    EditorTab.Crop -> CropPanel(page.id, state, vm, enabled, showTip = !discard)
                     EditorTab.Filter, EditorTab.Rotate -> {
                         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
                             FilterPreview(
@@ -214,7 +215,7 @@ private fun FilterPreview(
         if (bitmap != null) {
             Image(
                 bitmap.asImageBitmap(), stringResource(R.string.editor_preview),
-                Modifier.fillMaxSize().graphicsLayer {
+                Modifier.sharedPage("page-${working.id}").fillMaxSize().graphicsLayer {
                     val position = clampPreviewOffset(offset, scale, size, aspect)
                     scaleX = scale
                     scaleY = scale
@@ -240,7 +241,13 @@ private fun clampPreviewOffset(offset: Offset, scale: Float, viewport: Size, asp
 }
 
 @Composable
-private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, enabled: Boolean, showTip: Boolean) {
+private fun ColumnScope.CropPanel(
+    pageId: String,
+    state: EditorState,
+    vm: PageEditorViewModel,
+    enabled: Boolean,
+    showTip: Boolean,
+) {
     val original = state.original
     val size = state.size
     val ready = original != null && size != null
@@ -250,7 +257,8 @@ private fun ColumnScope.CropPanel(state: EditorState, vm: PageEditorViewModel, e
     ) {
         if (original != null && size != null && maxWidth > 0.dp && maxHeight > 0.dp) {
             CropCanvas(
-                original, size, state.edits?.quad, enabled, Modifier.fillMaxSize(), vm::beginGesture, vm::endGesture,
+                original, size, state.edits?.quad, enabled,
+                Modifier.sharedPage("page-$pageId").fillMaxSize(), vm::beginGesture, vm::endGesture,
             ) { crop ->
                 val wholeImage = fullCrop(size.width.toFloat(), size.height.toFloat())
                 vm.edit { it.copy(quad = crop.takeUnless { crop == wholeImage }) }

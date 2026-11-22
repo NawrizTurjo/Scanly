@@ -54,6 +54,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
+import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.pdf.ShareIntents
 import java.io.File
@@ -161,7 +162,12 @@ fun PageViewerScreen(
                         val item = state.pages[index]
                         val active = index == pager.currentPage
                         key(active) {
-                            ViewerImage(item, index + 1, ids.size, active) { if (active) zoomed = it }
+                            val imageModifier = if (active && !state.close) {
+                                Modifier.sharedPage("page-${item.page.id}")
+                            } else {
+                                Modifier
+                            }
+                            ViewerImage(item, index + 1, ids.size, active, imageModifier) { if (active) zoomed = it }
                         }
                     }
                 }
@@ -188,6 +194,7 @@ private fun ViewerImage(
     number: Int,
     count: Int,
     active: Boolean,
+    imageModifier: Modifier,
     onZoomed: (Boolean) -> Unit,
 ) {
     val page = item.page
@@ -276,7 +283,7 @@ private fun ViewerImage(
         AsyncImage(
             model = request,
             contentDescription = stringResource(R.string.viewer_page_position, number, count),
-            modifier = Modifier.fillMaxSize().graphicsLayer {
+            modifier = imageModifier.fillMaxSize().graphicsLayer {
                 scaleX = scale
                 scaleY = scale
                 translationX = translation.x

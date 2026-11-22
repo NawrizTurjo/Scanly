@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dev.turjo.paperless.core.data.defaultTitle
+import dev.turjo.paperless.core.designsystem.sharedPage
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 
@@ -371,7 +372,7 @@ private fun ReviewTile(
         Box(Modifier.fillMaxWidth().aspectRatio(0.78f)) {
             AsyncImage(
                 request, stringResource(R.string.review_page_number, number),
-                Modifier.fillMaxSize().padding(6.dp),
+                Modifier.padding(6.dp).sharedPage("page-${item.page.id}").fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
             Row(
