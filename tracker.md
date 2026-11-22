@@ -13,7 +13,7 @@ Update at the end of every session: tick boxes, add a log row, and note surprise
 - [x] **P5** Multi-tab reader: tabs + restore · LRU sessions · zoom/scroll · open-with · 300-page test (2) · done 2026-11-22 (emulator: Open in Reader renders; 300-page render test on emulator)
 - [x] **P5b** Reader features: outline · bookmark editor · auto chapters · find/select/copy · links · crop margins · progress · side-by-side (3.5–4) · done 2026-11-22 (engine scores vs truth: chapters 20/20, search 1,241 hits, links 6/6, margins IoU ≥ 0.91; gestures pending device)
 - [x] **P6** Merge · split · compress · rotate/reorder · img↔pdf · same width · page edits · password · N-up print layout · page numbers · metadata · sanitize · grayscale · batch (3.5) · done 2026-11-22 (fixture tests; same width matches the PyMuPDF oracle; real duplex print check pending user)
-- [ ] **P7** Annotations + flattening (1.5–2)
+- [x] **P7** Annotations + flattening (1.5–2) · done 2026-11-22 (flattened placement within 2 pt on the emulator; touch drawing pending device)
 - [x] **P7b** Plain-file backup/restore · content search (1) · done 2026-11-22 (Robolectric round trip + fixture search; SAF/notifications pending device check)
 - [ ] **P8** Polish · performance · signed release APK · full regression (1–1.5)
 
