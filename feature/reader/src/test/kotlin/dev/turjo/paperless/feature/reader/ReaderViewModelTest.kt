@@ -16,10 +16,12 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -95,6 +97,22 @@ class ReaderViewModelTest {
         runCurrent()
         assertEquals(originals[6], vm.uiState.value.activeTab)
         assertEquals(originals - originals[3] - originals.last(), vm.uiState.value.tabs)
+    }
+
+    @Test
+    fun incomingRecentKeyWaitsForInitialProgressBeforeOpening() = runTest(dispatcher) {
+        repository.recent.value = null
+        val vm = newViewModel()
+        val request = async { vm.open(pdf(0)) }
+        runCurrent()
+        assertTrue(vm.uiState.value.tabs.isEmpty())
+
+        repository.recent.value = listOf(RecentPdf(pdf(0), "Manual", 1, 100, 11))
+        request.await()
+        runCurrent()
+
+        assertEquals("Manual", vm.uiState.value.activeTab?.title)
+        assertEquals(11, vm.uiState.value.activeTab?.page)
     }
 
     @Test
@@ -232,7 +250,9 @@ class ReaderViewModelTest {
             saved.value = tabs to activeTabId
         }
 
-        override fun observeRecent() = MutableStateFlow(emptyList<RecentPdf>())
+        val recent = MutableStateFlow<List<RecentPdf>?>(emptyList())
+
+        override fun observeRecent() = recent.filterNotNull()
 
         override suspend fun registerExternal(uri: Uri, displayName: String): PdfKey =
             error("The reader does not use the system picker in this test")

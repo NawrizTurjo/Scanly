@@ -8,6 +8,7 @@ import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,13 +17,19 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.PageProcessing
+import dev.turjo.paperless.core.data.ReaderRepository
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.data.SettingsRepository
 import dev.turjo.paperless.core.designsystem.R as DesignR
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
+import dev.turjo.paperless.core.model.PdfKey
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,13 +38,19 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
-internal data class EntryEvent(val route: Route? = null, val message: Int? = null)
+internal data class EntryEvent(
+    val route: Route? = null,
+    val message: Int? = null,
+    val pdfKey: PdfKey? = null,
+    val pdfTitle: String? = null,
+)
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     repository: SettingsRepository,
-    documents: DocumentRepository,
+    private val documents: DocumentRepository,
+    private val reader: ReaderRepository,
     sessions: ScanSessionRepository,
     files: FileStore,
     processing: PageProcessing,
@@ -49,7 +62,10 @@ class MainViewModel @Inject constructor(
     private var backgroundedAtMs: Long? = null
     private var coldStart = true
 
-    private val shares = Channel<Intent>(Channel.UNLIMITED)
+    private val fileIntents = Channel<Intent>(Channel.UNLIMITED)
+    private val preparingPdfState = MutableStateFlow(false)
+    val preparingPdf = preparingPdfState.asStateFlow()
+    private var documentExport: Job? = null
     private val entryEvents = Channel<EntryEvent>(Channel.UNLIMITED)
     internal val entries = entryEvents.receiveAsFlow()
     private val openedDocument = MutableStateFlow<Pair<String, Long>?>(null)
@@ -64,13 +80,26 @@ class MainViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            for (intent in shares) {
+            for (intent in fileIntents) {
                 locked.first { !it }
-                if (intent.type == "application/pdf") {
-                    entryEvents.send(EntryEvent(message = R.string.pdf_share_pending))
+                val type = intent.type ?: withContext(Dispatchers.IO) {
+                    try {
+                        intent.resolveType(context.contentResolver)
+                    } catch (_: RuntimeException) {
+                        null
+                    }
+                }
+                if (!acceptsFileIntent(intent.action, type)) continue
+                if (type == PDF_MIME_TYPE) {
+                    val uris = if (intent.action == Intent.ACTION_VIEW) emptyList() else sharedUris(intent)
+                    pdfEntryEvents(intent.action, type, intent.data, uris, Uri::getScheme) { uri ->
+                        val title = withContext(Dispatchers.IO) { pdfDisplayName(uri) }
+                        reader.registerExternal(uri, title) to title
+                    }.forEach { entryEvents.send(it) }
                 } else {
                     val result = importSharedImages(
-                        sharedUris(intent), context.contentResolver, files, documents, sessions, processing,
+                        sharedUris(intent).filter { it.scheme == ContentResolver.SCHEME_CONTENT },
+                        context.contentResolver, files, documents, sessions, processing,
                     )
                     entryEvents.send(EntryEvent(
                         route = result.draftId?.let(::ReviewRoute),
@@ -110,8 +139,46 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    internal fun receiveShare(intent: Intent) {
-        shares.trySend(intent)
+    internal fun receiveFileIntent(intent: Intent) {
+        fileIntents.trySend(intent)
+    }
+
+    internal fun openPdf(key: PdfKey) {
+        entryEvents.trySend(EntryEvent(pdfKey = key))
+    }
+
+    internal fun openDocumentInReader(id: String) {
+        if (documentExport?.isActive == true) return
+        documentExport = viewModelScope.launch {
+            val showProgress = launch {
+                delay(300)
+                preparingPdfState.value = true
+            }
+            try {
+                val key = reader.pdfKeyForDocument(id)
+                val title = documents.observeDocument(id).first()?.document?.title
+                entryEvents.send(EntryEvent(pdfKey = key, pdfTitle = title))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                entryEvents.send(EntryEvent(message = R.string.pdf_open_error))
+            } finally {
+                showProgress.cancel()
+                preparingPdfState.value = false
+            }
+        }
+    }
+
+    private fun pdfDisplayName(uri: Uri): String {
+        val name = try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null }
+        } catch (_: RuntimeException) {
+            null
+        }
+        return name?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: context.getString(R.string.pdf_default_title)
     }
 
     internal fun openRoute(value: String?) {
@@ -173,5 +240,5 @@ private fun sharedUris(intent: Intent): List<Uri> {
     val clip = intent.clipData
     val uris = if (streams.isNotEmpty() || clip == null) streams
     else (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }
-    return uris.filter { it.scheme == ContentResolver.SCHEME_CONTENT }
+    return uris
 }

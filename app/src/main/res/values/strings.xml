@@ -10,6 +10,8 @@
     <string name="open_last_document">Open last document</string>
     <string name="unlock">Unlock</string>
     <string name="unlock_error">Unlock failed. Try again.</string>
-    <string name="pdf_share_pending">Opening PDFs arrives with the Reader (Phase 5)</string>
+    <string name="pdf_open_error">Could not open the PDF.</string>
+    <string name="pdf_default_title">PDF</string>
+    <string name="pdf_preparing">Preparing PDF…</string>
     <string name="share_import_error">Some shared images could not be imported.</string>
 </resources>
