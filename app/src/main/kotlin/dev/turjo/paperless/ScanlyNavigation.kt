@@ -1,6 +1,7 @@
 package dev.turjo.paperless
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -30,6 +31,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -46,11 +48,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
+import dev.turjo.paperless.core.designsystem.LocalNavAnimatedScope
+import dev.turjo.paperless.core.designsystem.LocalSharedTransitionScope
 import dev.turjo.paperless.core.designsystem.R as DesignR
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.feature.camera.CameraScreen
@@ -208,80 +214,93 @@ internal fun ScanlyNavigation(
         } else {
             Modifier.fillMaxSize()
         }
-        NavDisplay(
-            backStack = backStack,
-            onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
-            modifier = contentModifier,
-            entryDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator(),
-                rememberViewModelStoreNavEntryDecorator(),
-            ),
-            entryProvider = entryProvider {
-                entry<LibraryRoute> {
-                    LibraryScreen(
-                        onScan = { backStack.add(CameraRoute()) },
-                        onOpenDocument = { backStack.add(DocumentRoute(it)) },
-                        onOpenDraft = { backStack.showReview(it) },
-                        onOpenRecent = onOpenPdf,
-                        onOpenPdfAtPage = onOpenPdfAtPage,
-                    )
+        val pageMotionDecorator = remember {
+            NavEntryDecorator<NavKey> { entry ->
+                CompositionLocalProvider(LocalNavAnimatedScope provides LocalNavAnimatedContentScope.current) {
+                    entry.Content()
                 }
-                entry<ReaderRoute> {
-                    ReaderScreen(
-                        openRequest = pendingPdfKey,
-                        onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
-                        openRequestTitle = pendingPdfTitle,
-                        active = readerActive,
-                        bottomBarHeight = readerBottomBarHeight,
-                        onImmersiveChanged = { readerImmersive = it },
-                    )
-                }
-                entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages) }
-                entry<SettingsRoute> { SettingsScreen() }
-                entry<CameraRoute> { key ->
-                    CameraScreen(
-                        targetDocumentId = key.targetDocumentId,
-                        insertAt = key.insertAt,
-                        singleMode = key.single,
-                        resumeDraftId = key.resumeDraftId,
-                        onReview = { draftId -> backStack.showReview(draftId) },
-                        onClose = { backStack.removeAt(backStack.lastIndex) },
-                    )
-                }
-                entry<ReviewRoute> { key ->
-                    ReviewScreen(
-                        draftDocumentId = key.draftDocumentId,
-                        onViewPage = { backStack.add(PageViewerRoute(key.draftDocumentId, it)) },
-                        onAddMore = { backStack.add(CameraRoute(resumeDraftId = key.draftDocumentId)) },
-                        onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
-                        onBack = { backStack.removeAt(backStack.lastIndex) },
-                        onExport = { exportDocumentId = it },
-                    )
-                }
-                entry<PageViewerRoute> { key ->
-                    PageViewerScreen(
-                        documentId = key.documentId,
-                        startPageId = key.startPageId,
-                        onBack = { if (backStack.lastOrNull() == key) backStack.removeAt(backStack.lastIndex) },
-                        onEdit = { if (backStack.lastOrNull() == key) backStack.add(PageEditorRoute(it)) },
-                    )
-                }
-                entry<PageEditorRoute> { key ->
-                    PageEditorScreen(pageId = key.pageId, onBack = { backStack.removeAt(backStack.lastIndex) })
-                }
-                entry<DocumentRoute> { key ->
-                    LaunchedEffect(key.documentId) { onDocumentOpened(key.documentId) }
-                    DocumentScreen(
-                        documentId = key.documentId,
-                        onBack = { backStack.removeAt(backStack.lastIndex) },
-                        onViewPage = { backStack.add(PageViewerRoute(key.documentId, it)) },
-                        onAddPages = { id, insertAt -> backStack.add(CameraRoute(targetDocumentId = id, insertAt = insertAt)) },
-                        onExport = { exportDocumentId = it },
-                        onOpenInReader = onOpenDocumentInReader,
-                    )
-                }
-            },
-        )
+            }
+        }
+        SharedTransitionLayout(modifier = contentModifier) {
+            CompositionLocalProvider(LocalSharedTransitionScope provides this@SharedTransitionLayout) {
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                    modifier = Modifier.fillMaxSize(),
+                    sharedTransitionScope = this,
+                    entryDecorators = listOf(
+                        rememberSaveableStateHolderNavEntryDecorator(),
+                        rememberViewModelStoreNavEntryDecorator(),
+                        pageMotionDecorator,
+                    ),
+                    entryProvider = entryProvider {
+                        entry<LibraryRoute> {
+                            LibraryScreen(
+                                onScan = { backStack.add(CameraRoute()) },
+                                onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                                onOpenDraft = { backStack.showReview(it) },
+                                onOpenRecent = onOpenPdf,
+                                onOpenPdfAtPage = onOpenPdfAtPage,
+                            )
+                        }
+                        entry<ReaderRoute> {
+                            ReaderScreen(
+                                openRequest = pendingPdfKey,
+                                onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
+                                openRequestTitle = pendingPdfTitle,
+                                active = readerActive,
+                                bottomBarHeight = readerBottomBarHeight,
+                                onImmersiveChanged = { readerImmersive = it },
+                            )
+                        }
+                        entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages) }
+                        entry<SettingsRoute> { SettingsScreen() }
+                        entry<CameraRoute> { key ->
+                            CameraScreen(
+                                targetDocumentId = key.targetDocumentId,
+                                insertAt = key.insertAt,
+                                singleMode = key.single,
+                                resumeDraftId = key.resumeDraftId,
+                                onReview = { draftId -> backStack.showReview(draftId) },
+                                onClose = { backStack.removeAt(backStack.lastIndex) },
+                            )
+                        }
+                        entry<ReviewRoute> { key ->
+                            ReviewScreen(
+                                draftDocumentId = key.draftDocumentId,
+                                onViewPage = { backStack.add(PageViewerRoute(key.draftDocumentId, it)) },
+                                onAddMore = { backStack.add(CameraRoute(resumeDraftId = key.draftDocumentId)) },
+                                onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
+                                onBack = { backStack.removeAt(backStack.lastIndex) },
+                                onExport = { exportDocumentId = it },
+                            )
+                        }
+                        entry<PageViewerRoute> { key ->
+                            PageViewerScreen(
+                                documentId = key.documentId,
+                                startPageId = key.startPageId,
+                                onBack = { if (backStack.lastOrNull() == key) backStack.removeAt(backStack.lastIndex) },
+                                onEdit = { if (backStack.lastOrNull() == key) backStack.add(PageEditorRoute(it)) },
+                            )
+                        }
+                        entry<PageEditorRoute> { key ->
+                            PageEditorScreen(pageId = key.pageId, onBack = { backStack.removeAt(backStack.lastIndex) })
+                        }
+                        entry<DocumentRoute> { key ->
+                            LaunchedEffect(key.documentId) { onDocumentOpened(key.documentId) }
+                            DocumentScreen(
+                                documentId = key.documentId,
+                                onBack = { backStack.removeAt(backStack.lastIndex) },
+                                onViewPage = { backStack.add(PageViewerRoute(key.documentId, it)) },
+                                onAddPages = { id, insertAt -> backStack.add(CameraRoute(targetDocumentId = id, insertAt = insertAt)) },
+                                onExport = { exportDocumentId = it },
+                                onOpenInReader = onOpenDocumentInReader,
+                            )
+                        }
+                    },
+                )
+            }
+        }
     }
     if (preparingPdf) {
         Surface(Modifier.fillMaxWidth().safeDrawingPadding(), tonalElevation = 4.dp) {

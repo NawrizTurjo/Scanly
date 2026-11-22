@@ -25,6 +25,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.pdf.ShareIntents
@@ -330,7 +331,10 @@ private fun PageCard(
             Modifier.fillMaxWidth().aspectRatio(0.85f).clickable(onClickLabel = pageLabel, onClick = onOpen),
             contentAlignment = Alignment.Center,
         ) {
-            AsyncImage(request, contentDescription = pageLabel, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            AsyncImage(
+                request, pageLabel, Modifier.sharedPage("page-${page.id}").fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
             if (busy) CircularProgressIndicator(Modifier.size(36.dp))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
