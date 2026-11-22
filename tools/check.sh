@@ -4,14 +4,14 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-: "${ANDROID_HOME:=G:/Android/Sdk}"
+: "${ANDROID_HOME:=${LOCALAPPDATA:-$HOME}/Android/Sdk}"
 : "${JAVA_HOME:=C:/Program Files/Java/jdk-21}"
-: "${GRADLE_USER_HOME:=G:/.gradle}"
+: "${GRADLE_USER_HOME:=$HOME/.gradle}"
 export ANDROID_HOME JAVA_HOME GRADLE_USER_HOME
 
 # Worktrees don't carry the gitignored venv, so fall back to the main checkout's one.
 PY=""
-for cand in ".venv/Scripts/python.exe" ".venv/bin/python" "G:/Paperless-Scanner/.venv/Scripts/python.exe"; do
+for cand in ".venv/Scripts/python.exe" ".venv/bin/python"; do
   if [ -x "$cand" ]; then PY="$cand"; break; fi
 done
 

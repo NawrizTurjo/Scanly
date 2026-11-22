@@ -82,7 +82,7 @@ And absolutely no watermark. Not even a tiny logo in the corner.
 
 Recommended tech stack
 
-For your Pixel 8 Pro, I'd use:
+For your phone, I'd use:
 
 Component
 
@@ -290,7 +290,7 @@ One important architectural decision
 
 I'd make this a completely offline-first application.
 
-Your Pixel 8 Pro
+Your phone
 
 Camera + local document library
 
@@ -363,7 +363,7 @@ Worth building
 
 I wouldn't even publish this initially. Build it for yourself, sideload the APK, and use it as your daily scanner.
 
-One advantage: your Pixel 8 Pro has a very capable camera, so you can concentrate on document processing rather than camera hardware limitations.
+One advantage: your phone has a very capable camera, so you can concentrate on document processing rather than camera hardware limitations.
 
 Also, here's a useful existing reference implementation to study: Open-source Android document scanner . It uses Kotlin, Compose, CameraX, OpenCV-style image processing and ML Kit. Don't blindly adopt it; inspect its limitations and use it as a reference. 
 GitHub
@@ -1171,7 +1171,7 @@ Building and installing your APK: free.
 
 Publishing on Google Play: optional, and that is where a separate fee comes in.
 
-You don't need to publish it. You can install your own APK directly on your Pixel 8 Pro.
+You don't need to publish it. You can install your own APK directly on your phone.
 
 1. What software do you need?
 
@@ -1464,7 +1464,7 @@ You can check your remaining allowance with /status.
 
 4. How you'll actually develop it
 
-I'd use your Windows desktop and connect your Pixel 8 Pro through USB debugging.
+I'd use your Windows desktop and connect your phone through USB debugging.
 
 Your development workflow
 
@@ -1497,7 +1497,7 @@ Don't ask it to build all 25 features in one prompt.
 
 Test on your actual phone
 
-Enable Developer Options and USB debugging on your Pixel.
+Enable Developer Options and USB debugging on your phone.
 
 Claude can build and install the APK through ADB.
 
@@ -1656,173 +1656,11 @@ Then let it implement each phase.
 
 This is especially important because automatic edge detection, shadow removal and glare correction need actual image testing. You don't want Claude claiming a feature works just because the code compiles.
 
-My recommendation: Build this as a native Kotlin app, keep everything local, and avoid all paid SDKs. Your RTX 3060 desktop is more than sufficient for Android development; the actual scanning and enhancement will run on your Pixel.
+My recommendation: Build this as a native Kotlin app, keep everything local, and avoid all paid SDKs. A desktop PC is more than sufficient for Android development; the actual scanning and enhancement will run on your phone.
 
 You can genuinely own the entire application, its source code and its functionality without paying CamScanner or another software company a single additional subscription fee. 😁
 
-Also, do I need to shift on my desktop which has a GPU and bunch of RAMs like 48 GB RAM or work in my laptop which is somewhat limited in 8 GB RAM and a lot of used up space with C drive almost being full and stuff? So it's basically for my work and study purpose and the desktop is just stress gaming and hard works type of thing. So which one should I work on with Claude?
-
-Bro, use your desktop for this project. Definitely. 😂
-
-This is exactly the kind of development workload where your desktop makes more sense.
-
-You have:
-
-Desktop: RTX 3060 12 GB + 48 GB RAM.
-
-Laptop: i7 + 8 GB RAM, no dedicated GPU, nearly full C: drive.
-
-Android development isn't particularly GPU-intensive, but Android Studio, Gradle, Kotlin compilation, emulators and Claude Code together can consume quite a bit of RAM.
-
-Desktop vs laptop
-
-Task
-
-	
-
-Desktop
-
-	
-
-Laptop
-
-Claude Code
-
-	
-
-Excellent
-
-	
-
-Good
-
-Android Studio
-
-	
-
-Excellent
-
-	
-
-Can struggle
-
-Gradle builds
-
-	
-
-Excellent
-
-	
-
-Slower
-
-Android emulator
-
-	
-
-Excellent
-
-	
-
-Limited
-
-OpenCV testing
-
-	
-
-Excellent
-
-	
-
-Good
-
-Multiple agents
-
-	
-
-Excellent
-
-	
-
-More constrained
-
-Large project indexing
-
-	
-
-Excellent
-
-	
-
-More constrained
-
-Long development sessions
-
-	
-
-Excellent
-
-	
-
-Depends on thermals and storage
-
-Your RTX 3060 isn't particularly important for this project unless you later experiment with local AI models. The 48 GB RAM is the real advantage.
-
-My suggested setup
-
-Desktop — primary development machine
-
-Recommended
-
-Claude Code
-
-Android Studio
-
-Gradle and Android SDK
-
-OpenCV development and testing
-
-Android emulator
-
-Git repository
-
-Pixel 8 Pro — actual device testing
-
-Camera autofocus and capture
-
-Automatic edge detection
-
-Shadow/glare correction
-
-Batch scanning
-
-PDF export and sharing
-
-Laptop — secondary
-
-Read code and documentation
-
-Review GitHub changes
-
-Small fixes
-
-Continue development when away from desktop
-
-One thing I'd do differently
-
-Don't install a full Android development environment on both machines initially.
-
-Set up everything on your desktop, push the project to GitHub, and clone it onto your laptop only if you need to work there.
-
-That gives you one source of truth and avoids maintaining two separate development environments.
-
-Also, you can connect your Pixel directly to the desktop over USB for testing. You don't need an emulator for every feature.
-
-My final verdict
-
-I'd reserve the laptop for your BUET work, studying, research and lightweight development.
-
-Let the desktop handle Claude Code, Android Studio and this scanner project.
+_(A personal discussion about which of the author's computers to use was removed here.)_
 
 One question: Is your desktop's Windows installation on an SSD with enough free space? Android Studio, SDKs, Gradle caches and emulators can collectively take several tens of GB, so I'd like to account for that before suggesting the installation layout.
 
@@ -2101,7 +1939,7 @@ Jetpack Compose
 Material 3 / Material 3 Expressive where appropriate
 Native Android components and APIs
 Visual design
-Follow modern Pixel/Android design conventions.
+Follow modern Android design conventions.
 Support Material You dynamic colors.
 Support light and dark themes.
 Use proper typography, spacing, shapes and tonal elevation.
@@ -2145,9 +1983,9 @@ You already understand React, component architecture, APIs and software engineer
 
 I'd make one decision now:
 
-Use Jetpack Compose + Material 3 Expressive, with a clean Pixel-inspired visual design.
+Use Jetpack Compose + Material 3 Expressive, with a clean Material-inspired visual design.
 
-Your Pixel 8 Pro will be a particularly good reference device for testing that experience.
+Your phone will be a particularly good reference device for testing that experience.
 
 And I'd build the home screen and camera screen first, get their UI looking excellent, then start integrating the actual scanning engine. That way you won't end up with a functional scanner that looks like a prototype. 😁
 
@@ -2269,7 +2107,7 @@ Scanner, image processing, PDF toolkit and document library.
 
 OCR, cloud sync and collaboration postponed.
 
-Desktop as the development machine, Pixel 8 Pro for testing.
+Desktop as the development machine, the phone for testing.
 
 There are still technical decisions Claude should make during its architecture and dependency audit, rather than us prematurely deciding every implementation detail.
 
@@ -2429,7 +2267,7 @@ Public sample PDFs
 
 Different PDF structures and page counts
 
-Your Pixel 8 Pro
+Your phone
 
 	
 
@@ -2497,7 +2335,7 @@ Does switching tabs preserve each PDF's page and zoom position?
 
 Does the reader handle a 100+ page PDF without running out of memory?
 
-And finally, test on your actual Pixel 8 Pro. Synthetic data and downloaded samples are excellent for repeatable testing, but they cannot fully replace real camera captures.
+And finally, test on your actual the phone. Synthetic data and downloaded samples are excellent for repeatable testing, but they cannot fully replace real camera captures.
 
 My recommendation: tell Claude to create the test dataset during the initial project setup, before implementing the scanner. That gives it a consistent benchmark throughout development rather than testing features with random documents at the last minute.
 

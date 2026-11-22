@@ -3,7 +3,7 @@
 Read this file at the start of every session, then read `tracker.md` to see where work stopped.
 
 ## What this project is
-A personal, offline-only native Android app for one device (Pixel 8 Pro). It combines a CamScanner-style scanner, a local document library, and a lightweight PDF toolkit with a multi-tab reader. The full scope is in `docs/01-PRD.md`. The original brainstorms are in `docs/00-chatgpt-brainstorm-transcript.md` and `docs/00b-chatgpt-pdf-tools-transcript.md`; the PRD wins wherever the two differ.
+A personal, offline-only native Android app for one phone. It combines a CamScanner-style scanner, a local document library, and a lightweight PDF toolkit with a multi-tab reader. The full scope is in `docs/01-PRD.md`. The original brainstorms are in `docs/00-chatgpt-brainstorm-transcript.md` and `docs/00b-chatgpt-pdf-tools-transcript.md`; the PRD wins wherever the two differ.
 
 ## Hard constraints (never break these)
 - Fully offline. No `INTERNET` permission in the app manifest. No backend, accounts, analytics, ads, or AI/LLM APIs.
@@ -27,18 +27,18 @@ Kotlin, Jetpack Compose, Material 3 (dynamic colour, edge-to-edge, predictive ba
 - **Claude usage:** claude-nap (`%LOCALAPPDATA%\claude-nap`) pauses at the 5-hour limit, takes 30–50 min pace naps when usage burns too fast, and stops at **85% weekly**. Follow its `[claude-nap]` instructions when a tool call is denied.
   - Each worker gets its own **git worktree and branch** (`wt/<task>`) and its own module or package, so parallel edits never touch the same files. Put briefs on disk under `work/briefs/` (one shared `BRIEF_COMMON.md` plus one brief per task). In the command, the prompt goes before any variadic `-i` flags, and stdin comes from `/dev/null`.
   - Worker output is a first draft. Opus reviews the diff, then runs `./gradlew assembleDebug testDebugUnitTest lint` before merging. Run a **second pass** (a review or hardening pass by a different worker) on anything non-trivial.
-- **Notifications:** ping ntfy after each milestone, at blockers, and whenever user input is needed (the user is often away), not just at the end: `curl -d "<msg>" -H "Title: Paperless" https://ntfy.sh/paperless-scanner-working-12103115`.
+- **Notifications:** ping ntfy after each milestone, at blockers, and whenever user input is needed (the user is often away), not just at the end: `curl -d "<msg>" -H "Title: Paperless" https://ntfy.sh/<topic>` (the topic is kept in local notes, not in the repo).
 - **Session end:** commit, update `tracker.md` (what's done, what's next, any surprises), and ping ntfy.
 
 ## Verification rules
 - "It compiles" doesn't mean "it works". Image features must pass the fixture tests in `test-data/` (see `docs/06-testing-strategy.md`) **and** be checked on the emulator.
-- **No adb access to the real Pixel.** The user won't enable Developer options. Automated checks run on the emulator `Pixel_8_Pro_API37` (SDK at `G:\Android\Sdk`, Android 37, x86_64): start it with `emulator -avd Pixel_8_Pro_API37 -no-window -no-audio`, `adb install -r app/build/outputs/apk/debug/app-debug.apk`, drive it with `adb shell input ...`, then `adb exec-out screencap -p > shot.png` and actually look at the screenshot. Use `adb logcat` for crashes.
-- The emulator has no webcam. Test camera flows with the virtual-scene camera (fixture images placed in the scene), import fixtures via `adb push`, or use a debug-only fake frame source. The user sideloads the APK on the Pixel for real-camera checks. Mark camera, lighting and performance features "emulator-verified, needs phone check" in the tracker until the user confirms them.
+- **No adb access to the real phone.** The user won't enable Developer options. Automated checks run on an x86_64 emulator (Android 37; AVD name and SDK path are in local notes): start it with `emulator -avd <avd> -no-window -no-audio`, `adb install -r app/build/outputs/apk/debug/app-debug.apk`, drive it with `adb shell input ...`, then `adb exec-out screencap -p > shot.png` and actually look at the screenshot. Use `adb logcat` for crashes.
+- The emulator has no webcam. Test camera flows with the virtual-scene camera (fixture images placed in the scene), import fixtures via `adb push`, or use a debug-only fake frame source. The user sideloads the APK on the phone for real-camera checks. Mark camera, lighting and performance features "emulator-verified, needs phone check" in the tracker until the user confirms them.
 - Tune image algorithms in the Python harness (`tools/imaging-lab/`, opencv-python) on the fixture set, using contact sheets that Opus actually looks at. Port to Kotlin only after the results look right, then check that the Kotlin output matches the Python output on the same fixtures.
 - Report honestly. If a feature only partly works (say, glare removal on large blown-out regions), write that in the tracker.
 
 ## Conventions
 - Package: `dev.turjo.paperless` (it can change at the S1 gate).
 - Multi-module Gradle with version catalog (`gradle/libs.versions.toml`). Module map in `docs/02-architecture.md`.
-- `minSdk 31`, `targetSdk`/`compileSdk` = the latest stable version. ABIs: `arm64-v8a` (Pixel) + `x86_64` (emulator) only, to keep the OpenCV size down.
-- Git: remote `origin` = private GitHub repo https://github.com/NawrizTurjo/Scanly.git (user request, 2026-11-22). Push `main` after each commit; never push gitignored secrets (keystore, real photos, app-testing, work/). Commit only on green builds. Each commit holds a meaningful, complete chunk of work (a feature slice, a module, a test suite); never commit a one- or two-line change on its own, and fold small fixes into the next real commit. Messages have a clear subject plus a body that says what changed and why. **No `Co-Authored-By` or other attribution lines.** The `main` branch always installs and runs.
+- `minSdk 31`, `targetSdk`/`compileSdk` = the latest stable version. ABIs: `arm64-v8a` (phones) + `x86_64` (emulator) only, to keep the OpenCV size down.
+- Git: remote `origin` on GitHub (user request, 2026-11-22). Push `main` after each commit; never push gitignored secrets (keystore, real photos, app-testing, work/). Commit only on green builds. Each commit holds a meaningful, complete chunk of work (a feature slice, a module, a test suite); never commit a one- or two-line change on its own, and fold small fixes into the next real commit. Messages have a clear subject plus a body that says what changed and why. **No `Co-Authored-By` or other attribution lines.** The `main` branch always installs and runs.

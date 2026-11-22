@@ -26,7 +26,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 versionName = "1.0.0"
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
-            // The emulator needs x86_64; the Pixel only arm64 (keeps the release APK small: OpenCV is ~33 MB per ABI).
+            // The emulator needs x86_64; phones only need arm64 (keeps the release APK small: OpenCV is ~33 MB per ABI).
             buildTypes.named("debug") { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } }
             buildTypes.named("release") {
                 ndk { abiFilters += listOf("arm64-v8a") }

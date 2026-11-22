@@ -10,7 +10,7 @@ Legend for the worker split: **O** = Opus (judgment, algorithms, integration, ve
 ---
 
 ## S0 — Desktop setup (you, about 1–2 h; Claude only verifies) · 0.5 session
-Follow `08-desktop-setup.md`. Claude checks that `adb devices` shows the Pixel, that `java`, `python`, `codex`, and `git` are on PATH, and that a blank Compose template app builds and installs.
+Follow `08-desktop-setup.md`. Claude checks that `adb devices` shows the phone, that `java`, `python`, `codex`, and `git` are on PATH, and that a blank Compose template app builds and installs.
 
 ## S1 — Planning gate + skeleton + test data · 1 session
 - O: re-read every doc, resolve `07` decisions with you, **wait for approval**.
@@ -18,7 +18,7 @@ Follow `08-desktop-setup.md`. Claude checks that `adb devices` shows the Pixel, 
 - C1: Gradle multi-module skeleton, version catalog, Hilt, an empty NavHost with 4 bottom tabs, and the design system (dynamic colour theme).
 - C2: `tools/fixtures/` Python generators → synthetic scanner fixtures with ground-truth corners, plus the PDF fixture set (see `06`).
 - O: CI-style local check script `tools/check.sh` (assemble + unit tests + lint).
-- **Exit:** the app installs on the Pixel with a themed empty shell; `test-data/` is populated with a `README` and ground-truth JSON.
+- **Exit:** the app installs on the phone with a themed empty shell; `test-data/` is populated with a `README` and ground-truth JSON.
 
 ## Phase 1 — Functional scanner (manual crop) · 2 sessions
 - C: Room schema and repositories, FileStore, Library screen with real data.
@@ -33,7 +33,7 @@ Follow `08-desktop-setup.md`. Claude checks that `adb devices` shows the Pixel, 
 - O: port to Kotlin `core:imaging`; C writes parity tests (Kotlin vs the Python reference).
 - O + C: live detection overlay in the camera (ImageAnalysis), quad smoothing, auto-detected quads applied to captures and gallery imports.
 - C: filter bottom sheet with live thumbnails and sliders; "apply to all".
-- O: **real-world test round.** You scan about 30 real pages (notes, handouts, a textbook, under room lights) on the Pixel and Opus tunes against them. Add the hard cases to `test-data/real/` (private, gitignored if personal).
+- O: **real-world test round.** You scan about 30 real pages (notes, handouts, a textbook, under room lights) on the phone and Opus tunes against them. Add the hard cases to `test-data/real/` (private, gitignored if personal).
 - S: (optional) a one-time benchmark against the ML Kit Document Scanner on the same pages.
 - **Exit:** SC-1, SC-3, SC-6, and SC-9 acceptance pass, and the "white page" Document look is good on your real lecture notes.
 
@@ -64,7 +64,7 @@ The minimal version you described works end to end: batch scan → auto edges �
 - **Exit:** PT-1/3.6 acceptance pass; no out-of-memory or jank on the large fixture.
 
 ## Phase 5b — Reader features · 3.5–4 sessions
-- S: at the start, check what the Pixel's `PdfRenderer` exposes (text search, selection, links) and decide native vs the PdfBox fallback (02 §7.2).
+- S: at the start, check what the phone's `PdfRenderer` exposes (text search, selection, links) and decide native vs the PdfBox fallback (02 §7.2).
 - O: shared page-space ↔ screen overlay (used by search highlights, selection, links, annotations later); save rule (02 §7.1).
 - C: outline panel (RD-1) and the bookmark editor UI with drag-nest (RD-2); O does the PdfBox outline writer and preservation tests.
 - O: auto chapter detection (RD-3), lab-tuned on the textbook fixtures and then ported.
@@ -97,7 +97,7 @@ The minimal version you described works end to end: batch scan → auto edges �
 - O + C: motion (shared-element transitions, FAB/sheet animations), predictive back, haptics review, empty/error states, OSS licences screen, app icon.
 - S: a performance pass with Baseline Profiles, checking recompositions and memory with 50-page batches.
 - O: signed release APK (a local keystore, **backed up**), R8 shrinking, arm64-only.
-- **Exit:** the release APK is installed as the daily app; a full regression checklist from `06` has been run on the Pixel.
+- **Exit:** the release APK is installed as the daily app; a full regression checklist from `06` has been run on the phone.
 
 ---
 

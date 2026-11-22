@@ -1,6 +1,6 @@
 # 06 — Testing strategy
 
-A green build proves nothing about edge detection or enhancement. Every image feature needs **fixtures with ground truth**, **automated metrics**, and **a check on the Pixel**.
+A green build proves nothing about edge detection or enhancement. Every image feature needs **fixtures with ground truth**, **automated metrics**, and **a check on the phone**.
 
 ## 1. Test dataset (`test-data/`, kept out of the APK)
 
@@ -11,7 +11,7 @@ test-data/
 │   │   ├── clean/  skewed/  shadows/  glare/  low-light/  busy-background/  handwriting/  tables/
 │   │   └── truth.json    # per image: 4 ground-truth corners, source page id
 │   ├── public/           # small, permissively licensed real photos (licence recorded per file)
-│   └── real/             # YOUR Pixel captures (gitignored if personal; anonymised ones may be committed)
+│   └── real/             # YOUR phone captures (gitignored if personal; anonymised ones may be committed)
 ├── special/
 │   ├── id-cards/         # synthetic cards only (fake name/photo); never real IDs
 │   ├── books/            # spreads with curvature
@@ -33,7 +33,7 @@ test-data/
 
 **PDF fixtures:** generated with reportlab/pypdf (vector text, mixed sizes, rotation flags, 300 pages) plus an image-only scan PDF built from the synthetic pages.
 
-**Real captures (Phase 2):** you shoot about 30 pages on the Pixel. Include lecture notes, a printed handout, a textbook spread, a glossy page, the desk lamp at a bad angle, a dark room, a page on a wooden or patterned table, and an ID-like laminated card. Opus marks the corners for about 10 of them (in a small labelling script) to get real-world ground truth.
+**Real captures (Phase 2):** you shoot about 30 pages on the phone. Include lecture notes, a printed handout, a textbook spread, a glossy page, the desk lamp at a bad angle, a dark room, a page on a wooden or patterned table, and an ID-like laminated card. Opus marks the corners for about 10 of them (in a small labelling script) to get real-world ground truth.
 
 ## 2. Automated tests
 
@@ -72,10 +72,10 @@ test-data/
 
 `tools/check.sh` runs `./gradlew assembleDebug testDebugUnitTest lint` plus the Python lab regression (`imaging-lab/run_regression.py`, which prints the metrics table). Opus runs it before every merge.
 
-## 3. On-device checks (Pixel 8 Pro)
+## 3. On-device checks (real phone)
 - Install via `adb install -r`, then capture screenshots with `adb exec-out screencap -p`. Opus *looks at* each screenshot.
 - Live camera behaviour (overlay smoothness, auto-capture feel) can't be fully scripted. Opus writes a short manual checklist per phase, you run it, and you report back (or send screenshots or a screen recording via `adb shell screenrecord`).
 - Performance: `adb shell dumpsys gfxinfo <pkg>` for jank, and the Android Studio profiler for memory during a 50-page batch and the 300-page reader test.
 
 ## 4. Release regression checklist (Phase 8)
-One pass through every PRD acceptance row on the Pixel, including printing one real PT-12 duplex job and checking the page order on paper. The result is recorded in `tracker.md`.
+One pass through every PRD acceptance row on the phone, including printing one real PT-12 duplex job and checking the page order on paper. The result is recorded in `tracker.md`.

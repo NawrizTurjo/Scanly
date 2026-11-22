@@ -66,7 +66,7 @@ With an open notebook, Scanly crops the whole spread when both pages are in the 
 
 Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
 
-Versions 0.1 to 0.4 were pre-releases tested on a Pixel 8 Pro. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library.
+Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library.
 
 ## Privacy
 

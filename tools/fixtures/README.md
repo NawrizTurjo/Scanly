@@ -3,8 +3,8 @@
 From the repository root:
 
 ```powershell
-& G:/Paperless-Scanner/.venv/Scripts/python.exe tools/fixtures/generate_all.py
-& G:/Paperless-Scanner/.venv/Scripts/python.exe -m unittest discover -s tools/fixtures/tests -v
+& .venv/Scripts/python.exe tools/fixtures/generate_all.py
+& .venv/Scripts/python.exe -m unittest discover -s tools/fixtures/tests -v
 ```
 
 Use `--out PATH` to select another output directory, or `--only scanner|special|pdf|desk` to generate one set. The PDF generator can run independently because it renders its flat JPEGs from the same source renderer as the scanner.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Watches Codex workers without relying on their process exiting.
 # Usage: bash tools/watch-workers.sh <name> [<name> ...]
-#   <name> matches work/logs/<name>-final.md (the -o report) and the worktree G:/Paperless-wt/<name>.
+#   <name> matches work/logs/<name>-final.md (the -o report) and the worktree ../Paperless-wt/<name>.
 # Prints one line per event (for the Monitor tool): REPORT, DIED, KILLED-LINGERING, HEARTBEAT, ALL-DONE.
 set -u
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"

@@ -557,7 +557,7 @@ A reading-history dashboard.
 
 Optional AI-powered document summaries using local models.
 
-Your RTX 3060 desktop could even run local document-processing and AI workloads, while your Pixel handles everyday reading and scanning.
+A desktop could even run local document-processing and AI workloads, while your phone handles everyday reading and scanning.
 
 You wouldn't need to pay for a PDF subscription or send your academic documents to an external AI service.
 

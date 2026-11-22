@@ -23,9 +23,9 @@ def main():
     ap.add_argument("--cols", type=int, default=8)
     args = ap.parse_args()
     files = sorted(glob.glob(str(ROOT / "test-data/scanner/real/**/*.jpg"), recursive=True))
-    # "Turjo" holds Telegram-compressed copies of "Turjo-Real"; use the originals when both exist.
-    if any("Turjo-Real" in f for f in files):
-        files = [f for f in files if Path(f).parent.name != "Turjo"]
+    # A folder "<name>" may hold chat-compressed copies of "<name>-Real"; use the originals when both exist.
+    originals = {Path(f).parent.name[:-len("-Real")] for f in files if Path(f).parent.name.endswith("-Real")}
+    files = [f for f in files if Path(f).parent.name not in originals]
     tiles, misses, times = [], [], []
     for i, f in enumerate(files):
         im = cv2.imread(f)

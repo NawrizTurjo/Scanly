@@ -1,7 +1,7 @@
 # 08 — Desktop setup (one time, about 1–2 hours)
 
-Machine: i5, 48 GB RAM, RTX 3060 12 GB (Windows). Phone: Pixel 8 Pro.
-Your 48 GB of RAM matters most here. The GPU only speeds up the emulator's rendering. Scanning itself runs on the phone.
+Machine: a Windows desktop with plenty of RAM. Phone: a recent Android phone.
+RAM matters most here. The GPU only speeds up the emulator's rendering. Scanning itself runs on the phone.
 
 ## 0. Disk and paths
 - Free space needed: about **40 GB** (Android Studio, SDK, emulator image, Gradle cache, OpenCV).
@@ -15,14 +15,14 @@ Your 48 GB of RAM matters most here. The GPU only speeds up the emulator's rende
 | Tool | How | Check |
 |---|---|---|
 | Git | git-scm.com (includes Git Bash, which Claude Code uses) | `git --version` |
-| Android Studio (latest stable) | developer.android.com/studio → in the wizard choose Standard; install the SDK, Platform-Tools, an emulator, and one Pixel system image (x86_64) | Opens fine |
+| Android Studio (latest stable) | developer.android.com/studio → in the wizard choose Standard; install the SDK, Platform-Tools, an emulator, and one phone system image (x86_64) | Opens fine |
 | SDK extras | SDK Manager → SDK Tools: **Google USB Driver**, Android SDK Command-line Tools | — |
 | Node.js LTS | nodejs.org (Codex CLI and `codex-usage.sh` need it) | `node -v` |
 | Codex CLI | `npm i -g @openai/codex` → `codex login` (ChatGPT account) | `codex --version`; `bash tools/codex-usage.sh` prints usage |
 | Claude Code | install per docs.claude.com → `claude` → log in | `claude --version` |
 | Python 3.12 | python.org (tick "Add to PATH") | `python --version` |
 | scrcpy (optional, nice) | github.com/Genymobile/scrcpy (mirrors the phone screen on the desktop) | `scrcpy` |
-| claude-nap (optional) | your own repo github.com/NawrizTurjo/claude-nap (pauses and resumes at the usage limit) | — |
+| claude-nap (optional) | a small personal tool that pauses and resumes at the usage limit | — |
 
 ## 2. Environment variables (System Properties → Environment Variables → User)
 ```
@@ -34,7 +34,7 @@ PATH += %ANDROID_HOME%\platform-tools ; %ANDROID_HOME%\emulator ; %JAVA_HOME%\bi
 ```
 Open a **new** terminal afterwards. Check: `adb version`, `java -version`.
 
-## 3. Pixel 8 Pro
+## 3. The phone
 1. Settings → About phone → tap **Build number** 7 times → Developer options are now on.
 2. Developer options → **USB debugging** ON. (Optional: **Wireless debugging** ON, so you can work without the cable: `adb pair <ip:port>` then `adb connect <ip:port>`.)
 3. Plug it into the desktop → accept the "Allow USB debugging" prompt (tick *Always allow*).
@@ -70,7 +70,7 @@ kotlin.daemon.jvmargs=-Xmx3g
 ```
 
 ## 7. Sanity check before S1
-In Android Studio: New Project → *Empty Activity* (Compose) → Run on the Pixel → you see "Hello Android". Then close it. Claude builds the real project from scratch in S1. This step just proves the toolchain and the phone connection work.
+In Android Studio: New Project → *Empty Activity* (Compose) → Run on the phone → you see "Hello Android". Then close it. Claude builds the real project from scratch in S1. This step just proves the toolchain and the phone connection work.
 
 ## 8. Memory and preferences on the new machine
-Claude's auto-memory from this laptop doesn't come along. That's fine: every rule that matters (orchestration, worker counts, usage gates, ntfy topic, Sonnet-only subagents) is written into **`CLAUDE.md`** in this folder, which Claude Code loads automatically.
+Claude's auto-memory from another machine doesn't come along. That's fine: every rule that matters (orchestration, worker counts, usage gates, phone notifications, Sonnet-only subagents) is written into **`CLAUDE.md`** in this folder, which Claude Code loads automatically.

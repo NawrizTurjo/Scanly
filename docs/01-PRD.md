@@ -1,9 +1,9 @@
 # 01 — Product Requirements (v1)
 
 ## 1. Product definition
-**Paperless** is a personal Android app for a single device (Pixel 8 Pro). It is primarily a **document scanner**. It also includes a **document library** and a **lightweight PDF toolkit with a multi-tab reader**. It is not a general PDF editor: it can't edit PDF text and doesn't try to be Acrobat.
+**Paperless** is a personal Android app for a single phone. It is primarily a **document scanner**. It also includes a **document library** and a **lightweight PDF toolkit with a multi-tab reader**. It is not a general PDF editor: it can't edit PDF text and doesn't try to be Acrobat.
 
-Principles: offline-only, no watermark, no account, no subscription, no ads, no AI/cloud APIs, originals always preserved, and a polished native Pixel feel (Material 3 / Material You).
+Principles: offline-only, no watermark, no account, no subscription, no ads, no AI/cloud APIs, originals always preserved, and a polished native Android feel (Material 3 / Material You).
 
 ## 2. The two core workflows (the user's minimal version, which must be excellent)
 **A. Batch scan:** open the camera → point it at a page → the edges are detected live → capture (auto or manual) → repeat for N pages → review the grid → apply enhancement to all pages ("white page" look) → export as **PDF, images, or both**.
@@ -15,7 +15,7 @@ Principles: offline-only, no watermark, no account, no subscription, no ads, no 
 ### 3.1 Core scanner
 | ID | Feature | Acceptance (summary) |
 |---|---|---|
-| SC-1 | Automatic edge detection (live preview overlay + on the captured still) | ≥ 90% of corners within 2% of the image diagonal on the `clean`/`skewed` fixtures; live overlay runs at ≥ 15 fps on the Pixel |
+| SC-1 | Automatic edge detection (live preview overlay + on the captured still) | ≥ 90% of corners within 2% of the image diagonal on the `clean`/`skewed` fixtures; live overlay runs at ≥ 15 fps on the phone |
 | SC-2 | Manual 4-corner adjustment | Draggable corners with a magnifier loupe; "reset to auto" and "full image" buttons |
 | SC-3 | Perspective correction | Output rectangle aspect ratio estimated from the quad; it can snap to A4/Letter |
 | SC-4 | Batch scanning | Unlimited pages per session, a page counter, a thumbnail strip, retake/delete inside the session |
@@ -131,7 +131,7 @@ Digital signature, cloud backup/sync, PDF → Word/Excel, collaboration, editing
 4. Windows desktop app (Kotlin Multiplatform + PDFium). It's a second project of about 8–12 sessions.
 
 ## 6. Non-functional requirements
-- Capture-to-thumbnail latency < 1 s; full enhancement of one 12 MP page < 1.5 s on the Pixel 8 Pro (background thread).
+- Capture-to-thumbnail latency < 1 s; full enhancement of one 12 MP page < 1.5 s on the test phone (background thread).
 - A 50-page batch shouldn't crash or exhaust memory. Process pages through a bounded queue and never hold more than about 3 full-resolution bitmaps at once.
 - Storage: originals are JPEG q95 in app-private storage; processed pages are cached and can be regenerated.
 - APK size target < 60 MB (arm64 only for release).

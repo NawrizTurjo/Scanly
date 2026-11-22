@@ -7,7 +7,7 @@ Run `claude` in the project folder with **Opus 5.5** as the model. `CLAUDE.md` l
 ## S0 — Verify the setup
 ```
 Verify my dev environment for this project (see docs/08-desktop-setup.md):
-adb devices shows the Pixel, java/python/node/git/codex are on PATH,
+adb devices shows the phone, java/python/node/git/codex are on PATH,
 bash tools/codex-usage.sh works, and ANDROID_HOME is set.
 Report a pass/fail table and how to fix anything that failed. Don't create the Android project yet.
 ```
@@ -28,7 +28,7 @@ Then:
 
 After my go: Gradle multi-module skeleton + design system + 4-tab shell, .gitignore,
 gradle.properties, tools/check.sh, and the fixture generators producing test-data/
-with ground truth. Install on the Pixel, screenshot it and check the result. Update docs if decisions changed,
+with ground truth. Install on the phone, screenshot it and check the result. Update docs if decisions changed,
 update tracker.md, commit, ntfy.
 ```
 
@@ -42,7 +42,7 @@ Read CLAUDE.md and tracker.md. We're on <PHASE NAME> from docs/05-roadmap-sessio
 3. Post a plan: tasks, who does each (Opus / Sonnet / Codex), worktree/branch per worker,
    acceptance checks from the PRD and 06-testing-strategy. Wait for my go.
 4. Execute: briefs on disk, dispatch workers, review diffs, merge only on green check.sh,
-   then verify on the Pixel with screenshots. Give me a short manual checklist for anything
+   then verify on the phone with screenshots. Give me a short manual checklist for anything
    camera/UX-related that you can't verify yourself.
 5. ntfy after each milestone. At the end: update tracker.md (done / partial / next / surprises),
    commit, final ntfy.
@@ -50,7 +50,7 @@ Read CLAUDE.md and tracker.md. We're on <PHASE NAME> from docs/05-roadmap-sessio
 
 ## Phase 2 extra: real-photo tuning round
 ```
-I've copied my real Pixel scans to test-data/scanner/real/. Label the corners for ~10 of
+I've copied my real phone scans to test-data/scanner/real/. Label the corners for ~10 of
 them with the labelling script, run the imaging-lab regression on synthetic + real, show me
 contact sheets of the worst 8 cases, propose parameter/algorithm changes, re-run, and
 port the improvements to Kotlin with parity tests.

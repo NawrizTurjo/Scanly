@@ -16,8 +16,8 @@
 | R10 | Annotation coordinates drift across zoom levels or rotated pages | Medium / Medium | Store in PDF page space; unit-test the transforms; handle `/Rotate` explicitly |
 | R11 | Live camera UX can't be fully verified by Claude | Certain / Medium | Manual checklists + screenshots/recordings from you every phase |
 | R12 | Windows build pitfalls (long paths, spaces, antivirus scanning the Gradle cache) | Medium / Low | Short path (`D:\dev\paperless`), enable long paths, add a Defender exclusion for the project + `.gradle` |
-| R13 | Parallel workers conflict or several Gradle daemons use too much RAM | Low (48 GB) / Low | One worktree per worker on separate modules; `org.gradle.jvmargs=-Xmx4g` per daemon |
-| R14 | Android 15+ `PdfRenderer` text/search/link APIs not available as expected | Low on a Pixel / Medium | Check at S1; PdfBox text-position fallback is designed in (02 §7.2) |
+| R13 | Parallel workers conflict or several Gradle daemons use too much RAM | Low / Low | One worktree per worker on separate modules; `org.gradle.jvmargs=-Xmx4g` per daemon |
+| R14 | Android 15+ `PdfRenderer` text/search/link APIs not available as expected | Low on a recent phone / Medium | Check at S1; PdfBox text-position fallback is designed in (02 §7.2) |
 | R15 | Auto chapter detection is noisy on badly made PDFs | Medium / Low | It only suggests; you review before saving. Text PDFs only |
 | R16 | Writing outlines, numbers or passwords damages an unusual PDF | Medium / High | New file first, verify it opens and the page count matches, old version kept in the recycle bin (02 §7.1); preservation tests in 06 |
 | R17 | Ink removal also eats coloured diagrams or highlighted print | Medium / Low | Off by default, preview before applying; black pen vs black print is impossible and the UI says so |
@@ -30,10 +30,10 @@
 |---|---|---|
 | D1 | App name | **Paperless** (working name) |
 | D2 | Package name | `dev.turjo.paperless` |
-| D3 | minSdk | **31** (Android 12+: dynamic colour, modern APIs; only your Pixel matters) |
+| D3 | minSdk | **31** (Android 12+: dynamic colour, modern APIs; only one phone matters) |
 | D4 | Use ML Kit Document Scanner? | **No in the app**; optional one-time quality benchmark in Phase 2 |
 | D5 | Navigation library | Navigation Compose stable, unless S1 research shows Navigation 3 is stable and mature |
-| D6 | Git hosting | **Private** GitHub repo (backup + lets you view code from the laptop). Real personal scans never committed |
+| D6 | Git hosting | **Private** GitHub repo (backup + lets you view code from another machine). Real personal scans never committed |
 | D7 | Annotations: on any PDF, or only exported scans? | **Any PDF** (it's in the reader) |
 | D8 | Default filter after a scan | **Document** (white page) |
 | D9 | Default export | **PDF**, A4 auto-fit, Medium quality |

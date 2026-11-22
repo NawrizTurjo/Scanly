@@ -60,7 +60,7 @@ We prototype every change in Python under `tools/imaging-lab/` and port it to Ko
 | `scanner/synthetic` | 48 | Single sheets with skew, shadow, glare, low light, busy backgrounds | 48 | 48 |
 | `special` | 10 | ID cards, book spreads, whiteboards | 10 | 8 (10 in ID card mode) |
 | `scanner/desk` | 56 | Notebooks, laptops, desk mats, pens, clipped and covered pages, dim light | 1 | 40 |
-| Private phone photos | 90 | The author's notes and a friend's notebooks | judged by eye | judged by eye |
+| Private phone photos | 90 | Handwritten and printed notes from real use | judged by eye | judged by eye |
 
 A synthetic or special photo counts as a hit when every corner lands within 2% of the image diagonal of the truth. Desk scenes use the mean corner error under 3%. `tools/check.sh` fails if desk hits drop below 37.
 
@@ -77,6 +77,6 @@ python tools/imaging-lab/run_regression.py --set desk   # desk scenes, add --she
 - **Steep corners out of frame.** A page tilted far enough that a corner leaves the photo can fall back to the full image.
 - **Cards outside ID mode.** Two of the four test cards lose their coloured header in Document mode. ID card mode finds all four.
 - **Curled pages.** The detector fits straight lines. A bowed notebook edge gets the chord between its corners, and the page isn't dewarped.
-- **Speed.** A full detection takes about one second on the x86_64 emulator. It runs in the background after capture, so you can keep shooting. Pixel timings are still to be measured.
+- **Speed.** A full detection takes about one second on the x86_64 emulator. It runs in the background after capture, so you can keep shooting. Phone timings are still to be measured.
 
 When the detector finds no page, the editor opens with the full photo and you drag the corners yourself. **Auto** in the crop tab runs detection again.
