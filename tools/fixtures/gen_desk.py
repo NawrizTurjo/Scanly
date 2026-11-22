@@ -5,8 +5,9 @@ from PIL import Image, ImageDraw
 from common import (background, composite, contact_sheet, font, gaussian, page_image,
                     pixel_corners, record, rng_for, write_truth)
 
+HARD_CATEGORIES = ("book-closeup", "book-gutter", "shadow-band", "near-border")
 CATEGORIES = ("desk-sheet", "white-on-light", "notebook-spread", "notebook-left",
-              "notebook-right", "clipped-sheet", "occluded", "dim-desk")
+              "notebook-right", "clipped-sheet", "occluded", "dim-desk", *HARD_CATEGORIES)
 SAMPLES = 7
 
 
@@ -344,6 +345,206 @@ def render(size, category, index, rng):
     return image, entry
 
 
+def textbook_page(index, paper):
+    topics = (
+        ("Water in the soil", "After rain, water moves through the spaces between grains of soil. "
+         "Large spaces drain quickly, while small pores retain water by capillary action. "
+         "Roots draw on this reserve as the surface dries. The rate depends on pore size "
+         "and on whether the spaces form continuous paths."),
+        ("The shape of a river", "A river sorts the material it carries as its speed changes. "
+         "Coarse grains settle where the flow weakens, while finer particles stay suspended. "
+         "At a bend, erosion on the outside and deposition on the inside gradually move "
+         "the channel across the floodplain."),
+        ("Measuring a hillside", "Contours join places of equal elevation. Where the lines are "
+         "close together, a small horizontal distance corresponds to a large change in height. "
+         "To compare two slopes, measure along the direction that crosses the contours "
+         "at right angles and use the same map scale."),
+        ("Soil and vegetation", "A layer of leaves intercepts part of the rain before it reaches "
+         "the ground. Water that reaches bare soil can dislodge grains and carry them downslope. "
+         "On a vegetated slope, stems slow the flow and roots hold grains together."),
+        ("Reading a floodplain", "Floods leave a thin layer of sediment beyond the river banks. "
+         "Repeated floods build low ridges close to the channel. Water can remain in the "
+         "lower ground behind those ridges long after it has receded in the river."),
+        ("Working with scale", "A map shows horizontal distances. A walk up a hillside is longer "
+         "than the corresponding line on the map. The difference is small on gentle ground "
+         "and increases on steep ground. Mark both the distance and the change in height."),
+    )
+    w, h = 1240, 1754
+    page = Image.new("RGB", (w, h), paper)
+    draw = ImageDraw.Draw(page)
+    ink = (52, 48, 44)
+    face = font("times.ttf", 34 + index % 3)
+    heading = font("timesbd.ttf", 49)
+    title, _ = topics[index % len(topics)]
+    draw.text((w / 2, 67), "PHYSICAL GEOGRAPHY", font=font("times.ttf", 27), fill=ink, anchor="mt")
+    draw.line((92, 110, w - 92, 110), fill=(151, 144, 129), width=2)
+    draw.text((w / 2, 146), title, font=heading, fill=ink, anchor="mt")
+    y = 231
+    for section in range(6):
+        topic, paragraph = topics[(index + section) % len(topics)]
+        if section == 3:
+            draw.text((92, y), topic, font=heading, fill=ink)
+            y += 60
+        line = ""
+        x = 122
+        for word in paragraph.split():
+            candidate = f"{line} {word}".strip()
+            if draw.textlength(candidate, font=face) > w - 92 - x:
+                draw.text((x, y), line, font=face, fill=ink)
+                y += 45
+                x, line = 92, word
+            else:
+                line = candidate
+        draw.text((x, y), line, font=face, fill=ink)
+        y += 68
+    draw.text((w / 2, h - 64), str(64 + index), font=face, fill=ink, anchor="mb")
+    return page
+
+
+def hard_page_quad(size, category, index, rng):
+    w, h = size
+    if category == "near-border":
+        inset = rng.uniform(.004, .011, 2) * np.hypot(w, h)
+        left, top = inset
+        right, bottom = rng.uniform(.72, .86) * w, rng.uniform(.74, .89) * h
+        quad = np.array([[left, top], [right, top + .005 * h],
+                         [right + .012 * w, bottom], [left + .006 * w, bottom - .016 * h]])
+        if index % 2:
+            quad[:, 1] = h - 1 - quad[:, 1]
+            quad = quad[[3, 2, 1, 0]]
+    else:
+        if category == "book-closeup":
+            width, height = rng.uniform(.77, .94), rng.uniform(.89, .955)
+            angle = rng.uniform(-2.8, 2.8)
+            skew = rng.uniform(-.023, .023)
+        elif category == "book-gutter":
+            width, height = rng.uniform(.56, .77), rng.uniform(.77, .87)
+            angle = rng.uniform(-16, 16)
+            skew = rng.uniform(-.13, .13)
+        else:
+            width, height = rng.uniform(.72, .88), rng.uniform(.75, .90)
+            angle = rng.uniform(-7, 7)
+            skew = rng.uniform(-.06, .06)
+        quad = (pixel_corners((2, 2)) - .5) * [width * (w - 1), height * (h - 1)]
+        quad[:, 1] *= [1 - skew, 1 + skew, 1 + skew, 1 - skew]
+        rotation = cv2.getRotationMatrix2D((0, 0), angle, 1)[:, :2]
+        quad = quad @ rotation.T
+        quad *= np.minimum(1, .95 * (np.array(size) - 1) / np.ptp(quad, axis=0))
+        quad -= (quad.min(axis=0) + quad.max(axis=0)) / 2
+        quad[:, 0] += (.5 * (w - 1) if category == "shadow-band" else .021 * w - quad[:, 0].min())
+        quad[:, 1] += .5 * (h - 1)
+    if index % 2:
+        quad[:, 0] = w - 1 - quad[:, 0]
+        quad = quad[[1, 0, 3, 2]]
+    return quad.astype(np.float32)
+
+
+def spread_layer(page, neighbour, gutter_right, bow, shade):
+    w, h = page.size
+    pages = (page, neighbour) if gutter_right else (neighbour, page)
+    # Both pages share the fold pixels so the gutter has no compositing seam.
+    spread = np.hstack((np.asarray(pages[0])[:, :-1], np.asarray(pages[1])))
+    pad = 24
+    y, x = np.indices((h + 2 * pad, 2 * w - 1), dtype=np.float32)
+    fold_distance = (x - (w - 1)) / (w - 1)
+    arch = bow * np.sin(np.pi * np.abs(fold_distance))
+    curve = .045 * fold_distance * np.exp(-np.abs(fold_distance) / .16)
+    map_x = x + curve * (w - 1)
+    map_y = (y - pad + arch) * (h - 1) / (h - 1 + 2 * arch)
+    surface = cv2.remap(spread, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    fold = 1 - shade * np.exp(-.5 * (fold_distance / .037) ** 2)
+    layer = Image.new("RGBA", (2 * w - 1 + 2 * pad, h + 2 * pad), (69, 82, 78))
+    layer.putalpha(rounded_mask(layer.size, 12))
+    draw = ImageDraw.Draw(layer)
+    for inset, color in ((4, (162, 151, 130)), (7, (201, 191, 169)), (10, (222, 214, 193))):
+        draw.rounded_rectangle((inset, inset, layer.width - 1 - inset, layer.height - 1 - inset),
+                               radius=9, fill=color)
+    rgba = np.array(layer)
+    paper = (map_y >= 0) & (map_y <= h - 1)
+    rgba[:, pad:-pad, :3][paper] = (surface * fold[..., None])[paper]
+    target_x = pad if gutter_right else pad + w - 1
+    return rgba, target_x, pad
+
+
+def device_shadow(size, quad, index):
+    w, h = size
+    x, y = quad.mean(axis=0)
+    pw, ph = np.ptp(quad, axis=0)
+    center = (x + (-1 if index % 2 else 1) * .25 * pw, y + .18 * ph)
+    mask = np.zeros((h, w), np.uint8)
+    if index % 3 == 0:
+        cv2.ellipse(mask, tuple(np.rint(center).astype(int)), (int(.39 * pw), int(.36 * ph)),
+                    25, 0, 360, 255, -1)
+    else:
+        box = cv2.boxPoints((center, (.59 * pw, .64 * ph), -27 + 8 * index))
+        cv2.fillConvexPoly(mask, np.rint(box).astype(np.int32), 255)
+    small = cv2.resize(mask, (w // 4, h // 4), interpolation=cv2.INTER_AREA) / np.float32(255)
+    return cv2.resize(cv2.GaussianBlur(small, (0, 0), 5 + index % 3), size)
+
+
+def render_hard(category, index, rng):
+    size = w, h = (1500, 2000)
+    texture = ("wood", "floral", "laminate", "wood", "checks", "laminate", "wood")[index]
+    if texture in ("floral", "checks"):
+        scene = textile(size, texture, rng).astype(np.float32)
+    else:
+        scene = background(size, texture, rng).astype(np.float32)
+    quad = hard_page_quad(size, category, index, rng)
+    paper = ((246, 242, 232), (246, 246, 243), (236, 234, 227))[index % 3]
+    page = textbook_page(2 * index + index % 2, paper)
+    matrix = cv2.getPerspectiveTransform(pixel_corners(page.size), quad)
+    effects = dict(drop_shadow=True, jpeg_quality=88)
+    if category.startswith("book-"):
+        gutter_right = index % 2 == 0
+        neighbour = textbook_page(2 * index + int(gutter_right), paper)
+        bow = float(rng.uniform(.005, .012))
+        rgba, tx, ty = spread_layer(page, neighbour, gutter_right, bow * (page.height - 1),
+                                    rng.uniform(.18, .32))
+        spread_matrix = matrix @ np.array([[1, 0, -tx], [0, 1, -ty], [0, 0, 1]])
+        alpha = rgba[..., 3].astype(np.float32) / 255
+        matte = cv2.warpPerspective(alpha, spread_matrix, size)
+        shifted = cv2.warpAffine(matte, np.float32([[1, 0, 8], [0, 1, 13]]), size)
+        scene *= (1 - .30 * cv2.GaussianBlur(shifted, (0, 0), 8))[..., None]
+        scene *= 1 - matte[..., None]
+        scene += cv2.warpPerspective(rgba[..., :3] * alpha[..., None], spread_matrix, size)
+        effects.update(gutter_side="right" if gutter_right else "left", page_bow=bow)
+    else:
+        scene = composite(page, scene, matrix, drop_shadow=True)
+
+    y, x = np.ogrid[:h, :w]
+    gradient = float(rng.uniform(.15, .35))
+    light = .72 * x / (w - 1) + .28 * y / (h - 1)
+    if index % 2:
+        light = 1 - light
+    exposure = float(rng.uniform(.88, 1.01))
+    vignette = gaussian(size, w / 2, h / 2, .85 * w, .90 * h)
+    scene *= (exposure * (1 + gradient * light) / (1 + gradient) * (.86 + .14 * vignette))[..., None]
+    if category in ("book-closeup", "shadow-band"):
+        shadow = device_shadow(size, quad, index)
+        depth = float(rng.uniform(.30, .55) if category == "shadow-band" else rng.uniform(.19, .39))
+        scene *= 1 - depth * shadow[..., None]
+        target = np.zeros((h, w), np.uint8)
+        cv2.fillConvexPoly(target, np.rint(quad).astype(np.int32), 1)
+        effects.update(shadow_depth=depth, shadow_area=float(np.mean(shadow[target != 0] >= .5)))
+    gains = [1.04, 1, .95] if index % 2 else [.95, 1, 1.04]
+    noise = float(rng.uniform(1.6, 3.4))
+    blur = float(rng.uniform(.55, .79))
+    scene *= gains
+    scene += rng.normal(0, noise, (h, w)).astype(np.float32)[..., None]
+    scene = cv2.GaussianBlur(scene, (3, 3), blur)
+    effects.update(exposure=exposure, light_gradient=gradient, white_balance=gains,
+                   noise_sigma=noise, blur_sigma=blur)
+    image = Image.fromarray(np.clip(scene, 0, 255).astype(np.uint8))
+    if index == 6:
+        image = image.transpose(Image.Transpose.ROTATE_270)
+        turn = np.array([[0, -1, h - 1], [1, 0, 0], [0, 0, 1]])
+        matrix = turn @ matrix
+        quad = cv2.perspectiveTransform(pixel_corners(page.size)[None], matrix)[0]
+    entry = record(category, image.size, page.size, quad, matrix, texture, effects)
+    entry["alt_corners"] = []
+    return image, entry
+
+
 def generate(out, categories=CATEGORIES, samples=SAMPLES):
     directory = out / "scanner" / "desk"
     entries = {}
@@ -351,7 +552,10 @@ def generate(out, categories=CATEGORIES, samples=SAMPLES):
         for index in range(samples):
             rng = rng_for(4, CATEGORIES.index(category), index)
             size = (2000, 1500) if index == 6 else (1500, 2000)
-            image, entry = render(size, category, index, rng)
+            if category in HARD_CATEGORIES:
+                image, entry = render_hard(category, index, rng)
+            else:
+                image, entry = render(size, category, index, rng)
             name = f"{category}/{category}_{index + 1:02}.jpg"
             path = directory / name
             path.parent.mkdir(parents=True, exist_ok=True)

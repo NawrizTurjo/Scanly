@@ -31,7 +31,8 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(Counter(e["category"] for e in entries.values()),
                          dict.fromkeys(("desk-sheet", "white-on-light", "notebook-spread",
                                         "notebook-left", "notebook-right", "clipped-sheet",
-                                        "occluded", "dim-desk"), 7))
+                                        "occluded", "dim-desk", "book-closeup", "book-gutter",
+                                        "shadow-band", "near-border"), 7))
         self.assertTrue((DESK / "_contact_sheet.jpg").is_file())
         for name, info in entries.items():
             with self.subTest(image=name):
@@ -53,22 +54,45 @@ class FixtureTests(unittest.TestCase):
                     self.assertTrue(np.all(quad >= 0) and np.all(quad <= bounds))
                     self.assertTrue(cv2.isContourConvex(quad))
                     share = cv2.contourArea(quad, oriented=True) / (w * h)
-                    self.assertTrue(.25 <= share <= .80, share)
+                    lower, upper = {"book-closeup": (.65, .90), "book-gutter": (.40, .70),
+                                    "shadow-band": (.50, .85)}.get(category, (.25, .80))
+                    self.assertTrue(lower <= share <= upper, share)
                     on_border = np.any((quad == 0) | (quad == bounds), axis=1)
                     self.assertEqual(int(on_border.sum()), 2 if category == "clipped-sheet" else 0)
+                effects = info["effects"]
+                if category.startswith("book-"):
+                    gutter_right = effects["gutter_side"] == "right"
+                    dx = pw - 1 if gutter_right else 1 - pw
+                    far_edge = source[:, [1, 2] if gutter_right else [0, 3]] + [dx, 0]
+                    far = cv2.perspectiveTransform(far_edge.astype(np.float32),
+                                                   np.array(info["homography"]))[0]
+                    self.assertTrue(np.any(np.all(far < 0, axis=0) |
+                                           np.all(far > bounds, axis=0)))
+                    self.assertTrue(0 < effects["page_bow"] <= .02)
+                elif category == "shadow-band":
+                    self.assertTrue(.20 <= effects["shadow_area"] <= .45, effects["shadow_area"])
+                    self.assertTrue(.30 <= effects["shadow_depth"] <= .55)
+                    self.assertTrue(0 < effects["light_gradient"] <= .35)
+                elif category == "near-border":
+                    quad = np.asarray(info["corners"])
+                    distances = np.column_stack((quad, bounds - quad))
+                    nearest = np.sort(distances, axis=0)[1] / np.hypot(w, h)
+                    close = (.003 <= nearest) & (nearest <= .015)
+                    self.assertEqual(np.count_nonzero(close[[0, 2]]), 1)
+                    self.assertEqual(np.count_nonzero(close[[1, 3]]), 1)
+                    self.assertTrue(np.all(np.sort(nearest)[2:] >= 5 * .015))
 
     def test_desk_determinism(self):
         script = ("from pathlib import Path; import sys, cv2, gen_desk; "
                   "cv2.setNumThreads(1); gen_desk.generate(Path(sys.argv[1]), "
-                  "('notebook-left', 'clipped-sheet'), samples=1)")
+                  "('notebook-left', 'clipped-sheet', *gen_desk.HARD_CATEGORIES), samples=1)")
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
             for directory in (first, second):
                 subprocess.run([sys.executable, "-B", "-c", script, directory], check=True,
                                cwd=ROOT / "tools" / "fixtures")
             a = Path(first) / "scanner" / "desk"
             b = Path(second) / "scanner" / "desk"
-            for name in ("notebook-left/notebook-left_01.jpg", "clipped-sheet/clipped-sheet_01.jpg",
-                         "truth.json", "_contact_sheet.jpg"):
+            for name in (*truth(a), "truth.json", "_contact_sheet.jpg"):
                 with self.subTest(file=name):
                     self.assertEqual((a / name).read_bytes(), (b / name).read_bytes())
                     if name.endswith("_01.jpg"):
