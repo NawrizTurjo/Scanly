@@ -155,6 +155,8 @@ class LibraryViewModelTest {
     }
 
     private class TestReaderRepository : ReaderRepository {
+        override suspend fun resolveUri(key: dev.turjo.paperless.core.model.PdfKey): android.net.Uri =
+            throw UnsupportedOperationException("not used in this test")
         val recent = MutableStateFlow<List<RecentPdf>>(emptyList())
 
         override fun observeRecent() = recent

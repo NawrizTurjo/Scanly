@@ -1,10 +1,13 @@
 package dev.turjo.paperless.feature.reader
 
 import android.net.Uri
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.turjo.paperless.core.data.SaveResult
 import dev.turjo.paperless.core.data.ReaderRepository
+import dev.turjo.paperless.core.model.OutlineNode
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.core.model.ReaderViewMode
 import dev.turjo.paperless.core.model.RecentPdf
@@ -49,9 +52,15 @@ enum class ReaderError { ENCRYPTED, OPEN, SAVE }
 class ReaderViewModel @Inject constructor(
     private val repository: ReaderRepository,
     private val sessions: PdfSessionManager,
+    private val outlineFiles: ReaderOutlineFiles? = null,
 ) : ViewModel() {
     private val state = MutableStateFlow(ReaderUiState())
     val uiState = state.asStateFlow()
+    internal val searches = mutableStateMapOf<String, SearchState>()
+    internal val crops = mutableStateMapOf<String, CropMode>()
+    internal val drafts = mutableStateMapOf<String, OutlineDraft>()
+    internal val secondaryPositions = mutableStateMapOf<String, TabState>()
+    internal val secondaryPans = mutableMapOf<String, Float>()
     private val horizontalOffsets = mutableMapOf<String, Float>()
     private class ReadingProgress(val count: Int, val page: Int)
 
@@ -160,6 +169,41 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    internal suspend fun readOutline(key: PdfKey) = readerResult { requireNotNull(outlineFiles).read(key) }
+
+    internal suspend fun suggestOutline(key: PdfKey) = readerResult { requireNotNull(outlineFiles).suggest(key) }
+
+    internal suspend fun saveOutline(id: String, nodes: List<OutlineNode>, overwrite: Boolean): Boolean {
+        val tab = state.value.tabs.firstOrNull { it.tabId == id } ?: return false
+        val result = readerResult { requireNotNull(outlineFiles).save(tab.pdfKey, nodes, overwrite) }
+        if (result !is SaveResult.Saved) return false
+        val title = if (overwrite) tab.title else tab.title.substringBeforeLast('.') + " (edited).pdf"
+        val key = if (overwrite) tab.pdfKey else readerResult {
+            repository.registerExternal(result.uri, title)
+        } ?: return false
+        val current = state.value
+        val updated = current.tabs.map { if (it.tabId == id) it.copy(pdfKey = key, title = title) else it }
+        drafts.remove(id)
+        searches[id]?.let { searches[id] = SearchState(it.query, status = if (it.query.isBlank()) null else SearchStatus.PENDING) }
+        secondaryPositions.remove(id)
+        if (current.activeTabId == id) select(updated, id) else state.value = current.copy(tabs = updated)
+        return true
+    }
+
+    internal suspend fun openPane(key: PdfKey) = readerResult { sessions.open(key) }
+
+    internal fun releasePane(key: PdfKey) = sessions.release(key)
+
+    internal fun updateOtherPosition(id: String, count: Int, page: Int, offset: Int) {
+        val current = state.value
+        val tab = current.tabs.firstOrNull { it.tabId == id } ?: return
+        if (page !in 0 until count || id == current.activeTabId) return
+        if (tab.page != page) recordProgress(tab.pdfKey, count, page)
+        state.value = current.copy(tabs = current.tabs.map {
+            if (it.tabId == id) it.copy(page = page, scrollOffsetPx = offset.coerceAtLeast(0)) else it
+        })
+    }
+
     fun openRecent(recent: RecentPdf) {
         viewModelScope.launch { open(recent.pdfKey, recent.title, recent.lastPage) }
     }
@@ -173,6 +217,11 @@ class ReaderViewModel @Inject constructor(
         val current = state.value
         val index = current.tabs.indexOfFirst { it.tabId == id }
         if (index < 0) return
+        searches.remove(id)
+        crops.remove(id)
+        drafts.remove(id)
+        secondaryPositions.remove(id)
+        secondaryPans.remove(id)
         horizontalOffsets.remove(id)
         val tabs = current.tabs.filterNot { it.tabId == id }
         if (id == current.activeTabId) select(tabs, tabs.getOrNull(index)?.tabId ?: tabs.lastOrNull()?.tabId)

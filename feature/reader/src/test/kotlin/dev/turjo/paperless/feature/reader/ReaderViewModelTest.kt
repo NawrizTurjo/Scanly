@@ -4,7 +4,10 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.util.SizeF
 import androidx.lifecycle.viewModelScope
+import dev.turjo.paperless.core.data.PdfSaveService
+import dev.turjo.paperless.core.data.SaveResult
 import dev.turjo.paperless.core.data.ReaderRepository
+import dev.turjo.paperless.core.model.OutlineNode
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.core.model.ReaderViewMode
 import dev.turjo.paperless.core.model.RecentPdf
@@ -12,6 +15,7 @@ import dev.turjo.paperless.core.model.TabState
 import dev.turjo.paperless.core.pdf.PdfDocumentHandle
 import dev.turjo.paperless.core.pdf.PdfOpenException
 import dev.turjo.paperless.core.pdf.PdfSessionManager
+import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,6 +40,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReaderViewModelTest {
@@ -43,6 +49,8 @@ class ReaderViewModelTest {
     private val repository = FakeReaderRepository()
     private val sessions = FakePdfSessions()
     private val viewModels = mutableListOf<ReaderViewModel>()
+
+    @get:Rule val files = TemporaryFolder()
 
     @Before
     fun setUp() {
@@ -231,11 +239,60 @@ class ReaderViewModelTest {
         assertNotNull(vm.uiState.value.document)
     }
 
+    @Test
+    fun outlineSaveWritesBeforeCallingServiceAndKeepsTabOpenOnFailure() = runTest(dispatcher) {
+        val input = files.newFile()
+        val bookmarks = listOf(OutlineNode("Chapter", 1))
+        val key = pdf(0)
+        val calls = mutableListOf<String>()
+        val service = object : PdfSaveService {
+            override suspend fun replaceExternal(key: PdfKey, newFile: File): SaveResult {
+                assertEquals(pdf(0), key)
+                assertEquals("edited PDF", newFile.readText())
+                calls += "overwrite"
+                return SaveResult.NotEditable
+            }
+
+            override suspend fun saveCopy(key: PdfKey, newFile: File): SaveResult {
+                assertEquals(pdf(0), key)
+                assertEquals("edited PDF", newFile.readText())
+                calls += "copy"
+                return SaveResult.Failed(IOException("Storage full"))
+            }
+        }
+        val outputs = mutableListOf<File>()
+        val outlineFiles = ReaderOutlineFiles(
+            source = { ReaderOutlineFiles.Source(input) },
+            output = { files.newFile().also(outputs::add) },
+            write = { source, nodes, output ->
+                assertEquals(input, source)
+                assertEquals(bookmarks, nodes)
+                output.writeText("edited PDF")
+                calls += "write"
+            },
+            saves = service,
+        )
+        val vm = ReaderViewModel(repository, sessions, outlineFiles).also(viewModels::add)
+        vm.open(key, page = 1)
+        runCurrent()
+        val original = checkNotNull(vm.uiState.value.activeTab)
+        val originalHandle = vm.uiState.value.document
+        assertEquals(false, vm.saveOutline(original.tabId, bookmarks, overwrite = true))
+        assertEquals(false, vm.saveOutline(original.tabId, bookmarks, overwrite = false))
+        assertEquals(listOf("write", "overwrite", "write", "copy"), calls)
+        assertEquals(original, vm.uiState.value.activeTab)
+        assertEquals(originalHandle, vm.uiState.value.document)
+        assertTrue(outputs.none(File::exists))
+        assertTrue(input.exists())
+    }
+
     private fun newViewModel() = ReaderViewModel(repository, sessions).also(viewModels::add)
 
     private fun pdf(index: Int) = PdfKey("pdf-$index")
 
     private class FakeReaderRepository : ReaderRepository {
+        override suspend fun resolveUri(key: dev.turjo.paperless.core.model.PdfKey): android.net.Uri =
+            throw UnsupportedOperationException("not used in this test")
         private val saved = MutableStateFlow(emptyList<TabState>() to (null as String?))
         var saves = 0
             private set
