@@ -255,6 +255,7 @@ internal fun ScanlyNavigation(
                         onAddMore = { backStack.add(CameraRoute(resumeDraftId = key.draftDocumentId)) },
                         onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
                         onBack = { backStack.removeAt(backStack.lastIndex) },
+                        onExport = { exportDocumentId = it },
                     )
                 }
                 entry<PageViewerRoute> { key ->

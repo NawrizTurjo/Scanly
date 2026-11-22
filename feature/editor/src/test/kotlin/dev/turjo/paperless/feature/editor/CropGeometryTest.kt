@@ -42,11 +42,23 @@ class CropGeometryTest {
     }
 
     @Test
-    fun cornerAndEdgeDragsRejectPointsOutsideImage() {
+    fun dragsPastTheBorderPinToIt() {
         val quad = fullCrop(100f, 100f)
 
-        assertNull(quad.moveHandle(0, CropPoint(-1f, 0f), 100f, 100f))
-        assertNull(quad.moveHandle(5, CropPoint(1f, 0f), 100f, 100f))
+        assertEquals(quad, quad.moveHandle(0, CropPoint(-1f, 0f), 100f, 100f))
+        assertEquals(quad, quad.moveHandle(5, CropPoint(1f, 0f), 100f, 100f))
+        assertPoint(0f, 20f, requireNotNull(quad.moveHandle(0, CropPoint(-30f, 20f), 100f, 100f)).points().first())
+    }
+
+    @Test
+    fun cornersJustOutsideTheImageStillDrag() {
+        // Detection scaled to full resolution can put a border corner a hair past the image (close-up photos).
+        val quad = Quad(-0.0004f, 0f, 4000.0005f, 0f, 4000.0005f, 3000.0002f, 0f, 3000.0002f)
+
+        val moved = requireNotNull(quad.moveHandle(0, CropPoint(120f, 80f), 4000f, 3000f))
+
+        assertPoint(120f, 80f, moved.points()[0])
+        assertPoint(4000f, 3000f, moved.points()[2])
     }
 
     @Test

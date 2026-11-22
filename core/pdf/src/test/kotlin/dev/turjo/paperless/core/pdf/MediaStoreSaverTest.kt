@@ -25,7 +25,7 @@ class MediaStoreSaverTest {
         val values = pendingExportValues(name, mime, directory)
         assertEquals(name, values.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
         assertEquals(mime, values.getAsString(MediaStore.MediaColumns.MIME_TYPE))
-        assertEquals("$directory/Paperless", values.getAsString(MediaStore.MediaColumns.RELATIVE_PATH).trimEnd('/'))
+        assertEquals("$directory/Scanly", values.getAsString(MediaStore.MediaColumns.RELATIVE_PATH).trimEnd('/'))
         assertEquals(1, values.getAsInteger(MediaStore.MediaColumns.IS_PENDING).toInt())
     }
 }

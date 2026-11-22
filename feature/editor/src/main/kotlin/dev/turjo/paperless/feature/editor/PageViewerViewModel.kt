@@ -9,6 +9,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.paramsHash
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +27,8 @@ internal data class PageViewerState(
     val close: Boolean = false,
     val changing: Boolean = false,
     val message: Int? = null,
+    /** A rendered page copy waiting for the share chooser; the screen launches it once and clears it. */
+    val shareFile: File? = null,
 )
 
 @HiltViewModel(assistedFactory = PageViewerViewModel.Factory::class)
@@ -33,6 +37,7 @@ internal class PageViewerViewModel @AssistedInject constructor(
     @Assisted("page") startPageId: String,
     private val documents: DocumentRepository,
     private val processing: PageProcessing,
+    private val sink: PageImageSink,
 ) : ViewModel() {
     @AssistedFactory
     interface Factory {
@@ -87,6 +92,45 @@ internal class PageViewerViewModel @AssistedInject constructor(
         state.first { current -> current.pages.none { it.page.id == pageId } }
     }
 
+    /** Shares or saves the current page's enhanced image (the same file PDF export uses), named after the document. */
+    fun exportPage(pageId: String, share: Boolean) {
+        val current = state.value
+        if (current.changing) return
+        val index = current.pages.indexOfFirst { it.page.id == pageId }
+        if (index < 0) return
+        mutableState.update { it.copy(changing = true) }
+        viewModelScope.launch {
+            try {
+                processing.awaitIdle(listOf(pageId))
+                val page = requireNotNull(documents.getPage(pageId))
+                if (page.processedHash != page.paramsHash()) {
+                    processing.enqueueRender(pageId)
+                    processing.awaitIdle(listOf(pageId))
+                }
+                val rendered = requireNotNull(documents.getPage(pageId)?.processedPath?.let(::File)?.takeIf(File::isFile))
+                val title = documents.observeDocument(documentId).first()?.document?.title.orEmpty()
+                val name = pageFileName(title, index + 1, current.pages.size)
+                if (share) {
+                    val copy = sink.shareCopy(rendered, name)
+                    mutableState.update { it.copy(shareFile = copy) }
+                } else {
+                    sink.saveToPictures(rendered, name)
+                    mutableState.update { it.copy(message = R.string.viewer_saved_image) }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                mutableState.update { it.copy(message = R.string.viewer_export_failed) }
+            } finally {
+                mutableState.update { it.copy(changing = false) }
+            }
+        }
+    }
+
+    fun shareLaunched() {
+        mutableState.update { it.copy(shareFile = null) }
+    }
+
     fun clearMessage() {
         mutableState.update { it.copy(message = null) }
     }
@@ -110,3 +154,10 @@ internal class PageViewerViewModel @AssistedInject constructor(
     }
 }
 
+
+/** "Biology notes p3.jpg"; a single-page document drops the page number. Unsafe file-name characters become "_". */
+internal fun pageFileName(title: String, number: Int, count: Int): String {
+    val clean = title.map { if (it.isISOControl() || it in "<>:\"/\\|?*") '_' else it }.joinToString("")
+        .trim().trimEnd('.').take(60).ifBlank { "Scan" }
+    return if (count > 1) "$clean p$number.jpg" else "$clean.jpg"
+}

@@ -20,9 +20,9 @@
     <string name="export_cancel">Cancel</string>
     <string name="export_share">Share</string>
     <string name="export_save">Save to device</string>
-    <string name="export_saved_pdf">Saved to Documents/Paperless</string>
-    <string name="export_saved_images">Saved to Pictures/Paperless</string>
-    <string name="export_saved_both">Saved to Documents/Paperless and Pictures/Paperless</string>
+    <string name="export_saved_pdf">Saved to Documents/Scanly</string>
+    <string name="export_saved_images">Saved to Pictures/Scanly</string>
+    <string name="export_saved_both">Saved to Documents/Scanly and Pictures/Scanly</string>
     <string name="export_open">Open</string>
     <string name="export_error">Couldn’t complete the export action</string>
 </resources>

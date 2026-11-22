@@ -54,6 +54,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
 import dev.turjo.paperless.core.model.ThemeMode
+import dev.turjo.paperless.core.pdf.ShareIntents
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -79,6 +80,13 @@ fun PageViewerScreen(
     ScanlyTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
         val snackbar = remember { SnackbarHostState() }
         EditorMessage(state.message, snackbar, model::clearMessage)
+        val context = LocalContext.current
+        LaunchedEffect(state.shareFile) {
+            state.shareFile?.let { file ->
+                context.startActivity(ShareIntents.forFiles(context, listOf(file), "image/jpeg"))
+                model.shareLaunched()
+            }
+        }
         key(ids) {
             // When an ID disappears, start at the neighbour selected by the ViewModel.
             val pager = rememberPagerState(initialPage = state.selectedIndex) { ids.size }
@@ -101,6 +109,16 @@ fun PageViewerScreen(
                             }
                         },
                         navigationIcon = { SymbolButton("←", R.string.editor_back, !state.changing, onBack) },
+                        actions = {
+                            if (current != null) {
+                                TextButton({ model.exportPage(current.page.id, share = true) }, enabled = canAct) {
+                                    Text(stringResource(R.string.viewer_share))
+                                }
+                                TextButton({ model.exportPage(current.page.id, share = false) }, enabled = canAct) {
+                                    Text(stringResource(R.string.viewer_save_image))
+                                }
+                            }
+                        },
                     )
                 },
                 bottomBar = {

@@ -57,6 +57,6 @@ internal fun pendingExportValues(displayName: String, mime: String, directory: S
     ContentValues().apply {
         put(MediaColumns.DISPLAY_NAME, displayName)
         put(MediaColumns.MIME_TYPE, mime)
-        put(MediaColumns.RELATIVE_PATH, "$directory/Paperless/")
+        put(MediaColumns.RELATIVE_PATH, "$directory/Scanly/")
         put(MediaColumns.IS_PENDING, 1)
     }

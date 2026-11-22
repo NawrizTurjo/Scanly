@@ -116,7 +116,11 @@ fun detectOnFile(jpeg: File, maxSide: Int = 2000, aspectPrior: Float? = null): D
             val height = if (transposed) bounds.outWidth else bounds.outHeight
             val sx = width.toFloat() / working.cols()
             val sy = height.toFloat() / working.rows()
-            result.copy(quad = FloatArray(8) { quad[it] * if (it % 2 == 0) sx else sy })
+            // Scaling a border corner can land a fraction past the image; the crop editor needs points inside it.
+            result.copy(quad = FloatArray(8) {
+                if (it % 2 == 0) (quad[it] * sx).coerceIn(0f, width.toFloat())
+                else (quad[it] * sy).coerceIn(0f, height.toFloat())
+            })
         }
     }
 }

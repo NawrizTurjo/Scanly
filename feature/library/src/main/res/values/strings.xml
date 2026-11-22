@@ -17,14 +17,14 @@
     <string name="detail_unfavorite">Remove from favorites</string>
     <string name="detail_star_full" translatable="false">★</string>
     <string name="detail_star_empty" translatable="false">☆</string>
-    <string name="detail_share">Share</string>
+    <string name="detail_share">Share PDF</string>
     <string name="detail_more">More options</string>
     <string name="detail_more_icon" translatable="false">⋮</string>
     <string name="detail_page_actions">Page actions</string>
     <string name="detail_add_pages">Add pages</string>
     <string name="detail_at_end">At the end</string>
     <string name="detail_after_page">After page…</string>
-    <string name="detail_export">Export</string>
+    <string name="detail_export">Export / images</string>
     <string name="detail_delete_document">Delete document</string>
     <string name="detail_delete_message">Move this document to the recycle bin?</string>
     <string name="detail_last_page_message">This is the last page. Delete the document?</string>

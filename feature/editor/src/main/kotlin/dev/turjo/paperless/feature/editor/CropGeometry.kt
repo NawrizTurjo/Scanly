@@ -39,10 +39,15 @@ internal fun Quad.handles(): List<CropPoint> {
     return corners + corners.indices.map { (corners[it] + corners[(it + 1) % 4]) * 0.5f }
 }
 
+/**
+ * Moves a corner (0–3) or an edge midpoint (4–7). Points are clamped to the image, so a drag past the border pins the
+ * handle to it. Detected corners on the photo border can sit a fraction outside it after scaling; rejecting those
+ * froze every drag on close-up photos. Returns null only for a fold-over (non-convex) shape.
+ */
 internal fun Quad.moveHandle(handle: Int, delta: CropPoint, width: Float, height: Float): Quad? {
-    val corners = points().toMutableList()
+    val corners = points().map { it.clamp(width, height) }.toMutableList()
     if (handle < 4) {
-        corners[handle] += delta
+        corners[handle] = (corners[handle] + delta).clamp(width, height)
     } else {
         val start = handle - 4
         val end = (start + 1) % 4
@@ -51,10 +56,9 @@ internal fun Quad.moveHandle(handle: Int, delta: CropPoint, width: Float, height
         if (length == 0f) return null
         val normal = CropPoint(-edge.y / length, edge.x / length)
         val movement = normal * delta.dot(normal)
-        corners[start] += movement
-        corners[end] += movement
+        corners[start] = (corners[start] + movement).clamp(width, height)
+        corners[end] = (corners[end] + movement).clamp(width, height)
     }
-    if (corners.any { it != it.clamp(width, height) }) return null
     val convex = corners.indices.all { i ->
         val first = corners[(i + 1) % 4] - corners[i]
         val second = corners[(i + 2) % 4] - corners[(i + 1) % 4]

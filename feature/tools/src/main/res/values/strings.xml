@@ -21,7 +21,7 @@
     <string name="tools_access_error">Could not access the selected file.</string>
     <string name="tools_operation_error">Could not complete the operation.</string>
     <string name="tools_no_pdfs">No PDFs found in this folder</string>
-    <string name="tools_saved">Saved to Paperless</string>
+    <string name="tools_saved">Saved to Scanly</string>
     <string name="tools_no_batch_jobs">No batch jobs yet</string>
     <string name="tools_batch_failed">Batch stopped unexpectedly</string>
     <string name="tools_cancelled">Cancelled</string>

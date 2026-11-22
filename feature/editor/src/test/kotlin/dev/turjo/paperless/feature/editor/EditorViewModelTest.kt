@@ -42,6 +42,13 @@ class EditorViewModelTest {
     private val documents = FakeDocuments(calls)
     private val sessions = FakeSessions(calls)
     private val processing = FakeProcessing()
+    private val saved = mutableListOf<String>()
+    private val sink = object : PageImageSink {
+        override suspend fun shareCopy(rendered: File, name: String) = File(name)
+        override suspend fun saveToPictures(rendered: File, name: String) {
+            saved += name
+        }
+    }
     private val viewModels = mutableListOf<ViewModel>()
 
     @Before
@@ -372,8 +379,29 @@ class EditorViewModelTest {
         assertFalse(vm.state.value.close)
     }
 
+    @Test
+    fun pageImagesAreNamedAfterTheDocument() {
+        assertEquals("Biology notes p3.jpg", pageFileName("Biology notes", 3, 5))
+        assertEquals("Receipt.jpg", pageFileName("Receipt", 1, 1))
+        assertEquals("a_b p1.jpg", pageFileName("a/b", 1, 2))
+        assertEquals("Scan.jpg", pageFileName("  ", 1, 1))
+    }
+
+    @Test
+    fun savingAPageWithoutARenderedImageReportsFailure() = runTest(dispatcher) {
+        val vm = viewer("missing", "target")
+        runCurrent()
+
+        vm.exportPage("existing", share = false)
+        runCurrent()
+
+        assertTrue(saved.isEmpty())
+        assertEquals(R.string.viewer_export_failed, vm.state.value.message)
+        assertFalse(vm.state.value.changing)
+    }
+
     private fun viewer(pageId: String, documentId: String = "draft") =
-        PageViewerViewModel(documentId, pageId, documents, processing).also(viewModels::add)
+        PageViewerViewModel(documentId, pageId, documents, processing, sink).also(viewModels::add)
 
     private fun review(savedState: SavedStateHandle = SavedStateHandle()) = ReviewViewModel(
         "draft", documents, sessions, processing, { id -> File("$id.webp") }, dispatcher, savedState,

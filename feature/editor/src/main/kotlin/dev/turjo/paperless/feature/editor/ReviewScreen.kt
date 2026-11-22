@@ -42,6 +42,7 @@ fun ReviewScreen(
     onAddMore: () -> Unit,
     onSaved: (documentId: String) -> Unit,
     onBack: () -> Unit,
+    onExport: (draftDocumentId: String) -> Unit = {},
 ) {
     val vm = hiltViewModel<ReviewViewModel, ReviewViewModel.Factory>(key = draftDocumentId) { it.create(draftDocumentId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -81,6 +82,14 @@ fun ReviewScreen(
                                     overflow = false
                                     twoSided = state.duplex
                                     split = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.review_export)) },
+                                enabled = state.pages.isNotEmpty(),
+                                onClick = {
+                                    overflow = false
+                                    onExport(draftDocumentId)
                                 },
                             )
                             DropdownMenuItem(text = { Text(stringResource(R.string.review_discard_all)) }, onClick = {
