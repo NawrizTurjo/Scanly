@@ -11,7 +11,7 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.1-5C3EE8?logo=opencv&logoColor=white)
 ![Offline](https://img.shields.io/badge/network-none-555)
-![Version](https://img.shields.io/badge/version-0.2.0%20test%20build-orange)
+![Version](https://img.shields.io/badge/version-1.0.0-2E7D32)
 
 <img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
 
@@ -25,16 +25,20 @@ Scanly turns phone photos of paper into clean, flat pages, keeps them in a local
 |---|---|
 | **Scan** | Batch or single capture, live page outline, auto-capture, gallery import, share-to-scan, Quick Settings tile |
 | **Clean up** | Auto-crop, perspective fix, Document / Colour / B&W / Grayscale / Whiteboard filters, shadow and glare fixes, auto-deskew, coloured-ink removal |
-| **Special modes** | ID card (front and back on one A4 page), Book (a spread becomes two pages), Whiteboard, two-sided batches, auto-split at blank sheets |
+| **Special modes** | ID card (front and back on one A4 page), Book (a spread becomes two pages), Split in two by hand along a slanted fold, Whiteboard, two-sided batches, auto-split at blank sheets |
 | **Library** | Folders, tags, favourites, search by name, folder, tag, date and text inside PDFs, swipe to share or delete (with Undo), recycle bin, app lock, plain-file backup and restore |
 | **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations, full-screen lock, page tones (Night, Sepia, Warm) |
-| **Export** | PDF, JPG or PNG for a whole document; Share or Save image for one enhanced page from the page viewer |
+| **Export** | PDF, JPG or PNG for a whole document, with grayscale, page numbers, a print layout and a password applied on the way out; Share or Save image for one enhanced page |
 | **Look** | Light, dark or system theme, AMOLED black, Material You colours or one of five accents, in-app Help, one-time tips |
-| **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs |
+| **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs; grouped, searchable, pinnable, with recent outputs |
 
 ## Screenshots
 
 <img src="docs/images/screens-library.jpg" alt="Library, document, export sheet and reader" width="100%">
+
+Tools, splitting a two-page photo by hand, tools stacked onto an export, the reader in Sepia, and AMOLED black with a teal accent:
+
+<img src="docs/images/screens-v1.jpg" alt="Tools page, Split in two, export tool stack, reader page tone, appearance settings" width="100%">
 
 ## Page detection
 
@@ -52,6 +56,8 @@ The same photos with the v0.1 detector (red) and the current one (green):
 | Cluttered desk scenes (56) | 1 | 40 |
 | Real phone photos of notes (27) | about half | 26 |
 
+From v0.3 the desk set grew to 84 scenes, adding book close-ups, binding shadows, hand shadows and pages touching the photo edge. Version 1.0 finds 61 of the 84. When a crop is off, the editor's handles fix it in a few seconds.
+
 With an open notebook, Scanly crops the whole spread when both pages are in the frame. When one page runs off the edge, it crops the page you can see in full. You can drag any corner in the editor; a magnifier follows your finger.
 
 [How detection works →](docs/detection.md)
@@ -60,7 +66,7 @@ With an open notebook, Scanly crops the whole spread when both pages are in the 
 
 Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
 
-Builds before 1.0 are marked **pre-release** while testing on a real phone continues.
+Versions 0.1 to 0.4 were pre-releases tested on a Pixel 8 Pro. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library.
 
 ## Privacy
 

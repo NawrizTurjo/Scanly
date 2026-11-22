@@ -22,8 +22,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             defaultConfig {
                 applicationId = "dev.turjo.paperless"
                 targetSdk = 37
-                versionCode = 6
-                versionName = "0.4.1"
+                versionCode = 7
+                versionName = "1.0.0"
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
             // The emulator needs x86_64; the Pixel only arm64 (keeps the release APK small: OpenCV is ~33 MB per ABI).
