@@ -35,6 +35,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -86,6 +87,10 @@ internal fun ReaderPages(
     onZoom: (Float, Float) -> Unit,
     annotationLayer: AnnotationLayer? = null,
     onAnnotation: AnnotationGesture? = null,
+    immersive: Boolean,
+    onPageTap: () -> Unit,
+    onLockedTap: (() -> Unit)?,
+    onSelectionChanged: (Boolean) -> Unit,
 ) {
     var showJump by remember { mutableStateOf(false) }
     var localJump by remember { mutableStateOf<PageJump?>(null) }
@@ -130,23 +135,26 @@ internal fun ReaderPages(
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
                     document, tab, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
-                    annotationLayer, onAnnotation,
+                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged,
                 )
                 ReaderViewMode.SINGLE_PAGE -> SinglePages(
                     document, tab, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
+                    onPageTap, onLockedTap, onSelectionChanged,
                 )
             }
         }
         val displayPage = tab.page.coerceIn(0, document.pageCount - 1)
-        FilledTonalButton(
-            onClick = { showJump = true },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-        ) { Text(stringResource(R.string.reader_page_indicator, displayPage + 1, document.pageCount)) }
-        history.previous?.let { previous ->
+        if (!immersive) {
             FilledTonalButton(
-                onClick = { history = history.back(); onJump(previous) },
-                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-            ) { Text("← p. ${previous + 1}") }
+                onClick = { showJump = true },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+            ) { Text(stringResource(R.string.reader_page_indicator, displayPage + 1, document.pageCount)) }
+            history.previous?.let { previous ->
+                FilledTonalButton(
+                    onClick = { history = history.back(); onJump(previous) },
+                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                ) { Text("← p. ${previous + 1}") }
+            }
         }
         external?.let { ExternalLinkDialog(it, { external = null }, { linkError = true }) }
         if (linkError) androidx.compose.material3.AlertDialog(
@@ -176,6 +184,9 @@ private fun ContinuousPages(
     onLink: (Int, PageLink) -> Unit,
     annotationLayer: AnnotationLayer?,
     onAnnotation: AnnotationGesture?,
+    onPageTap: () -> Unit,
+    onLockedTap: (() -> Unit)?,
+    onSelectionChanged: (Boolean) -> Unit,
 ) {
     val startingPage = remember { tab.page.coerceIn(0, document.pageCount - 1) }
     val startingOffset = remember { tab.scrollOffsetPx }
@@ -225,9 +236,19 @@ private fun ContinuousPages(
             }
         }
         val renderWidth = (viewportWidth * settledZoom).roundToInt()
-        val endPadding = lastAspect?.let {
-            with(density) { (viewportHeight - pageHeight(shownWidth, it)).coerceAtLeast(0).toDp() }
-        } ?: 0.dp
+        val lastHeight = lastAspect?.let { pageHeight(shownWidth, it) }
+        val endPadding by remember(list, document, viewportHeight, lastHeight, density) {
+            derivedStateOf {
+                if (lastHeight == null) {
+                    0.dp
+                } else {
+                    val last = list.layoutInfo.visibleItemsInfo.lastOrNull()
+                    // A taller viewport would otherwise clamp the scroll offset near the end.
+                    val lastTop = if (last?.index == document.pageCount - 1) last.offset else 0
+                    with(density) { (viewportHeight - lastHeight - lastTop.coerceAtMost(0)).coerceAtLeast(0).toDp() }
+                }
+            }
+        }
 
         fun transform(anchor: Offset, pan: Offset, targetZoom: Float) {
             val nextZoom = targetZoom.coerceIn(1f, 5f)
@@ -305,6 +326,7 @@ private fun ContinuousPages(
                             document, page, bitmap, geometry,
                             PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat(), -panX.coerceIn(0f, maxPan)),
                             search, { onLink(page, it) }, annotationLayer, onAnnotation,
+                            onPageTap, onLockedTap, onSelectionChanged,
                         ) { point ->
                             val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }?.offset ?: 0
                             currentTransform(point + Offset(0f, top.toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
@@ -331,6 +353,9 @@ private fun SinglePages(
     onLink: (Int, PageLink) -> Unit,
     annotationLayer: AnnotationLayer?,
     onAnnotation: AnnotationGesture?,
+    onPageTap: () -> Unit,
+    onLockedTap: (() -> Unit)?,
+    onSelectionChanged: (Boolean) -> Unit,
 ) {
     val pager = rememberPagerState(tab.page.coerceIn(0, document.pageCount - 1)) { document.pageCount }
     val reportPosition by rememberUpdatedState(onPosition)
@@ -356,7 +381,10 @@ private fun SinglePages(
                     .clipToBounds().background(paperColor(tab.nightMode))) {
                     render.bitmap?.let {
                         PageOverlay(document, page, it, geometry,
-                            PageTransform(geometry.crop, width.toFloat(), height.toFloat()), search, { link -> onLink(page, link) }, annotationLayer, onAnnotation)
+                            PageTransform(geometry.crop, width.toFloat(), height.toFloat()),
+                            search, { link -> onLink(page, link) }, annotationLayer, onAnnotation,
+                            onPageTap, onLockedTap, onSelectionChanged,
+                        )
                     }
                     if (render.failed) PageRenderError(tab.nightMode)
                 }

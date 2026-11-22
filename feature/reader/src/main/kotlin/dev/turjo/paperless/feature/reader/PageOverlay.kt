@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +71,9 @@ internal fun PageOverlay(
     onLink: (PageLink) -> Unit,
     annotationLayer: AnnotationLayer? = null,
     onAnnotation: AnnotationGesture? = null,
+    onPageTap: () -> Unit,
+    onLockedTap: (() -> Unit)?,
+    onSelectionChanged: (Boolean) -> Unit,
     onDoubleTap: ((Offset) -> Unit)? = null,
 ) {
     val image = remember(bitmap) { bitmap.asImageBitmap() }
@@ -81,6 +85,13 @@ internal fun PageOverlay(
     var start by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var end by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var selection by remember { mutableStateOf<Pair<String, List<PageRect>>?>(null) }
+    val locked = onLockedTap != null
+    if (!locked && selection?.second?.isNotEmpty() == true) {
+        DisposableEffect(Unit) {
+            onSelectionChanged(true)
+            onDispose { onSelectionChanged(false) }
+        }
+    }
     LaunchedEffect(start, end) {
         val a = start
         val b = end
@@ -96,27 +107,34 @@ internal fun PageOverlay(
     val mapping by rememberUpdatedState(transform)
     val follow by rememberUpdatedState(onLink)
     val zoom by rememberUpdatedState(onDoubleTap)
+    val pageTap by rememberUpdatedState(onPageTap)
+    val lockedTap by rememberUpdatedState(onLockedTap)
     val latestLayer by rememberUpdatedState(annotationLayer)
     var note by remember(page) { mutableStateOf<String?>(null) }
     val drawing = annotationLayer?.editing == true && annotationLayer.tool != AnnotationTool.MOVE && onAnnotation != null
-    LaunchedEffect(drawing) {
-        if (drawing) {
+    LaunchedEffect(drawing, locked) {
+        if (drawing || locked) {
             start = null
             end = null
             selection = null
         }
     }
-    Box(Modifier.fillMaxSize().pointerInput(document, page, onDoubleTap != null, drawing) {
+    Box(Modifier.fillMaxSize().pointerInput(document, page, onDoubleTap != null, drawing, locked) {
         if (!drawing) {
             detectTapGestures(
-                onLongPress = {
+                onLongPress = if (locked) null else ({
                     selection = null
                     val (x, y) = mapping.unmap(it.x, it.y)
                     start = x - 3f to y
                     end = x + 3f to y
-                },
-                onDoubleTap = if (onDoubleTap != null) ({ zoom?.invoke(it) }) else null,
+                }),
+                onDoubleTap = if (onDoubleTap != null) ({
+                    lockedTap?.invoke()
+                    zoom?.invoke(it)
+                }) else null,
                 onTap = { point ->
+                    lockedTap?.invoke()
+                    val selecting = selection != null || start != null
                     selection = null
                     start = null
                     end = null
@@ -128,12 +146,14 @@ internal fun PageOverlay(
                         note = mark.note
                         return@detectTapGestures
                     }
-                    links.firstOrNull { link ->
+                    val link = links.firstOrNull { link ->
                         link.bounds.any {
                             val bounds = mapping.map(it)
                             point.x in bounds.left..bounds.right && point.y in bounds.top..bounds.bottom
                         }
-                    }?.let(follow)
+                    }
+                    if (link != null) follow(link)
+                    else if (!selecting && latestLayer?.editing != true) pageTap()
                 },
             )
         }
@@ -153,7 +173,7 @@ internal fun PageOverlay(
                     highlight(it, Color.Yellow.copy(alpha = if (index == search.index) 0.62f else 0.32f))
                 }
             }
-            selection?.second?.forEach { highlight(it, Color(0x664888FF)) }
+            if (!locked) selection?.second?.forEach { highlight(it, Color(0x664888FF)) }
         }
         if (annotationLayer != null) AnnotationOverlay(page, transform, annotationLayer, onAnnotation)
         note?.let { text ->
@@ -165,7 +185,7 @@ internal fun PageOverlay(
             )
         }
         val rects = selection?.second.orEmpty()
-        if (start != null && end != null && rects.isNotEmpty()) {
+        if (!locked && start != null && end != null && rects.isNotEmpty()) {
             val first = rects.first()
             val last = rects.last()
             SelectionHandle(start!!, first.left to first.bottom, transform, "Selection start") { start = it }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +88,8 @@ fun ReaderScreen(
     openRequest: PdfKey? = null,
     onOpenRequestConsumed: () -> Unit = {},
     openRequestTitle: String? = null,
+    active: Boolean = true,
+    onImmersiveChanged: (Boolean) -> Unit = {},
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -138,6 +142,16 @@ fun ReaderScreen(
     var rightId by rememberSaveable { mutableStateOf<String?>(null) }
     val annotationLayer = tab?.let { viewModel.annotationLayers[it.tabId] }
     val annotating = annotationLayer?.editing == true
+    val canImmerse = active && tab != null && !annotating
+    var chrome by remember(canImmerse) { mutableStateOf(ReaderChrome.VISIBLE) }
+    var lockReveal by remember(chrome) { mutableStateOf(0) }
+    var selectingPages by remember { mutableIntStateOf(0) }
+    val onSelectionChanged: (Boolean) -> Unit = { selecting -> selectingPages += if (selecting) 1 else -1 }
+    val revealLock: () -> Unit = { lockReveal++ }
+    val onPageTap: () -> Unit = {
+        if (canImmerse && selectingPages == 0) chrome = chrome.pageTap(annotating)
+    }
+    ReaderWindowMode(chrome, onImmersiveChanged)
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val split = landscape && splitRequested && !annotating
     val search = tab?.let { searches[it.tabId] } ?: SearchState()
@@ -160,6 +174,18 @@ fun ReaderScreen(
     }
     BackHandler(enabled = searchMode && tab != null && !showOutline) { searchMode = false }
     BackHandler(enabled = annotating) { tab?.let { viewModel.finishAnnotations(it.tabId) } }
+    val lockedHint = stringResource(R.string.reader_locked_hint)
+    BackHandler(enabled = chrome.immersive) {
+        if (chrome.locked) {
+            revealLock()
+            if (snackbar.currentSnackbarData?.visuals?.message != lockedHint) {
+                snackbar.currentSnackbarData?.dismiss()
+                scope.launch { snackbar.showSnackbar(lockedHint) }
+            }
+        } else {
+            chrome = ReaderChrome.VISIBLE
+        }
+    }
     viewModel.annotationPrompt?.let { prompt ->
         viewModel.annotationLayers[prompt.tabId]?.let { AnnotationSavePrompt(prompt, it, viewModel) }
     }
@@ -178,7 +204,8 @@ fun ReaderScreen(
     }
 
     Scaffold(
-        topBar = {
+        topBar = topBar@{
+            if (chrome.immersive) return@topBar
             if (tab != null && annotationLayer != null && annotating) {
                 AnnotationToolbar(
                     annotationLayer,
@@ -223,6 +250,7 @@ fun ReaderScreen(
                                 onThumbnails = { showThumbnails = true },
                                 onCrop = { crops[tab.tabId] = it },
                                 onSplit = { splitRequested = !splitRequested },
+                                onLock = { chrome = ReaderChrome.LOCKED },
                             )
                         }
                     },
@@ -231,13 +259,16 @@ fun ReaderScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.tabs.isNotEmpty()) {
+        Column(Modifier.fillMaxSize().then(if (chrome.immersive) Modifier else Modifier.padding(padding))) {
+            if (!chrome.immersive && state.tabs.isNotEmpty()) {
                 TabStrip(state.tabs, state.activeTabId, viewModel::switch, { id ->
                     if (drafts[id]?.dirty == true) closePending = id else viewModel.close(id)
                 }, pickPdf)
             }
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val lockedTaps = if (chrome.locked) Modifier.pointerInput(Unit) {
+                detectTapGestures { revealLock() }
+            } else Modifier
+            Box(Modifier.weight(1f).fillMaxWidth().then(lockedTaps), contentAlignment = Alignment.Center) {
                 val openError = state.openError
                 when {
                     state.restoring -> CircularProgressIndicator()
@@ -266,6 +297,10 @@ fun ReaderScreen(
                                     onAnnotation = { page, tool, color, width, points, note ->
                                         viewModel.annotate(tab.tabId, document, page, tool, color, width, points, note)
                                     },
+                                    immersive = chrome.immersive,
+                                    onPageTap = onPageTap,
+                                    onLockedTap = if (chrome.locked) revealLock else null,
+                                    onSelectionChanged = onSelectionChanged,
                                 )
                             }
                         }
@@ -273,8 +308,15 @@ fun ReaderScreen(
                             val right = state.tabs.firstOrNull { it.tabId == rightId }
                                 ?: state.tabs.firstOrNull { it.tabId != tab.tabId } ?: tab
                             SplitReader(state.tabs, tab, right, document, viewModel, crops[right.tabId] ?: CropMode.OFF,
-                                { rightId = it }, primary)
+                                { rightId = it }, chrome, onPageTap, if (chrome.locked) revealLock else null,
+                                onSelectionChanged, primary)
                         } else primary()
+                    }
+                }
+                if (chrome.locked) {
+                    ReaderLockIndicator(lockReveal, Modifier.align(Alignment.TopEnd)) {
+                        snackbar.currentSnackbarData?.takeIf { it.visuals.message == lockedHint }?.dismiss()
+                        chrome = chrome.unlock()
                     }
                 }
             }
@@ -354,7 +396,7 @@ private fun TabStrip(
 private fun ReaderMenu(
     tab: TabState, crop: CropMode, landscape: Boolean, split: Boolean,
     onViewMode: () -> Unit, onNight: () -> Unit, onThumbnails: () -> Unit,
-    onCrop: (CropMode) -> Unit, onSplit: () -> Unit,
+    onCrop: (CropMode) -> Unit, onSplit: () -> Unit, onLock: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -386,6 +428,10 @@ private fun ReaderMenu(
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.reader_thumbnails)) },
                 onClick = { expanded = false; onThumbnails() },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.reader_lock_full_screen)) },
+                onClick = { expanded = false; onLock() },
             )
         }
     }
@@ -471,6 +517,10 @@ private fun SplitReader(
     viewModel: ReaderViewModel,
     crop: CropMode,
     onRight: (String) -> Unit,
+    chrome: ReaderChrome,
+    onPageTap: () -> Unit,
+    onLockedTap: (() -> Unit)?,
+    onSelectionChanged: (Boolean) -> Unit,
     primary: @Composable () -> Unit,
 ) {
     var fraction by rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -492,7 +542,7 @@ private fun SplitReader(
         val width = with(LocalDensity.current) { maxWidth.toPx().coerceAtLeast(1f) }
         Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(fraction)) {
-                PanePicker(tabs, left, viewModel::switch)
+                if (!chrome.immersive) PanePicker(tabs, left, viewModel::switch)
                 Box(Modifier.weight(1f)) { primary() }
             }
             Box(Modifier.width(12.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant)
@@ -503,7 +553,7 @@ private fun SplitReader(
                     }
                 })
             Column(Modifier.weight(1f - fraction)) {
-                PanePicker(tabs, right, onRight)
+                if (!chrome.immersive) PanePicker(tabs, right, onRight)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     if (document == null) {
                         if (opened.first) Text(stringResource(R.string.reader_open_error))
@@ -516,6 +566,10 @@ private fun SplitReader(
                             search = viewModel.searches[right.tabId] ?: SearchState(),
                             requestedJump = null, onJumpConsumed = {}, crop = crop, showThumbnails = false,
                             onDismissThumbnails = {},
+                            immersive = chrome.immersive,
+                            onPageTap = onPageTap,
+                            onLockedTap = onLockedTap,
+                            onSelectionChanged = onSelectionChanged,
                             onPosition = { page, offset ->
                                 positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
                                 if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)

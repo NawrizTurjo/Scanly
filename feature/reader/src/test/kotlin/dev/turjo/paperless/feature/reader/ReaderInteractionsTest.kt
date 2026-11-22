@@ -9,6 +9,26 @@ import org.junit.Test
 
 class ReaderInteractionsTest {
     @Test
+    fun pageTapsToggleImmersiveChrome() {
+        val immersive = ReaderChrome.VISIBLE.pageTap(annotating = false)
+        assertEquals(ReaderChrome.IMMERSIVE, immersive)
+        assertEquals(ReaderChrome.VISIBLE, immersive.pageTap(annotating = false))
+    }
+
+    @Test
+    fun lockedPageTapKeepsChromeHiddenUntilUnlock() {
+        val locked = ReaderChrome.LOCKED.pageTap(annotating = false)
+        assertEquals(ReaderChrome.LOCKED, locked)
+        assertEquals(true, locked.immersive)
+        assertEquals(ReaderChrome.VISIBLE, locked.unlock())
+    }
+
+    @Test
+    fun pageTapsInAnnotateModeLeaveChromeVisible() {
+        assertEquals(ReaderChrome.VISIBLE, ReaderChrome.VISIBLE.pageTap(annotating = true))
+    }
+
+    @Test
     fun annotationCoordinatesRoundTripAtOneTwoAndFourTimesZoom() {
         for ((width, height) in listOf(600f to 800f, 800f to 600f)) {
             val crop = PageRect(13f, 17f, width - 23f, height - 29f)
