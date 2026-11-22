@@ -1,6 +1,16 @@
 package dev.turjo.paperless.feature.reader
 
 import android.net.Uri
+import android.graphics.PointF
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import dev.turjo.paperless.core.data.AnnotationRepository
+import dev.turjo.paperless.core.model.Annotation
+import dev.turjo.paperless.core.model.AnnotationType
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,9 +63,17 @@ class ReaderViewModel @Inject constructor(
     private val repository: ReaderRepository,
     private val sessions: PdfSessionManager,
     private val outlineFiles: ReaderOutlineFiles? = null,
+    private val annotationRepository: AnnotationRepository? = null,
+    private val annotationFiles: ReaderAnnotationFiles? = null,
 ) : ViewModel() {
     private val state = MutableStateFlow(ReaderUiState())
     val uiState = state.asStateFlow()
+    internal val annotationLayers = mutableStateMapOf<String, AnnotationLayer>()
+    internal var annotationPrompt by mutableStateOf<AnnotationPrompt?>(null)
+        private set
+    private val layerObservers = mutableMapOf<String, Job>()
+    private val layerGestures = mutableMapOf<String, Job>()
+
     internal val searches = mutableStateMapOf<String, SearchState>()
     internal val crops = mutableStateMapOf<String, CropMode>()
     internal val drafts = mutableStateMapOf<String, OutlineDraft>()
@@ -93,6 +111,7 @@ class ReaderViewModel @Inject constructor(
                 if (selected == null) return@collectLatest
                 val (revision, id, key) = selected
                 try {
+                    observeAnnotations(id, key)
                     val document = sessions.open(key)
                     if (state.value.selectionRevision != revision) return@collectLatest
                     require(document.pageCount > 0)
@@ -181,9 +200,14 @@ class ReaderViewModel @Inject constructor(
         val key = if (overwrite) tab.pdfKey else readerResult {
             repository.registerExternal(result.uri, title)
         } ?: return false
+        drafts.remove(id)
+        if (key != tab.pdfKey && annotationLayers[id]?.dirty == true) {
+            open(key, title, tab.page)
+            return true
+        }
         val current = state.value
         val updated = current.tabs.map { if (it.tabId == id) it.copy(pdfKey = key, title = title) else it }
-        drafts.remove(id)
+        if (key != tab.pdfKey) releaseAnnotations(id)
         searches[id]?.let { searches[id] = SearchState(it.query, status = if (it.query.isBlank()) null else SearchStatus.PENDING) }
         secondaryPositions.remove(id)
         if (current.activeTabId == id) select(updated, id) else state.value = current.copy(tabs = updated)
@@ -214,9 +238,25 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun close(id: String) {
+        val pending = layerGestures[id]
+        if (pending?.isActive == true) {
+            viewModelScope.launch { pending.join(); close(id) }
+            return
+        }
+        val layer = annotationLayers[id]
+        if (layer?.saving == true) return
+        if (layer?.dirty == true) {
+            annotationPrompt = AnnotationPrompt(id, closing = true)
+        } else {
+            closeTab(id)
+        }
+    }
+
+    private fun closeTab(id: String) {
         val current = state.value
         val index = current.tabs.indexOfFirst { it.tabId == id }
         if (index < 0) return
+        releaseAnnotations(id)
         searches.remove(id)
         crops.remove(id)
         drafts.remove(id)
@@ -226,6 +266,142 @@ class ReaderViewModel @Inject constructor(
         val tabs = current.tabs.filterNot { it.tabId == id }
         if (id == current.activeTabId) select(tabs, tabs.getOrNull(index)?.tabId ?: tabs.lastOrNull()?.tabId)
         else state.value = current.copy(tabs = tabs)
+    }
+
+    internal fun observeAnnotations(id: String, key: PdfKey) {
+        if (id in layerObservers || annotationRepository == null) return
+        layerObservers[id] = viewModelScope.launch {
+            attempt(ReaderError.OPEN) {
+                annotationRepository.observe(key).collect { saved ->
+                    val layer = annotationLayers[id]
+                    if (layer == null) {
+                        annotationLayers[id] = AnnotationLayer(saved)
+                    } else if (!layer.dirty && !layer.saving && layer.saved != saved) {
+                        annotationLayers[id] = layer.copy(saved = saved, marks = saved, undo = emptyList(), redo = emptyList())
+                    }
+                }
+            }
+        }
+    }
+
+    private fun releaseAnnotations(id: String) {
+        layerObservers.remove(id)?.cancel()
+        layerGestures.remove(id)?.cancel()
+        annotationLayers.remove(id)
+    }
+
+    internal fun editAnnotations(id: String, update: (AnnotationLayer) -> AnnotationLayer) {
+        val layer = annotationLayers[id] ?: return
+        if (!layer.saving) annotationLayers[id] = update(layer)
+    }
+
+    internal fun finishAnnotations(id: String) {
+        viewModelScope.launch {
+            layerGestures[id]?.join()
+            if (annotationLayers[id]?.saving == false) annotationPrompt = AnnotationPrompt(id, closing = false)
+        }
+    }
+
+    internal fun dismissAnnotationPrompt() {
+        if (annotationPrompt?.let { annotationLayers[it.tabId]?.saving } != true) annotationPrompt = null
+    }
+
+    internal fun discardAnnotations(prompt: AnnotationPrompt) {
+        editAnnotations(prompt.tabId, AnnotationLayer::discard)
+        annotationPrompt = null
+        if (prompt.closing) closeTab(prompt.tabId)
+    }
+
+    internal fun saveAnnotations(prompt: AnnotationPrompt, flatten: Boolean) {
+        val id = prompt.tabId
+        val tab = state.value.tabs.firstOrNull { it.tabId == id } ?: return
+        val layer = annotationLayers[id] ?: return
+        if (layer.saving) return
+        annotationLayers[id] = layer.copy(saving = true)
+        viewModelScope.launch {
+            val success = attempt(ReaderError.SAVE) {
+                if (flatten) {
+                    val result = requireNotNull(annotationFiles).save(tab.pdfKey, layer.marks)
+                    if (result !is SaveResult.Saved) error("Could not save an annotated PDF")
+                    val title = tab.title.substringBeforeLast('.') + " (edited).pdf"
+                    val key = repository.registerExternal(result.uri, title)
+                    open(key, title, tab.page)
+                } else {
+                    requireNotNull(annotationRepository).saveBatch(tab.pdfKey, layer.marks)
+                }
+                true
+            } == true
+            annotationLayers[id] = if (!success) layer else if (flatten) {
+                layer.discard()
+            } else {
+                layer.copy(saved = layer.marks, editing = false, undo = emptyList(), redo = emptyList())
+            }
+            if (success) {
+                annotationPrompt = null
+                if (prompt.closing) closeTab(id)
+            }
+        }
+    }
+
+    internal fun annotate(
+        id: String,
+        document: PdfDocumentHandle,
+        page: Int,
+        tool: AnnotationTool,
+        color: Int,
+        width: Float,
+        points: List<PointF>,
+        note: String? = null,
+    ) {
+        val tab = state.value.activeTab?.takeIf { it.tabId == id } ?: return
+        if (annotationLayers[id]?.let { it.editing && !it.saving } != true) return
+        if (points.isEmpty() || annotationPrompt != null) return
+        if (tool == AnnotationTool.ERASER) {
+            launchGesture(id) {
+                val marks = annotationLayers[id]?.marks.orEmpty()
+                val hits = withContext(Dispatchers.Default) {
+                    val samples = eraserSamples(points)
+                    marks.filter { mark -> mark.page == page && samples.any { mark.touches(it, 5f) } }
+                        .mapTo(hashSetOf()) { it.id }
+                }
+                editAnnotations(id) { it.change(it.marks.filterNot { mark -> mark.id in hits }) }
+            }
+            return
+        }
+        val type = tool.type ?: return
+        val mark = Annotation(UUID.randomUUID().toString(), tab.pdfKey, page, type, color, width, points, note = note)
+        if (type == AnnotationType.INK || type == AnnotationType.NOTE) {
+            launchGesture(id) { editAnnotations(id) { it.change(it.marks + mark) } }
+            return
+        }
+        launchGesture(id) {
+            val first = points.first()
+            val last = points.last()
+            val alongText = kotlin.math.abs(last.x - first.x) >= 4f &&
+                points.all { kotlin.math.abs(it.y - first.y) <= 8f }
+            val selection = if (type != AnnotationType.HIGHLIGHT || alongText) {
+                attempt(ReaderError.OPEN) { document.select(page, first, last) }?.second.orEmpty()
+            } else emptyList()
+            val rects = if (type == AnnotationType.HIGHLIGHT) selection.filter {
+                first.y in (it.top - 4f)..(it.bottom + 4f)
+            } else selection
+            when {
+                rects.isNotEmpty() -> editAnnotations(id) { it.change(it.marks + mark.copy(points = emptyList(), rects = rects)) }
+                type == AnnotationType.HIGHLIGHT -> editAnnotations(id) { it.change(it.marks + mark) }
+            }
+        }
+    }
+
+    internal fun stepAnnotationHistory(id: String, redo: Boolean) {
+        launchGesture(id) { editAnnotations(id) { if (redo) it.redo() else it.undo() } }
+    }
+
+    private fun launchGesture(id: String, action: suspend () -> Unit) {
+        val previous = layerGestures[id]
+        layerGestures[id] = viewModelScope.launch {
+            previous?.join()
+            action()
+        }
     }
 
     fun updatePosition(id: String, page: Int, offset: Int) {

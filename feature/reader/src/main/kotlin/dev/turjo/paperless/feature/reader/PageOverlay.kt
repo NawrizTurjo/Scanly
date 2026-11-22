@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.turjo.paperless.core.model.AnnotationType
 import dev.turjo.paperless.core.model.PageLink
 import dev.turjo.paperless.core.model.PageRect
 import dev.turjo.paperless.core.pdf.PdfDocumentHandle
@@ -66,6 +67,8 @@ internal fun PageOverlay(
     transform: PageTransform,
     search: SearchState,
     onLink: (PageLink) -> Unit,
+    annotationLayer: AnnotationLayer? = null,
+    onAnnotation: AnnotationGesture? = null,
     onDoubleTap: ((Offset) -> Unit)? = null,
 ) {
     val image = remember(bitmap) { bitmap.asImageBitmap() }
@@ -92,8 +95,18 @@ internal fun PageOverlay(
     val mapping by rememberUpdatedState(transform)
     val follow by rememberUpdatedState(onLink)
     val zoom by rememberUpdatedState(onDoubleTap)
-    Box(Modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize().pointerInput(document, page, onDoubleTap != null) {
+    val latestLayer by rememberUpdatedState(annotationLayer)
+    var note by remember(page) { mutableStateOf<String?>(null) }
+    val drawing = annotationLayer?.editing == true && annotationLayer.tool != AnnotationTool.MOVE && onAnnotation != null
+    LaunchedEffect(drawing) {
+        if (drawing) {
+            start = null
+            end = null
+            selection = null
+        }
+    }
+    Box(Modifier.fillMaxSize().pointerInput(document, page, onDoubleTap != null, drawing) {
+        if (!drawing) {
             detectTapGestures(
                 onLongPress = {
                     selection = null
@@ -106,6 +119,14 @@ internal fun PageOverlay(
                     selection = null
                     start = null
                     end = null
+                    val (x, y) = mapping.unmap(point.x, point.y)
+                    val mark = latestLayer?.marks?.lastOrNull {
+                        it.page == page && it.type == AnnotationType.NOTE && it.touches(PointF(x, y), 2f)
+                    }
+                    if (mark != null) {
+                        note = mark.note
+                        return@detectTapGestures
+                    }
                     links.firstOrNull { link ->
                         link.bounds.any {
                             val bounds = mapping.map(it)
@@ -114,7 +135,9 @@ internal fun PageOverlay(
                     }?.let(follow)
                 },
             )
-        }) {
+        }
+    }) {
+        Canvas(Modifier.fillMaxSize()) {
             val full = transform.map(geometry.full)
             drawImage(image,
                 dstOffset = IntOffset(full.left.roundToInt(), full.top.roundToInt()),
@@ -130,6 +153,15 @@ internal fun PageOverlay(
                 }
             }
             selection?.second?.forEach { highlight(it, Color(0x664888FF)) }
+        }
+        if (annotationLayer != null) AnnotationOverlay(page, transform, annotationLayer, onAnnotation)
+        note?.let { text ->
+            AlertDialog(
+                onDismissRequest = { note = null },
+                title = { Text("Text note") },
+                text = { Text(text) },
+                confirmButton = { TextButton({ note = null }) { Text("Close") } },
+            )
         }
         val rects = selection?.second.orEmpty()
         if (start != null && end != null && rects.isNotEmpty()) {

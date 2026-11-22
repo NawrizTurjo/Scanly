@@ -7,7 +7,10 @@ import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.PdfSaveService
 import dev.turjo.paperless.core.data.SaveResult
 import dev.turjo.paperless.core.data.ReaderRepository
+import dev.turjo.paperless.core.model.Annotation
+import dev.turjo.paperless.core.model.AnnotationType
 import dev.turjo.paperless.core.model.OutlineNode
+import dev.turjo.paperless.core.model.PageRect
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.core.model.ReaderViewMode
 import dev.turjo.paperless.core.model.RecentPdf
@@ -35,6 +38,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -285,6 +289,97 @@ class ReaderViewModelTest {
         assertTrue(outputs.none(File::exists))
         assertTrue(input.exists())
     }
+
+    @Test
+    fun annotationToolsAndHistoryBelongToTheirTab() = runTest(dispatcher) {
+        val vm = newViewModel()
+        vm.open(pdf(0), page = 0)
+        val first = checkNotNull(vm.uiState.value.activeTabId)
+        vm.annotationLayers[first] = AnnotationLayer(emptyList(), editing = true)
+        val highlight = markup("highlight", pdf(0), AnnotationType.HIGHLIGHT)
+        val underline = markup("underline", pdf(0), AnnotationType.UNDERLINE)
+        val strike = markup("strike", pdf(0), AnnotationType.STRIKE)
+
+        vm.editAnnotations(first) { it.copy(tool = AnnotationTool.HIGHLIGHTER, color = highlight.color) }
+        vm.editAnnotations(first) { it.change(listOf(highlight)) }
+        vm.editAnnotations(first) { it.change(listOf(highlight, underline)) }
+        vm.stepAnnotationHistory(first, redo = false)
+        runCurrent()
+        assertEquals(listOf(highlight), vm.annotationLayers.getValue(first).marks)
+        vm.stepAnnotationHistory(first, redo = true)
+        runCurrent()
+        assertEquals(listOf(highlight, underline), vm.annotationLayers.getValue(first).marks)
+        vm.stepAnnotationHistory(first, redo = false)
+        runCurrent()
+        vm.editAnnotations(first) { it.copy(tool = AnnotationTool.STRIKE).change(it.marks + strike) }
+        vm.stepAnnotationHistory(first, redo = true)
+        runCurrent()
+        assertEquals(listOf(highlight, strike), vm.annotationLayers.getValue(first).marks)
+
+        vm.open(pdf(1), page = 0)
+        val second = checkNotNull(vm.uiState.value.activeTabId)
+        vm.annotationLayers[second] = AnnotationLayer(emptyList(), editing = true)
+        vm.editAnnotations(second) { it.copy(tool = AnnotationTool.ERASER, width = 6f) }
+        vm.switch(first)
+        assertEquals(AnnotationTool.STRIKE, vm.annotationLayers.getValue(first).tool)
+        assertEquals(listOf(highlight, strike), vm.annotationLayers.getValue(first).marks)
+        assertEquals(AnnotationTool.ERASER, vm.annotationLayers.getValue(second).tool)
+        assertEquals(6f, vm.annotationLayers.getValue(second).width, 0f)
+        assertFalse(vm.annotationLayers.getValue(second).dirty)
+    }
+
+    @Test
+    fun closingAnUnsavedLayerCanBeCanceledOrDiscarded() = runTest(dispatcher) {
+        val vm = newViewModel()
+        vm.open(pdf(0), page = 0)
+        val first = checkNotNull(vm.uiState.value.activeTabId)
+        val saved = markup("saved", pdf(0), AnnotationType.UNDERLINE)
+        val unsaved = markup("new", pdf(0), AnnotationType.HIGHLIGHT)
+        vm.annotationLayers[first] = AnnotationLayer(listOf(saved), editing = true)
+        vm.editAnnotations(first) { it.change(it.marks + unsaved) }
+
+        vm.close(first)
+        assertEquals(AnnotationPrompt(first, closing = true), vm.annotationPrompt)
+        assertEquals(first, vm.uiState.value.activeTabId)
+        vm.dismissAnnotationPrompt()
+        assertNull(vm.annotationPrompt)
+        assertEquals(listOf(saved, unsaved), vm.annotationLayers.getValue(first).marks)
+
+        vm.close(first)
+        vm.discardAnnotations(checkNotNull(vm.annotationPrompt))
+        assertNull(vm.annotationPrompt)
+        assertNull(vm.uiState.value.activeTabId)
+        assertNull(vm.annotationLayers[first])
+    }
+
+    @Test
+    fun doneDiscardRestoresSavedLayerAndUndoingToSavedClosesWithoutPrompt() = runTest(dispatcher) {
+        val vm = newViewModel()
+        vm.open(pdf(0), page = 0)
+        val id = checkNotNull(vm.uiState.value.activeTabId)
+        val saved = markup("saved", pdf(0), AnnotationType.HIGHLIGHT)
+        vm.annotationLayers[id] = AnnotationLayer(listOf(saved), editing = true)
+        vm.editAnnotations(id) { it.change(emptyList()) }
+
+        vm.finishAnnotations(id)
+        runCurrent()
+        assertEquals(AnnotationPrompt(id, closing = false), vm.annotationPrompt)
+        vm.discardAnnotations(checkNotNull(vm.annotationPrompt))
+        val restored = vm.annotationLayers.getValue(id)
+        assertEquals(listOf(saved), restored.marks)
+        assertFalse(restored.editing)
+        assertFalse(restored.dirty)
+
+        vm.editAnnotations(id) { it.copy(editing = true).change(emptyList()) }
+        vm.stepAnnotationHistory(id, redo = false)
+        runCurrent()
+        vm.close(id)
+        assertNull(vm.annotationPrompt)
+        assertNull(vm.uiState.value.activeTabId)
+    }
+
+    private fun markup(id: String, key: PdfKey, type: AnnotationType) =
+        Annotation(id, key, 0, type, 0xFFFFD524.toInt(), 3f, rects = listOf(PageRect(12f, 20f, 38f, 24f)))
 
     private fun newViewModel() = ReaderViewModel(repository, sessions).also(viewModels::add)
 

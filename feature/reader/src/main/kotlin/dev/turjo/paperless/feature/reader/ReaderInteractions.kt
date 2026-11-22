@@ -15,11 +15,15 @@ internal data class PageTransform(
     private val scaleX = width / (crop.right - crop.left)
     private val scaleY = height / (crop.bottom - crop.top)
 
+    fun mapX(x: Float) = (x - crop.left) * scaleX + offsetX
+
+    fun mapY(y: Float) = (y - crop.top) * scaleY + offsetY
+
     fun map(rect: PageRect) = PageRect(
-        (rect.left - crop.left) * scaleX + offsetX,
-        (rect.top - crop.top) * scaleY + offsetY,
-        (rect.right - crop.left) * scaleX + offsetX,
-        (rect.bottom - crop.top) * scaleY + offsetY,
+        mapX(rect.left),
+        mapY(rect.top),
+        mapX(rect.right),
+        mapY(rect.bottom),
     )
 
     fun unmap(x: Float, y: Float) =
@@ -31,7 +35,7 @@ internal fun PageRect.union(other: PageRect) = PageRect(
 )
 
 internal enum class SearchStatus(val label: String) {
-    PENDING("Searching…"), NO_MATCHES("No matches"), NO_TEXT("No text layer"), ERROR("Could not search this PDF"),
+    PENDING("Searchingâ€¦"), NO_MATCHES("No matches"), NO_TEXT("No text layer"), ERROR("Could not search this PDF"),
 }
 
 internal data class SearchState(
