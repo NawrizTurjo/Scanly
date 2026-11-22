@@ -52,7 +52,7 @@ fun ToolsScreen(onOpenPdf: (File) -> Unit = {}) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(stringResource(tool?.title ?: R.string.tools_title)) },
-            navigationIcon = { if (tool != null) TextButton(onClick = model::back) { Text("Back") } },
+            navigationIcon = { if (tool != null) TextButton(onClick = model::back) { Text(stringResource(R.string.tools_back)) } },
         )
         if (tool == null) {
             LazyVerticalGrid(
@@ -118,16 +118,16 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
     if (insertAt >= 0) {
         AlertDialog(
             onDismissRequest = { insertAt = -1 },
-            title = { Text("Insert pages") },
+            title = { Text(stringResource(R.string.tools_insert_pages)) },
             text = {
                 OutlinedTextField(insertRange, { insertRange = it },
-                    label = { Text("Page ranges (blank for all pages)") }, singleLine = true)
+                    label = { Text(stringResource(R.string.tools_insert_ranges)) }, singleLine = true)
             },
-            confirmButton = { TextButton(onClick = { insert.launch(pdf) }) { Text("Choose PDF") } },
+            confirmButton = { TextButton(onClick = { insert.launch(pdf) }) { Text(stringResource(R.string.tools_choose_pdf)) } },
             dismissButton = { TextButton(onClick = {
                 model.run(emptyMap(), listOf(PageOp.InsertBlank(insertAt)))
                 insertAt = -1
-            }) { Text("Insert blank page") } },
+            }) { Text(stringResource(R.string.tools_insert_blank)) } },
         )
     }
     LazyColumn(
@@ -140,7 +140,7 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
         when {
             state.busy -> item {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                TextButton(onClick = model::back) { Text("Cancel") }
+                TextButton(onClick = model::back) { Text(stringResource(R.string.tools_cancel)) }
             }
             state.batchId != null -> {
                 if (state.batchRunning) item {
@@ -175,8 +175,8 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                 }
                 if (state.outputs.size > 1) item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { share(state.outputs) }) { Text("Share all") }
-                        OutlinedButton(onClick = { model.save(state.outputs) }) { Text("Save all") }
+                        Button(onClick = { share(state.outputs) }) { Text(stringResource(R.string.tools_share_all)) }
+                        OutlinedButton(onClick = { model.save(state.outputs) }) { Text(stringResource(R.string.tools_save_all)) }
                     }
                 }
             }
@@ -195,14 +195,14 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                     })
                 }
                 if (tool == Tool.BATCH) {
-                    OutlinedButton(onClick = { folder.launch(null) }) { Text("Choose folder") }
-                    TextButton(onClick = model::latestBatch) { Text("Latest batch job") }
+                    OutlinedButton(onClick = { folder.launch(null) }) { Text(stringResource(R.string.tools_choose_folder)) }
+                    TextButton(onClick = model::latestBatch) { Text(stringResource(R.string.tools_latest_batch)) }
                 }
             }
             state.locked != null -> item {
                 var password by remember(state.locked) { mutableStateOf("") }
                 Text("${state.inputs[checkNotNull(state.locked)].name} is password-protected")
-                OutlinedTextField(password, { password = it }, label = { Text("Password") },
+                OutlinedTextField(password, { password = it }, label = { Text(stringResource(R.string.tools_password)) },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)
                 Button(onClick = { model.unlock(password) }) {
                     Text(if (tool == Tool.PASSWORD) "Remove password" else "Unlock")
@@ -223,15 +223,15 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                             }
                         }
                         if (tool == Tool.MERGE || tool == Tool.FROM_IMAGES) {
-                            TextButton(onClick = { model.move(index, -1) }, enabled = index > 0) { Text("Up") }
-                            TextButton(onClick = { model.move(index, 1) }, enabled = index < state.inputs.lastIndex) { Text("Down") }
+                            TextButton(onClick = { model.move(index, -1) }, enabled = index > 0) { Text(stringResource(R.string.tools_up)) }
+                            TextButton(onClick = { model.move(index, 1) }, enabled = index < state.inputs.lastIndex) { Text(stringResource(R.string.tools_down)) }
                         }
                     }
                 }
                 if (tool == Tool.BATCH) item {
                     val names = batchTools.associateWith { stringResource(it.title) }
                     Choice("Operation", batchTool, batchTools, { names.getValue(it) }) { batchTool = it }
-                    if (batchTool == Tool.MERGE) Text("PDFs are merged in name order.")
+                    if (batchTool == Tool.MERGE) Text(stringResource(R.string.tools_merge_order))
                 }
                 val pageCount = state.details.firstOrNull()?.widths?.size ?: 0
                 item { ToolOptions(operation, options, pageCount, tool == Tool.BATCH) }
@@ -240,7 +240,7 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                     val input = state.inputs.first().file
                     if (tool == Tool.PAGES) item {
                         PageEditActions(selection.toList(), pageCount, model)
-                        TextButton(onClick = { insertRange = ""; insertAt = 0 }) { Text("+ Insert before page 1") }
+                        TextButton(onClick = { insertRange = ""; insertAt = 0 }) { Text(stringResource(R.string.tools_insert_before_first)) }
                     }
                     items((pageCount + 2) / 3) { row ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -250,7 +250,7 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                                         if (!selection.remove(index)) selection.add(index)
                                     }
                                     if (tool == Tool.PAGES) TextButton(onClick = { insertRange = ""; insertAt = index + 1 }) {
-                                        Text("+ Insert")
+                                        Text(stringResource(R.string.tools_insert))
                                     }
                                 }
                             }
@@ -281,7 +281,7 @@ private fun ToolFlow(tool: Tool, state: ToolsState, model: ToolsModel, open: (Fi
                     ) { Text(if (tool == Tool.BATCH) "Start batch" else "Run") }
                     if (tool == Tool.PRINT) OutlinedButton(onClick = {
                         model.run(options.toMap() + ("Test sheet" to "true"))
-                    }) { Text("Print test sheet") }
+                    }) { Text(stringResource(R.string.tools_print_test)) }
                 }
             }
         }
@@ -297,9 +297,9 @@ private fun ResultFile(output: Output, model: ToolsModel, share: (List<Output>) 
         Text(android.text.format.Formatter.formatFileSize(context, output.bytes))
         output.note?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = { share(listOf(output)) }) { Text("Share") }
-            TextButton(onClick = { model.save(listOf(output)) }) { Text("Save") }
-            if (!image) TextButton(onClick = { open(output.file) }) { Text("Open in Reader") }
+            TextButton(onClick = { share(listOf(output)) }) { Text(stringResource(R.string.tools_share)) }
+            TextButton(onClick = { model.save(listOf(output)) }) { Text(stringResource(R.string.tools_save)) }
+            if (!image) TextButton(onClick = { open(output.file) }) { Text(stringResource(R.string.tools_open_reader)) }
         }
     }
 }
@@ -332,25 +332,25 @@ private fun PageEditActions(selected: List<Int>, count: Int, model: ToolsModel) 
     Column {
         Row {
             TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Delete(pages))) },
-                enabled = pages.isNotEmpty() && pages.size < count) { Text("Delete") }
+                enabled = pages.isNotEmpty() && pages.size < count) { Text(stringResource(R.string.tools_delete)) }
             TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Extract(selected.sorted()))) },
-                enabled = pages.isNotEmpty()) { Text("Extract") }
+                enabled = pages.isNotEmpty()) { Text(stringResource(R.string.tools_extract)) }
             TextButton(onClick = { model.run(emptyMap(), selected.sortedDescending().map { PageOp.Duplicate(it) }) },
-                enabled = pages.isNotEmpty()) { Text("Duplicate") }
+                enabled = pages.isNotEmpty()) { Text(stringResource(R.string.tools_duplicate)) }
         }
         Row {
             TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Rotate(pages, -90))) },
-                enabled = pages.isNotEmpty()) { Text("Rotate left") }
+                enabled = pages.isNotEmpty()) { Text(stringResource(R.string.tools_rotate_left)) }
             TextButton(onClick = { model.run(emptyMap(), listOf(PageOp.Rotate(pages, 90))) },
-                enabled = pages.isNotEmpty()) { Text("Rotate right") }
+                enabled = pages.isNotEmpty()) { Text(stringResource(R.string.tools_rotate_right)) }
         }
         if (selected.size == 1 && count > 1) {
-            OutlinedTextField(destination, { destination = it }, singleLine = true, label = { Text("New page position") })
+            OutlinedTextField(destination, { destination = it }, singleLine = true, label = { Text(stringResource(R.string.tools_page_position)) })
             TextButton(enabled = at != null && at in 0 until count, onClick = {
                 val order = (0 until count).toMutableList()
                 order.add(checkNotNull(at), order.removeAt(selected.single()))
                 model.run(emptyMap(), listOf(PageOp.Reorder(order)))
-            }) { Text("Move page") }
+            }) { Text(stringResource(R.string.tools_move_page)) }
         }
     }
 }

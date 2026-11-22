@@ -1,0 +1,3 @@
+<resources>
+    <string name="backup_job_failed">Could not complete the library backup or restore.</string>
+</resources>

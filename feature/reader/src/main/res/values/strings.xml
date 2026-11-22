@@ -22,4 +22,15 @@
     <string name="reader_open_error">Can\'t open this PDF</string>
     <string name="reader_save_error">Couldn\'t save reader state</string>
     <string name="reader_render_error">Couldn\'t render this page</string>
+    <string name="reader_discard_bookmarks">Discard unsaved bookmarks?</string>
+    <string name="reader_discard_and_close">Discard and close</string>
+    <string name="reader_keep_editing">Keep editing</string>
+    <string name="reader_find_in_pdf">Find in PDF</string>
+    <string name="reader_link_open_failed">No browser could open this link.</string>
+    <string name="reader_ok">OK</string>
+    <string name="reader_copy_text">Copy</string>
+    <string name="reader_share_text">Share</string>
+    <string name="reader_open_browser">Open in browser?</string>
+    <string name="reader_open_link">Open</string>
+    <string name="reader_cancel_link">Cancel</string>
 </resources>

@@ -1,0 +1,128 @@
+[
+  {
+    "name": "AndroidX Activity",
+    "version": "1.13.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/activity"
+  },
+  {
+    "name": "AndroidX Core",
+    "version": "1.19.1",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/core"
+  },
+  {
+    "name": "AndroidX Lifecycle",
+    "version": "2.11.1",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/lifecycle"
+  },
+  {
+    "name": "AndroidX Hilt",
+    "version": "1.4.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/hilt"
+  },
+  {
+    "name": "Bouncy Castle (PdfBox-Android dependency)",
+    "version": "1.72",
+    "license": "MIT",
+    "url": "https://www.bouncycastle.org/"
+  },
+  {
+    "name": "CameraX",
+    "version": "1.7.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/camera"
+  },
+  {
+    "name": "Coil",
+    "version": "3.6.3",
+    "license": "Apache-2.0",
+    "url": "https://github.com/coil-kt/coil"
+  },
+  {
+    "name": "Dagger Hilt",
+    "version": "2.60.1",
+    "license": "Apache-2.0",
+    "url": "https://dagger.dev/hilt/"
+  },
+  {
+    "name": "DataStore Preferences",
+    "version": "1.3.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/datastore"
+  },
+  {
+    "name": "Jetpack Compose (BOM)",
+    "version": "2026.11.01",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/develop/ui/compose/bom"
+  },
+  {
+    "name": "Kotlin",
+    "version": "2.4.21",
+    "license": "Apache-2.0",
+    "url": "https://kotlinlang.org/"
+  },
+  {
+    "name": "Kotlin Coroutines",
+    "version": "1.11.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/Kotlin/kotlinx.coroutines"
+  },
+  {
+    "name": "Kotlin Serialization",
+    "version": "1.13.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/Kotlin/kotlinx.serialization"
+  },
+  {
+    "name": "Material 3",
+    "version": "1.5.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/compose-material3"
+  },
+  {
+    "name": "Material Symbols Outlined",
+    "version": "Bundled vectors (unversioned)",
+    "license": "Apache-2.0",
+    "url": "https://github.com/google/material-design-icons"
+  },
+  {
+    "name": "Navigation 3",
+    "version": "1.2.2",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/navigation3"
+  },
+  {
+    "name": "OpenCV Android",
+    "version": "5.1.0",
+    "license": "Apache-2.0",
+    "url": "https://opencv.org/"
+  },
+  {
+    "name": "PdfBox-Android",
+    "version": "2.0.27.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/TomRoush/PdfBox-Android"
+  },
+  {
+    "name": "Reorderable",
+    "version": "3.1.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/Calvin-LL/Reorderable"
+  },
+  {
+    "name": "Room",
+    "version": "2.8.5",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/room"
+  },
+  {
+    "name": "WorkManager",
+    "version": "2.12.0",
+    "license": "Apache-2.0",
+    "url": "https://developer.android.com/jetpack/androidx/releases/work"
+  }
+]

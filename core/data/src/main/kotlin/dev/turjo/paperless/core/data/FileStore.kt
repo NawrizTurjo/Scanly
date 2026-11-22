@@ -6,9 +6,12 @@ import java.io.File
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
 
 @Singleton
 class FileStore @Inject constructor(@ApplicationContext private val context: Context) {
+    internal val pageCreationLock = Mutex()
+
     fun pageDir(pageId: String): File {
         require(pageId.isNotEmpty() && pageId != "." && pageId != "..")
         require('/' !in pageId && '\\' !in pageId)

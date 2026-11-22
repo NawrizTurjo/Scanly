@@ -20,6 +20,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -159,7 +160,7 @@ class BackupService internal constructor(
                 if (documents.document(item.document.id) != null) {
                     skipped++
                 } else {
-                    restoreDocument(tree, item)
+                    files.pageCreationLock.withLock { restoreDocument(tree, item) }
                 }
                 progress((index + 1f) / items.size)
             }

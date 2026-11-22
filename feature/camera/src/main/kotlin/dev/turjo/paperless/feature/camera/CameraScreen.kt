@@ -80,6 +80,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -127,7 +128,7 @@ fun CameraScreen(
     }
     LaunchedEffect(allowed, requested) {
         if (allowed && requested == true) {
-            withContext(Dispatchers.IO) { context.cameraPreferences().edit().remove(PermissionRequested).apply() }
+            withContext(Dispatchers.IO) { context.cameraPreferences().edit { remove(PermissionRequested) } }
             requested = false
         }
     }
@@ -136,7 +137,7 @@ fun CameraScreen(
         allowed = granted
         rationale = activity.showsCameraRationale()
         scope.launch(Dispatchers.IO) {
-            context.cameraPreferences().edit().putBoolean(PermissionRequested, !granted).apply()
+            context.cameraPreferences().edit { putBoolean(PermissionRequested, !granted) }
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -151,6 +152,7 @@ fun CameraScreen(
     }
     var flash by rememberSaveable { mutableStateOf(CameraFlash.OFF) }
     var controller by remember { mutableStateOf<CaptureController?>(null) }
+    var previewFailed by remember(allowed) { mutableStateOf(false) }
     var shutterFlash by remember { mutableStateOf(false) }
     var liveQuad by remember { mutableStateOf<LiveQuadSample?>(null) }
     val liveQuadSource = model.liveQuadSource
@@ -202,8 +204,11 @@ fun CameraScreen(
                     if (sample != null || controller == null) liveQuad = sample
                     model.onOverlay(sample?.quad.takeIf { resumed }, SystemClock.elapsedRealtime(), controller.takeIf { resumed })
                 },
-                onController = { controller = it },
-                onError = { scope.launch { snackbar.showSnackbar(previewError) } },
+                onController = {
+                    controller = it
+                    if (it != null) previewFailed = false
+                },
+                onError = { previewFailed = true },
             )
         }
         Box(Modifier.matchParentSize()) {
@@ -248,6 +253,12 @@ fun CameraScreen(
                     }
                 }
             }
+        } else if (previewFailed) {
+            Surface(Modifier.align(Alignment.Center).padding(24.dp), shape = MaterialTheme.shapes.large) {
+                Text(previewError, Modifier.padding(24.dp))
+            }
+        } else if (controller == null) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
 
         Column(

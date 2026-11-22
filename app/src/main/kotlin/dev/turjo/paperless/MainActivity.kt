@@ -13,11 +13,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarDefaults
@@ -76,7 +78,9 @@ class MainActivity : ComponentActivity() {
                     setRecentsPreviewAllowed(recentsAllowed)
                 }
                 when {
-                    storedSettings == null -> Surface(Modifier.fillMaxSize()) {}
+                    storedSettings == null -> Surface(Modifier.fillMaxSize()) {
+                        Box(contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    }
                     locked -> {
                         LockScreen(promptSignal == null, unlockError, ::authenticate)
                         LaunchedEffect(resumed) {

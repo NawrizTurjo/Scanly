@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 
 interface DocumentRepository {
     fun observeLibrary(): Flow<List<DocumentSummary>> = observeLibrary(LibraryFilter())
@@ -197,33 +198,47 @@ class RoomDocumentRepository @Inject constructor(
             val original = files.originalFile(pageId)
             // Keep cancellation from splitting file creation and its database transaction.
             withContext(NonCancellable) {
-                try {
-                    originalFile.copyTo(original)
-                    thumbnails.make(original, pageId)
-                    database.withTransaction {
-                        val document = requireDocument(documentId)
-                        check(document.deletedAt == null)
-                        val index = insertionIndex(at, dao.pages(documentId).size)
-                        val page = Page(
-                            pageId, documentId, index, PageMode.NORMAL, original.path, width, height,
-                            null, 0, PageFilter.ORIGINAL, 0f, 0f, false, false,
-                            null, null, false, System.currentTimeMillis(),
-                        )
-                        dao.shiftForInsert(documentId, index)
-                        dao.insertPage(page.toEntity())
-                        touch(document)
-                        page
-                    }
-                } catch (error: Exception) {
-                    try {
-                        files.deletePageFiles(pageId)
-                    } catch (cleanupError: Exception) {
-                        error.addSuppressed(cleanupError)
-                    }
-                    throw error
+                files.pageCreationLock.withLock {
+                    addPageFilesAndRow(documentId, originalFile, width, height, at, pageId, original)
                 }
             }
         }
+
+    private suspend fun addPageFilesAndRow(
+        documentId: String,
+        originalFile: File,
+        width: Int,
+        height: Int,
+        at: Int?,
+        pageId: String,
+        original: File,
+    ): Page {
+        return try {
+            originalFile.copyTo(original)
+            thumbnails.make(original, pageId)
+            database.withTransaction {
+                val document = requireDocument(documentId)
+                check(document.deletedAt == null)
+                val index = insertionIndex(at, dao.pages(documentId).size)
+                val page = Page(
+                    pageId, documentId, index, PageMode.NORMAL, original.path, width, height,
+                    null, 0, PageFilter.ORIGINAL, 0f, 0f, false, false,
+                    null, null, false, System.currentTimeMillis(),
+                )
+                dao.shiftForInsert(documentId, index)
+                dao.insertPage(page.toEntity())
+                touch(document)
+                page
+            }
+        } catch (error: Exception) {
+            try {
+                files.deletePageFiles(pageId)
+            } catch (cleanupError: Exception) {
+                error.addSuppressed(cleanupError)
+            }
+            throw error
+        }
+    }
 
     override suspend fun addPageCopy(sourcePageId: String, at: Int): Page =
         insertDerivedPage(UUID.randomUUID().toString()) { id ->

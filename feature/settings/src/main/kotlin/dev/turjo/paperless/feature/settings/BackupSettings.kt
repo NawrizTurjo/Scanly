@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.edit
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -82,7 +84,7 @@ internal fun BackupSettings() {
                 context.contentResolver.takePersistableUriPermission(
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
-                prefs.edit().putString("tree", uri.toString()).apply()
+                prefs.edit { putString("tree", uri.toString()) }
                 destination = uri
                 error = null
                 requestNotifications()
@@ -132,7 +134,8 @@ internal fun BackupSettings() {
     HorizontalDivider()
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(stringResource(R.string.search_index_section), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.search_index_counts, counts.pdfs, counts.pages))
+        Text(pluralStringResource(R.plurals.search_index_pdfs, counts.pdfs, counts.pdfs))
+        Text(pluralStringResource(R.plurals.search_index_pages, counts.pages, counts.pages))
         TextButton(onClick = { LibraryJobs.index(context, rebuild = true) }) {
             Text(stringResource(R.string.search_index_rebuild))
         }
@@ -140,7 +143,7 @@ internal fun BackupSettings() {
 
     val tree = destination
     if (chooseFolders && tree != null) {
-        var selectedIds by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+        var selectedIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
         AlertDialog(
             onDismissRequest = { chooseFolders = false },
             title = { Text(stringResource(R.string.backup_choose_contents)) },
@@ -154,7 +157,7 @@ internal fun BackupSettings() {
                                 checked = folder.id in selectedIds || parentSelected,
                                 enabled = !parentSelected,
                                 onCheckedChange = { checked ->
-                                    selectedIds = ArrayList(if (checked) selectedIds + folder.id else selectedIds - folder.id)
+                                    selectedIds = if (checked) selectedIds + folder.id else selectedIds - folder.id
                                 },
                             )
                             Text(folder.name)

@@ -93,6 +93,27 @@ class AndroidPdfSessionManagerTest {
     }
 
     @Test
+    fun switchesBetweenEightLargePdfTabsWithAtMostTwoRenderers() = runBlocking {
+        val keys = (1..8).map { asset("large-300.pdf", "large-tab-$it.pdf") }
+        var peak = 0
+        fun checkDescriptors() {
+            val open = keys.count { hasOpenDescriptor(files.getValue(it)) }
+            peak = maxOf(peak, open)
+            assertTrue("Open renderer descriptors: $open", open <= 2)
+        }
+        val tabs = keys.map { manager.open(it).also { checkDescriptors() } }
+        for (page in listOf(0, 150, 299)) {
+            for (tab in tabs) {
+                assertEquals(300, tab.pageCount)
+                assertEquals(1344, tab.render(page, 1344).width)
+                checkDescriptors()
+            }
+        }
+        Log.i("P8Robustness", "8 reader tabs: peak open renderer descriptors=$peak")
+        assertEquals(2, peak)
+    }
+
+    @Test
     fun reopeningReplacedScanUsesItsNewPages() = runBlocking {
         val key = asset("multipage-15.pdf")
         val oldHandle = manager.open(key)
@@ -120,9 +141,9 @@ class AndroidPdfSessionManagerTest {
             runCatching { android.system.Os.readlink(descriptor.path) == file.canonicalPath }.getOrDefault(false)
         }
 
-    private fun asset(name: String): PdfKey {
-        val file = File(directory, name.substringAfterLast('/'))
+    private fun asset(name: String, tabName: String = name.substringAfterLast('/')): PdfKey {
+        val file = File(directory, tabName)
         context.assets.open(name).use { input -> file.outputStream().use { input.copyTo(it) } }
-        return PdfKey(name).also { files[it] = file }
+        return PdfKey(tabName).also { files[it] = file }
     }
 }

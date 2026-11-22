@@ -78,4 +78,5 @@
         <item quantity="one">Document %1$d · %2$d page</item>
         <item quantity="other">Document %1$d · %2$d pages</item>
     </plurals>
+    <string name="review_empty">No pages yet. Add a page to continue.</string>
 </resources>

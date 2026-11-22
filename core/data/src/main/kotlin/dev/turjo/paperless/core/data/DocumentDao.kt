@@ -27,6 +27,12 @@ data class DocumentPagesRow(
 
 @Dao
 interface DocumentDao {
+    @Query("SELECT id FROM pages")
+    suspend fun pageIds(): List<String>
+
+    @Query("SELECT id FROM documents WHERE deletedAt IS NULL")
+    suspend fun liveDocumentIds(): List<String>
+
     @Query(
         """
         SELECT d.id, d.title, d.updatedAt, d.isFavorite, d.createdAt, f.name AS folderName,

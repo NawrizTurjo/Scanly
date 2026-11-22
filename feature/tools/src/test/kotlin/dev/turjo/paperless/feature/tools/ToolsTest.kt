@@ -141,7 +141,10 @@ class BatchTest {
             emptyList()
         })
         assertEquals(listOf(BatchStatus.FAILED, BatchStatus.DONE, BatchStatus.DONE), results.map { it.status })
-        assertEquals("Broken file", results.first().reason)
+        assertEquals(
+            RuntimeEnvironment.getApplication().getString(R.string.tools_corrupt_pdf),
+            results.first().reason,
+        )
     }
 
     @Test fun cancelLetsCurrentFileFinishAndSkipsRemainingFiles() = runBlocking {
@@ -169,7 +172,7 @@ class BatchTest {
         val context = RuntimeEnvironment.getApplication()
         val inputs = listOf("b.pdf", "A.pdf", "c.pdf").map { Input(File(context.cacheDir, it), it) }
         var results = emptyList<BatchItem>()
-        runBatch(ToolRequest(tool, inputs), ops, emptyList(), cancelled,
+        runBatch(context, ToolRequest(tool, inputs), ops, emptyList(), cancelled,
             { File(context.cacheDir, "batch-test/$it") }) { results = it }
         return results
     }

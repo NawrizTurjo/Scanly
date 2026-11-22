@@ -34,7 +34,10 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
     var editedName by rememberSaveable(documentId) { mutableStateOf<String?>(null) }
     val name = editedName ?: state.document?.document?.title?.let(::sanitizeExportName).orEmpty()
     val enabled = !state.running && state.document != null
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
 
     LaunchedEffect(state.failed) {
         if (state.failed) {
@@ -116,7 +119,9 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
                 }
                 Switch(checked = true, onCheckedChange = {}, enabled = false)
             }
-            if (state.running) {
+            if (!state.loaded) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            } else if (state.running) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 TextButton(onClick = model::cancel) { Text(stringResource(R.string.export_cancel)) }
             } else {

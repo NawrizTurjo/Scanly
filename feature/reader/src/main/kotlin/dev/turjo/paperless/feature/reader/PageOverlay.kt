@@ -1,10 +1,11 @@
 package dev.turjo.paperless.feature.reader
 
+import androidx.compose.ui.res.stringResource
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.PointF
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -175,12 +176,12 @@ internal fun PageOverlay(
                     TextButton({
                         context.getSystemService(ClipboardManager::class.java)
                             .setPrimaryClip(ClipData.newPlainText("PDF text", selection?.first.orEmpty()))
-                    }) { Text("Copy") }
+                    }) { Text(stringResource(R.string.reader_copy_text)) }
                     TextButton({
                         val share = Intent(Intent.ACTION_SEND).setType("text/plain")
                             .putExtra(Intent.EXTRA_TEXT, selection?.first.orEmpty())
                         context.startActivity(Intent.createChooser(share, null))
-                    }) { Text("Share") }
+                    }) { Text(stringResource(R.string.reader_share_text)) }
                 }
             }
         }
@@ -229,19 +230,19 @@ internal fun ExternalLinkDialog(uri: String, dismiss: () -> Unit, onError: () ->
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Open in browser?") },
+        title = { Text(stringResource(R.string.reader_open_browser)) },
         text = { Text(uri) },
         confirmButton = {
             TextButton({
                 dismiss()
                 try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addCategory(Intent.CATEGORY_BROWSABLE))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
                 } catch (_: RuntimeException) {
                     onError()
                 }
-            }) { Text("Open") }
+            }) { Text(stringResource(R.string.reader_open_link)) }
         },
-        dismissButton = { TextButton(dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(dismiss) { Text(stringResource(R.string.reader_cancel_link)) } },
     )
 }
 
