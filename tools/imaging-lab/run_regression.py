@@ -1,6 +1,6 @@
 """Imaging lab regression: detection accuracy and warp quality against test-data ground truth.
 
-Usage:  python tools/imaging-lab/run_regression.py [--sheet] [--only CATEGORY]
+Usage:  python tools/imaging-lab/run_regression.py [--set desk] [--sheet] [--only CATEGORY]
 Exit code 1 when an acceptance threshold from docs/06 is missed.
 """
 import argparse
@@ -20,15 +20,22 @@ from lab.geometry import corner_error, warp  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 SYN = ROOT / "test-data" / "scanner" / "synthetic"
 SPECIAL = ROOT / "test-data" / "special"
+DESK = ROOT / "test-data" / "scanner" / "desk"
 OUT = ROOT / "work" / "lab"
 
 HIT_DIAG = 0.02        # SC-1: corner within 2% of the diagonal
 MEAN_DIAG = 0.015      # docs/06: mean error < 1.5% of the diagonal
 DETECT_RATE = 0.90     # docs/06: >= 90% detected (synthetic)
 WARP_SSIM = 0.85       # docs/06: SSIM >= 0.85 on clean/skewed
+DESK_HIT_DIAG = 0.03
 
 
-def load_sets(only):
+def load_sets(only, desk=False):
+    if desk:
+        entries = json.loads((DESK / "truth.json").read_text(encoding="utf-8"))["images"]
+        return [("desk", e["category"], DESK / rel,
+                 [e["corners"], *e["alt_corners"]], None)
+                for rel, e in sorted(entries.items()) if not only or e["category"] == only]
     items = []
     t = json.loads((SYN / "truth.json").read_text())
     for rel, e in sorted(t["images"].items()):
@@ -61,10 +68,12 @@ def warp_ssim(img, quad, page_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sheet", action="store_true", help="write work/lab/detect_sheet.jpg")
+    ap.add_argument("--sheet", action="store_true", help="write detection overlays under work/lab")
+    ap.add_argument("--set", choices=("desk",))
     ap.add_argument("--only")
     args = ap.parse_args()
-    items = load_sets(args.only)
+    desk = args.set == "desk"
+    items = load_sets(args.only, desk)
     rows, thumbs = [], []
     t0 = time.time()
     for group, cat, path, truth, page_id in items:
@@ -75,32 +84,57 @@ def main():
         if quad is None:
             rows.append(dict(group=group, cat=cat, name=path.name, found=False, mean=None, max=None, conf=conf, ssim=None))
         else:
-            mean, mx = corner_error(quad, truth)
+            mean, mx = (min(corner_error(quad, candidate) for candidate in truth)
+                        if desk else corner_error(quad, truth))
             s = warp_ssim(img, quad, page_id) if (group == "synthetic" and cat in ("clean", "skewed")) else None
             rows.append(dict(group=group, cat=cat, name=path.name, found=True, mean=mean / diag, max=mx / diag, conf=conf, ssim=s))
         if args.sheet:
             vis = img.copy()
-            cv2.polylines(vis, [np.int32(truth)], True, (0, 200, 0), 3)
-            if quad is not None:
+            outlines = truth if desk else [truth]
+            if quad is not None and desk:
+                cv2.polylines(vis, [np.int32(quad)], True, (0, 0, 255), 13)
+            cv2.polylines(vis, [np.int32(outline) for outline in outlines], True, (0, 200, 0), 8 if desk else 3)
+            if quad is not None and not desk:
                 cv2.polylines(vis, [np.int32(quad)], True, (0, 0, 255), 2)
             r = rows[-1]
             label = f"{path.stem} " + ("MISS" if not r["found"] else f"{100 * r['max']:.2f}%")
+            if desk and r["found"]:
+                score = 100 * r["mean"]
+                result = "HIT" if r["mean"] < DESK_HIT_DIAG else "MISS"
+                label = f"{path.stem} {result} {score:.1f}%"
             vis = cv2.resize(vis, (240, int(240 * h / w)))
             cv2.putText(vis, label, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3)
             cv2.putText(vis, label, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
             thumbs.append(vis)
     dt = time.time() - t0
 
+    def hit(row):
+        return row["found"] and (row["mean"] < DESK_HIT_DIAG if desk else row["max"] <= HIT_DIAG)
+
     cats = sorted({(r["group"], r["cat"]) for r in rows})
-    print(f"{'set':10} {'category':16} {'n':>3} {'hit%':>6} {'mean%diag':>10} {'max%diag':>9} {'ssim_min':>8}")
+    header = f"{'set':10} {'category':16} {'n':>3} {'hit%':>6} {'mean%diag':>10}"
+    print(header + (f" {'misses':>6}" if desk else f" {'max%diag':>9} {'ssim_min':>8}"))
     for g, c in cats:
         rs = [r for r in rows if r["group"] == g and r["cat"] == c]
-        hits = [r for r in rs if r["found"] and r["max"] <= HIT_DIAG]
+        hits = [r for r in rs if hit(r)]
         found = [r for r in rs if r["found"]]
         mean = np.mean([r["mean"] for r in found]) * 100 if found else float("nan")
+        summary = f"{g:10} {c:16} {len(rs):3d} {100 * len(hits) / len(rs):6.1f} {mean:10.3f}"
+        if desk:
+            print(f"{summary} {len(rs) - len(hits):6d}")
+            continue
         mx = np.max([r["max"] for r in found]) * 100 if found else float("nan")
         ss = [r["ssim"] for r in rs if r["ssim"] is not None]
-        print(f"{g:10} {c:16} {len(rs):3d} {100 * len(hits) / len(rs):6.1f} {mean:10.3f} {mx:9.3f} {min(ss) if ss else float('nan'):8.3f}")
+        print(f"{summary} {mx:9.3f} {min(ss) if ss else float('nan'):8.3f}")
+    if desk:
+        misses = [r for r in rows if not hit(r)]
+        print(f"\ndesk: {len(rows) - len(misses)}/{len(rows)} hits, {len(misses)} misses in {dt:.1f}s")
+        for r in misses:
+            error = f"{100 * r['mean']:.2f}% mean error" if r["found"] else "no quad"
+            print(f"  {r['cat']}/{r['name']} ({error})")
+        if args.sheet and thumbs:
+            write_sheet(thumbs, "desk_sheet.jpg")
+        return
     syn = [r for r in rows if r["group"] == "synthetic"]
     syn_hit = sum(1 for r in syn if r["found"] and r["max"] <= HIT_DIAG) / max(1, len(syn))
     syn_mean = np.mean([r["mean"] for r in syn if r["found"]]) if syn else 0
@@ -112,17 +146,21 @@ def main():
     if misses:
         print("misses / >2%:", ", ".join(misses))
     if args.sheet and thumbs:
-        OUT.mkdir(parents=True, exist_ok=True)
-        cols = 8
-        hmax = max(t.shape[0] for t in thumbs)
-        tiles = [cv2.copyMakeBorder(t, 0, hmax - t.shape[0], 0, 0, cv2.BORDER_CONSTANT, value=(40, 40, 40)) for t in thumbs]
-        while len(tiles) % cols:
-            tiles.append(np.full_like(tiles[0], 40))
-        sheet = np.vstack([np.hstack(tiles[i:i + cols]) for i in range(0, len(tiles), cols)])
-        cv2.imwrite(str(OUT / "detect_sheet.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        print("sheet:", OUT / "detect_sheet.jpg")
+        write_sheet(thumbs, "detect_sheet.jpg")
     ok = syn_hit >= DETECT_RATE and syn_mean < MEAN_DIAG and (not ss or min(ss) >= WARP_SSIM)
     sys.exit(0 if ok else 1)
+
+
+def write_sheet(thumbs, filename):
+    OUT.mkdir(parents=True, exist_ok=True)
+    cols = 8
+    hmax = max(t.shape[0] for t in thumbs)
+    tiles = [cv2.copyMakeBorder(t, 0, hmax - t.shape[0], 0, 0, cv2.BORDER_CONSTANT, value=(40, 40, 40)) for t in thumbs]
+    while len(tiles) % cols:
+        tiles.append(np.full_like(tiles[0], 40))
+    sheet = np.vstack([np.hstack(tiles[i:i + cols]) for i in range(0, len(tiles), cols)])
+    cv2.imwrite(str(OUT / filename), sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    print("sheet:", OUT / filename)
 
 
 if __name__ == "__main__":

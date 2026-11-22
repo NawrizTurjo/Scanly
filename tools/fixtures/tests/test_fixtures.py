@@ -16,6 +16,7 @@ from pypdf.errors import FileNotDecryptedError, PdfReadError
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "test-data"
 SCANNER = DATA / "scanner" / "synthetic"
+DESK = DATA / "scanner" / "desk"
 SPECIAL = DATA / "special"
 PDF = DATA / "pdf"
 
@@ -25,6 +26,54 @@ def truth(directory, key="images"):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_desk_geometry(self):
+        entries = truth(DESK)
+        self.assertEqual(Counter(e["category"] for e in entries.values()),
+                         dict.fromkeys(("desk-sheet", "white-on-light", "notebook-spread",
+                                        "notebook-left", "notebook-right", "clipped-sheet",
+                                        "occluded", "dim-desk"), 7))
+        self.assertTrue((DESK / "_contact_sheet.jpg").is_file())
+        for name, info in entries.items():
+            with self.subTest(image=name):
+                w, h = info["size"]
+                self.assertIn((w, h), ((1500, 2000), (2000, 1500)))
+                with Image.open(DESK / name) as photo:
+                    self.assertEqual(photo.size, (w, h))
+                category = info["category"]
+                if category == "notebook-spread":
+                    self.assertEqual(info["alt_corners"], [])
+                pw, ph = info["page_size"]
+                source = np.float32([[[0, 0], [pw - 1, 0], [pw - 1, ph - 1], [0, ph - 1]]])
+                mapped = cv2.perspectiveTransform(source, np.array(info["homography"]))[0]
+                np.testing.assert_allclose(mapped, info["corners"], atol=.01)
+                for corners in [info["corners"], *info["alt_corners"]]:
+                    quad = np.asarray(corners, np.float32)
+                    self.assertEqual(quad.shape, (4, 2))
+                    bounds = np.array([w - 1, h - 1])
+                    self.assertTrue(np.all(quad >= 0) and np.all(quad <= bounds))
+                    self.assertTrue(cv2.isContourConvex(quad))
+                    share = cv2.contourArea(quad, oriented=True) / (w * h)
+                    self.assertTrue(.25 <= share <= .80, share)
+                    on_border = np.any((quad == 0) | (quad == bounds), axis=1)
+                    self.assertEqual(int(on_border.sum()), 2 if category == "clipped-sheet" else 0)
+
+    def test_desk_determinism(self):
+        script = ("from pathlib import Path; import sys, cv2, gen_desk; "
+                  "cv2.setNumThreads(1); gen_desk.generate(Path(sys.argv[1]), "
+                  "('notebook-left', 'clipped-sheet'), samples=1)")
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            for directory in (first, second):
+                subprocess.run([sys.executable, "-B", "-c", script, directory], check=True,
+                               cwd=ROOT / "tools" / "fixtures")
+            a = Path(first) / "scanner" / "desk"
+            b = Path(second) / "scanner" / "desk"
+            for name in ("notebook-left/notebook-left_01.jpg", "clipped-sheet/clipped-sheet_01.jpg",
+                         "truth.json", "_contact_sheet.jpg"):
+                with self.subTest(file=name):
+                    self.assertEqual((a / name).read_bytes(), (b / name).read_bytes())
+                    if name.endswith("_01.jpg"):
+                        self.assertEqual((a / name).read_bytes(), (DESK / name).read_bytes())
+
     def test_images_geometry_and_references(self):
         for directory, count in ((SCANNER, 48), (SPECIAL, 10)):
             entries = truth(directory)
