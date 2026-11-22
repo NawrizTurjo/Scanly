@@ -5,11 +5,14 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.opencv.core.Core
+import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfByte
 import org.opencv.core.Size
@@ -37,6 +40,7 @@ class ImagingParityTest {
         val files = requireNotNull(assets.list("filters")).toSet()
         val failures = mutableListOf<String>()
         val detector = QuadDetector()
+        val times = mutableListOf<Double>()
         val filters = mapOf<String, (Mat) -> Mat>(
             "AUTO" to Enhancer::auto,
             "DOCUMENT" to Enhancer::document,
@@ -48,8 +52,7 @@ class ImagingParityTest {
         Log.i(TAG, "item | detection ms | max corner px | warp mean abs | glare warning")
         for (name in items.keys()) {
             val item = items.getJSONObject(name)
-            val corners = item.getJSONArray("quad")
-            val truth = FloatArray(8) { corners.getJSONArray(it / 2).getDouble(it % 2).toFloat() }
+            val truth = item.getJSONArray("quad").toQuad()
             val dimensions = item.getJSONArray("warp_size")
             val size = Size(dimensions.getDouble(0), dimensions.getDouble(1))
             assets.image("warped/$name.png").useMat { goldenWarp ->
@@ -57,6 +60,7 @@ class ImagingParityTest {
                     val start = SystemClock.elapsedRealtimeNanos()
                     val found = detector.detect(input)
                     val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
+                    times.add(elapsedMs)
                     val maxCorner = found.quad?.let { Geometry.cornerError(it, truth).second }
                     val warpMean = Geometry.warp(input, truth, size).useMat { warp ->
                         val mean = diff(warp, goldenWarp).mean
@@ -67,6 +71,15 @@ class ImagingParityTest {
                         mean
                     }
                     if (maxCorner == null || maxCorner > quadTolerance) failures.add("$name max corner: $maxCorner px")
+                    item.optJSONObject("aspect_prior")?.let { prior ->
+                        val expected = prior.getJSONArray("quad").toQuad()
+                        val startPrior = SystemClock.elapsedRealtimeNanos()
+                        val actual = detector.detect(input, aspectPrior = 1.586f)
+                        val elapsed = (SystemClock.elapsedRealtimeNanos() - startPrior) / 1_000_000.0
+                        val error = actual.quad?.let { Geometry.cornerError(it, expected).second }
+                        Log.i(TAG, "$name/aspect prior | ${elapsed.formatted()} ms | ${error?.formatted()} px")
+                        if (error == null || error > quadTolerance) failures.add("$name/aspect prior: $error px")
+                    }
                     if (warpMean > 3.0) failures.add("$name warp mean: $warpMean")
                 }
                 for ((filter, apply) in filters) {
@@ -82,6 +95,7 @@ class ImagingParityTest {
                 }
             }
         }
+        logTimings("full detection", times)
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
@@ -97,15 +111,14 @@ class ImagingParityTest {
         try {
             for (name in items.keys()) {
                 val live = items.getJSONObject(name).getJSONObject("live")
-                val corners = live.getJSONArray("quad")
-                val expected = FloatArray(8) { corners.getJSONArray(it / 2).getDouble(it % 2).toFloat() }
+                val expected = live.optJSONArray("quad")?.toQuad()
                 assets.image(live.getString("frame"), Imgcodecs.IMREAD_GRAYSCALE).useMat { gray ->
                     fun compare(variant: String, input: LumaFrame): LiveQuad? {
                         val start = SystemClock.elapsedRealtimeNanos()
                         val actual = detector.detect(input)
                         val elapsed = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
                         if (variant == "upright") times.add(elapsed)
-                        val error = actual?.let {
+                        val error = if (expected == null) null else actual?.let {
                             (0 until 8 step 2).maxOf { i ->
                                 hypot(
                                     it.points[i] * gray.cols() - expected[i],
@@ -114,34 +127,31 @@ class ImagingParityTest {
                             }
                         }
                         Log.i(TAG, "live $name/$variant | ${elapsed.formatted()} ms | ${error?.formatted()} px")
-                        if (error == null || error > tolerance) failures.add("$name/$variant: $error px")
+                        val matches = if (expected == null) actual == null else error != null && error <= tolerance
+                        if (!matches) failures.add("$name/$variant: $error px, expected quad=${expected != null}, detected=${actual != null}")
                         return actual
                     }
 
                     val upright = compare("upright", gray.lumaFrame())
                     newMat { Core.rotate(gray, it, Core.ROTATE_90_COUNTERCLOCKWISE) }.useMat { sensor ->
                         val rotated = compare("rotated", sensor.lumaFrame(rotation = 90))
-                        if (upright == null || rotated == null ||
-                            !upright.points.contentEquals(rotated.points) || upright.confidence != rotated.confidence
-                        ) failures.add("$name rotated detection differed from upright")
+                        if (!sameDetection(upright, rotated)) failures.add("$name rotated detection differed from upright")
                     }
                     if (times.size == 1) {
                         val padded = gray.lumaFrame(padding = 13, offset = 7)
                         val found = compare("padded", padded)
-                        if (upright == null || found == null || !upright.points.contentEquals(found.points) ||
-                            upright.confidence != found.confidence
-                        ) failures.add("$name padded detection differed from upright")
+                        if (!sameDetection(upright, found)) failures.add("$name padded detection differed from upright")
                         if (padded.data.position() != 7) failures.add("$name padded buffer position changed")
                     }
                 }
             }
+            Mat.zeros(360, 480, CvType.CV_8UC1).useMat { blank ->
+                assertNull("A blank frame should have no quad", detector.detect(blank.lumaFrame()))
+            }
         } finally {
             detector.release()
         }
-        val sorted = times.sorted()
-        val median = (sorted[(sorted.size - 1) / 2] + sorted[sorted.size / 2]) / 2
-        val p95 = sorted[ceil(0.95 * sorted.size).toInt() - 1]
-        Log.i(TAG, "live upright timings (n=${sorted.size}) | median ${median.formatted()} ms | p95 ${p95.formatted()} ms")
+        logTimings("live upright", times)
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
@@ -163,7 +173,7 @@ class ImagingParityTest {
                 val blurred = newMat { Imgproc.GaussianBlur(original, it, Size(), 2.0) }.useMat {
                     requireNotNull(detector.detect(it.lumaFrame()))
                 }
-                val other = frame("clean_05").useMat { requireNotNull(detector.detect(it.lumaFrame())) }
+                val other = frame("tables_05").useMat { requireNotNull(detector.detect(it.lumaFrame())) }
                 assertTrue(sharp.fingerprint.size == 256 && sharp.fingerprint.all { it in 0f..1f })
                 assertTrue(sharp.fingerprint.contentEquals(repeat.fingerprint))
                 val distance = sharp.fingerprint.indices.map { abs(sharp.fingerprint[it] - other.fingerprint[it]) }.average()
@@ -265,10 +275,23 @@ class ImagingParityTest {
         }
     }
 
+    private fun sameDetection(a: LiveQuad?, b: LiveQuad?): Boolean =
+        if (a == null || b == null) a == b else a.points.contentEquals(b.points) && a.confidence == b.confidence
+
+    private fun JSONArray.toQuad() = FloatArray(8) {
+        getJSONArray(it / 2).getDouble(it % 2).toFloat()
+    }
+
+    private fun logTimings(label: String, times: List<Double>) {
+        val sorted = times.sorted()
+        val median = (sorted[(sorted.size - 1) / 2] + sorted[sorted.size / 2]) / 2
+        val p95 = sorted[ceil(0.95 * sorted.size).toInt() - 1]
+        Log.i(TAG, "$label timings (n=${sorted.size}) | median ${median.formatted()} ms | p95 ${p95.formatted()} ms")
+    }
+
     private fun Double.formatted(): String = String.format(Locale.US, "%.4f", this)
 
     companion object {
         private const val TAG = "ImagingParity"
     }
 }
-
