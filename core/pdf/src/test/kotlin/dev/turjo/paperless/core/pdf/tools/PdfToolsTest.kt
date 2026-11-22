@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.test.core.app.ApplicationProvider
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
@@ -40,6 +41,39 @@ class PdfToolsTest {
 
     @Before
     fun initializePdfBox() = PdfBox.ensureInit(ApplicationProvider.getApplicationContext())
+
+    @Test
+    fun printLabelsMatchEverySourceAndSheetSide() = runBlocking {
+        for (count in listOf(5, 80)) {
+            val source = output("blank-$count.pdf")
+            PDDocument().use { document ->
+                repeat(count) { document.addPage(PDPage()) }
+                document.save(source)
+            }
+            for (layout in NUpLayout.entries) for (flip in Flip.entries) {
+                val target = output("labels-$count-$layout-$flip.pdf")
+                NUp.layout(source, layout, layout.perSide, flip, NUpOptions(), target)
+                val expected = NUp.impose(count, layout, flip).flatMap { sheet ->
+                    listOf(sheet.front, sheet.back).filter { it.isNotEmpty() }
+                }
+                PDDocument.load(target).use { document ->
+                    assertEquals(expected.size, document.numberOfPages)
+                    val labels = Regex("""p\. \d+/\d+""")
+                    val stripper = PDFTextStripper()
+                    for ((side, pages) in expected.withIndex()) {
+                        stripper.startPage = side + 1
+                        stripper.endPage = side + 1
+                        val actual = labels.findAll(stripper.getText(document)).map { it.value }.toList()
+                        assertEquals("$count $layout $flip side ${side + 1}",
+                            pages.filterNotNull().map { "p. ${it + 1}/$count" }, actual)
+                    }
+                }
+            }
+            val target = output("unlabelled-$count.pdf")
+            NUp.layout(source, NUpLayout.PLAIN_4, 4, Flip.LONG, NUpOptions(pageLabels = false), target)
+            PDDocument.load(target).use { assertTrue(PDFTextStripper().getText(it).isBlank()) }
+        }
+    }
 
     @Test
     fun mergePreservesOrderAndGroupsOutlines() = runBlocking {

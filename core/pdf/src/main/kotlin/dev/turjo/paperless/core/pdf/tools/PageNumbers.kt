@@ -48,16 +48,20 @@ object PageNumbers {
                 else -> 18f
             }
             PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use {
-                it.beginText()
-                it.setFont(font, fontSize)
-                it.setTextMatrix(page.displayToPage(x, y))
-                it.showText(label)
-                it.endText()
+                it.drawHelveticaText(label, fontSize, page.displayToPage(x, y))
             }
         }
         document.save(temporary)
         ToolResult(out, document.numberOfPages)
     }
+}
+
+internal fun PDPageContentStream.drawHelveticaText(label: String, size: Float, matrix: Matrix) {
+    beginText()
+    setFont(PDType1Font.HELVETICA, size)
+    setTextMatrix(matrix)
+    showText(label)
+    endText()
 }
 
 private fun PDPage.displayToPage(x: Float, y: Float): Matrix {

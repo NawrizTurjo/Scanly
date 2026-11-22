@@ -185,7 +185,7 @@ class BatchWorker(context: Context, parameters: WorkerParameters) : CoroutineWor
         val notification = Notification.Builder(context, channel)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle("Processing PDFs")
-            .setContentText("$done of $total files")
+            .setContentText(applicationContext.resources.getQuantityString(R.plurals.tools_batch_files, total, done, total))
             .setContentIntent(open)
             .setOnlyAlertOnce(true)
             .setOngoing(true)

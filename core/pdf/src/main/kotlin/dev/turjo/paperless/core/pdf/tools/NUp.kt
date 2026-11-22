@@ -33,6 +33,7 @@ data class NUpOptions(
     val gapPt: Float = 12f,
     val cutLine: Boolean = false,
     val scaleToFit: Boolean = true,
+    val pageLabels: Boolean = true,
 )
 
 object NUp {
@@ -97,20 +98,46 @@ object NUp {
                     if (index != null) {
                         val source = sources[index]
                         val cell = grid.cell(slot)
+                        val label = "p. ${index + 1}/${sources.size}"
+                        val labelEmWidth = if (opts.pageLabels) PDType1Font.HELVETICA.getStringWidth(label) / 1000f else 1f
+                        val labelSize = if (opts.pageLabels) {
+                            minOf(7f, cell.height / 4f, cell.width / (labelEmWidth + 1f))
+                        } else 0f
+                        val labelHeight = labelSize * 1.6f
+                        val content = PDRectangle(cell.lowerLeftX, cell.lowerLeftY + labelHeight, cell.width, cell.height - labelHeight)
                         val form = layers.importPageAsForm(document, source)
                         form.cosObject.removeItem(COSName.MATRIX)
                         form.bBox = source.cropBox
-                        val placement = Placement(page, source, cell, opts.scaleToFit)
+                        val placement = Placement(page, source, content, opts.scaleToFit)
                         positions[source.cosObject] = placement
                         stream.saveGraphicsState()
-                        stream.addRect(cell.lowerLeftX, cell.lowerLeftY, cell.width, cell.height)
+                        stream.addRect(content.lowerLeftX, content.lowerLeftY, content.width, content.height)
                         stream.clip()
                         stream.transform(placement.matrix)
                         stream.drawForm(form)
                         stream.restoreGraphicsState()
+                        if (opts.pageLabels) {
+                            stream.saveGraphicsState()
+                            stream.setNonStrokingColor(0.5f)
+                            stream.drawHelveticaText(label, labelSize, Matrix.getTranslateInstance(
+                                cell.lowerLeftX + (cell.width - labelEmWidth * labelSize) / 2,
+                                cell.lowerLeftY + labelSize * 0.4f,
+                            ))
+                            stream.restoreGraphicsState()
+                        }
                         val annotations = page.annotations
                         for (annotation in source.annotations) {
                             transformAnnotation(annotation.cosObject, placement.scale, placement::map)
+                            if (opts.pageLabels) {
+                                val bounds = annotation.rectangle
+                                if (bounds != null) {
+                                    if (bounds.upperRightY <= content.lowerLeftY) continue
+                                    if (bounds.lowerLeftY < content.lowerLeftY) {
+                                        bounds.lowerLeftY = content.lowerLeftY
+                                        annotation.rectangle = bounds
+                                    }
+                                }
+                            }
                             annotation.page = page
                             if (source.rotation != 0) {
                                 val rotate = COSName.getPDFName("MK")

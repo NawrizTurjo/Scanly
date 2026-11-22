@@ -64,4 +64,18 @@
     <string name="tools_enhance_hint">Pages are cropped automatically. To adjust crops, import the photos with Scan instead.</string>
     <string name="tools_enhancing_progress">Enhancing %1$d of %2$d</string>
     <string name="tools_unreadable_image">Could not read image %1$d (%2$s).</string>
+    <string name="tools_adjust_images">Adjust pages&#8230;</string>
+    <string name="tools_adjust_images_hint">Opens the photos as a scan so you can fix crops and filters, then save and export</string>
+    <plurals name="tools_files_processed">
+        <item quantity="one">%d file processed</item>
+        <item quantity="other">%d files processed</item>
+    </plurals>
+    <plurals name="tools_pages_at_width">
+        <item quantity="one">%1$d page at %2$d pt</item>
+        <item quantity="other">%1$d pages at %2$d pt</item>
+    </plurals>
+    <plurals name="tools_batch_files">
+        <item quantity="one">%1$d of %2$d file</item>
+        <item quantity="other">%1$d of %2$d files</item>
+    </plurals>
 </resources>

@@ -55,6 +55,24 @@ internal class BackupSettingsViewModel @Inject constructor(
     val folderList = folders.observeFolders()
 }
 
+private val backedUp = Regex("""Backed up (\d+) documents? to ([\s\S]*)""")
+private val restored = Regex("""Restored (\d+) documents? · (\d+) already present""")
+
+@Composable
+private fun backupResultText(message: String): String {
+    // LibraryJobs exposes a preformatted result, including for summaries persisted by older builds.
+    backedUp.matchEntire(message)?.destructured?.let { (number, location) ->
+        val count = number.toIntOrNull() ?: return message
+        return pluralStringResource(R.plurals.backup_documents_backed_up, count, count, location)
+    }
+    restored.matchEntire(message)?.destructured?.let { (number, skippedNumber) ->
+        val count = number.toIntOrNull() ?: return message
+        val skipped = skippedNumber.toIntOrNull() ?: return message
+        return pluralStringResource(R.plurals.backup_documents_restored, count, count, skipped)
+    }
+    return message
+}
+
 @Composable
 internal fun BackupSettings() {
     val context = LocalContext.current
@@ -128,7 +146,7 @@ internal fun BackupSettings() {
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        backup.lastResult?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        backup.lastResult?.let { Text(backupResultText(it), style = MaterialTheme.typography.bodyMedium) }
     }
 
     HorizontalDivider()
