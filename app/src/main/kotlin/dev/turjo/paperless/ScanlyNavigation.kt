@@ -1,5 +1,17 @@
 package dev.turjo.paperless
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -82,6 +94,8 @@ private val pendingPdfsSaver = listSaver<List<PendingPdf>, String>(
     restore = { saved -> saved.chunked(2).map { PendingPdf(PdfKey(it[0]), it[1].ifEmpty { null }) } },
 )
 
+private val readerBottomBarHeight = 80.dp
+
 private enum class Tab(val route: Route, val label: Int, val icon: Int) {
     LIBRARY(LibraryRoute, R.string.tab_library, DesignR.drawable.ic_library),
     READER(ReaderRoute, R.string.tab_reader, DesignR.drawable.ic_reader),
@@ -154,27 +168,42 @@ internal fun ScanlyNavigation(
     val top = backStack.lastOrNull()
     val currentTab = Tab.entries.firstOrNull { it.route == top }
     var readerImmersive by remember { mutableStateOf(false) }
-    val immersive = top == ReaderRoute && readerImmersive
+    val readerActive = top == ReaderRoute
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (currentTab != null && !immersive) {
-                NavigationBar {
-                    for (tab in Tab.entries) {
-                        NavigationBarItem(
-                            selected = tab == currentTab,
-                            onClick = { if (tab != currentTab) backStack.replaceAll(tab.route) },
-                            icon = { Icon(painterResource(tab.icon), contentDescription = null) },
-                            label = { Text(stringResource(tab.label)) },
-                        )
+            if (currentTab != null) {
+                val tabBar: @Composable (WindowInsets) -> Unit = { insets ->
+                    NavigationBar(windowInsets = insets) {
+                        for (tab in Tab.entries) {
+                            NavigationBarItem(
+                                selected = tab == currentTab,
+                                onClick = { if (tab != currentTab) backStack.replaceAll(tab.route) },
+                                icon = { Icon(painterResource(tab.icon), contentDescription = null) },
+                                label = { Text(stringResource(tab.label)) },
+                            )
+                        }
                     }
+                }
+                if (readerActive) {
+                    AnimatedVisibility(
+                        visible = !readerImmersive,
+                        enter = slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it } +
+                            fadeIn(tween(220, easing = FastOutSlowInEasing)),
+                        exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it } +
+                            fadeOut(tween(220, easing = FastOutSlowInEasing)),
+                    ) {
+                        tabBar(WindowInsets.systemBarsIgnoringVisibility.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                    }
+                } else {
+                    tabBar(NavigationBarDefaults.windowInsets)
                 }
             }
         },
     ) { padding ->
         // Only tab roots sit above the bottom bar; full-screen routes (camera, editor) handle their own insets.
-        val contentModifier = if (currentTab != null && !immersive) {
+        val contentModifier = if (currentTab != null && !readerActive) {
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         } else {
             Modifier.fillMaxSize()
@@ -202,7 +231,8 @@ internal fun ScanlyNavigation(
                         openRequest = pendingPdfKey,
                         onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
                         openRequestTitle = pendingPdfTitle,
-                        active = top == ReaderRoute,
+                        active = readerActive,
+                        bottomBarHeight = readerBottomBarHeight,
                         onImmersiveChanged = { readerImmersive = it },
                     )
                 }

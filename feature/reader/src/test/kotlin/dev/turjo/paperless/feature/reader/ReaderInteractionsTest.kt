@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.reader
 
+import androidx.compose.ui.unit.dp
 import dev.turjo.paperless.core.model.OutlineNode
 import dev.turjo.paperless.core.model.PageRect
 import dev.turjo.paperless.core.model.TextMatch
@@ -13,6 +14,19 @@ class ReaderInteractionsTest {
         val immersive = ReaderChrome.VISIBLE.pageTap(annotating = false)
         assertEquals(ReaderChrome.IMMERSIVE, immersive)
         assertEquals(ReaderChrome.VISIBLE, immersive.pageTap(annotating = false))
+    }
+
+    @Test
+    fun pagePaddingStaysFixedThroughChromeTransitions() {
+        val visible = ReaderChrome.VISIBLE
+        val immersive = visible.pageTap(annotating = false)
+        val locked = ReaderChrome.LOCKED
+
+        for (chrome in listOf(visible, immersive, immersive.pageTap(annotating = false), locked, locked.unlock())) {
+            val padding = readerPagePadding(topOverlay = 136.dp, bottomBar = 80.dp, navigationInset = 24.dp)
+            assertEquals("Top padding in $chrome", 136.dp, padding.calculateTopPadding())
+            assertEquals("Bottom padding in $chrome", 104.dp, padding.calculateBottomPadding())
+        }
     }
 
     @Test

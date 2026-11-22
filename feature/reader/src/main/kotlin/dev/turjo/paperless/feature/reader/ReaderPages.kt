@@ -1,6 +1,11 @@
 package dev.turjo.paperless.feature.reader
 
 import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,6 +93,8 @@ internal fun ReaderPages(
     annotationLayer: AnnotationLayer? = null,
     onAnnotation: AnnotationGesture? = null,
     immersive: Boolean,
+    pagePadding: PaddingValues,
+    overlayInsets: WindowInsets,
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
@@ -135,25 +142,38 @@ internal fun ReaderPages(
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
                     document, tab, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
-                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged,
+                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged, pagePadding,
                 )
                 ReaderViewMode.SINGLE_PAGE -> SinglePages(
                     document, tab, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
-                    onPageTap, onLockedTap, onSelectionChanged,
+                    onPageTap, onLockedTap, onSelectionChanged, pagePadding,
                 )
             }
         }
         val displayPage = tab.page.coerceIn(0, document.pageCount - 1)
-        if (!immersive) {
-            FilledTonalButton(
-                onClick = { showJump = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-            ) { Text(stringResource(R.string.reader_page_indicator, displayPage + 1, document.pageCount)) }
-            history.previous?.let { previous ->
-                FilledTonalButton(
-                    onClick = { history = history.back(); onJump(previous) },
-                    modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-                ) { Text("← p. ${previous + 1}") }
+        val chipPadding = Modifier.windowInsetsPadding(overlayInsets)
+            .padding(bottom = pagePadding.calculateBottomPadding())
+            .padding(12.dp)
+        AnimatedVisibility(
+            visible = !immersive,
+            modifier = Modifier.align(Alignment.BottomEnd).then(chipPadding),
+            enter = fadeIn(readerChromeTween()),
+            exit = fadeOut(readerChromeTween()),
+        ) {
+            FilledTonalButton(onClick = { showJump = true }) {
+                Text(stringResource(R.string.reader_page_indicator, displayPage + 1, document.pageCount))
+            }
+        }
+        history.previous?.let { previous ->
+            AnimatedVisibility(
+                visible = !immersive,
+                modifier = Modifier.align(Alignment.BottomStart).then(chipPadding),
+                enter = fadeIn(readerChromeTween()),
+                exit = fadeOut(readerChromeTween()),
+            ) {
+                FilledTonalButton(onClick = { history = history.back(); onJump(previous) }) {
+                    Text("← p. ${previous + 1}")
+                }
             }
         }
         external?.let { ExternalLinkDialog(it, { external = null }, { linkError = true }) }
@@ -187,6 +207,7 @@ private fun ContinuousPages(
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
+    pagePadding: PaddingValues,
 ) {
     val startingPage = remember { tab.page.coerceIn(0, document.pageCount - 1) }
     val startingOffset = remember { tab.scrollOffsetPx }
@@ -217,6 +238,7 @@ private fun ContinuousPages(
         val density = LocalDensity.current
         val viewportWidth = constraints.maxWidth.coerceAtLeast(1)
         val viewportHeight = constraints.maxHeight
+        val topPaddingPx = with(density) { pagePadding.calculateTopPadding().roundToPx() }
         val lastAspect = pageGeometry(document, document.pageCount - 1, crop, uniform, geometries)?.aspect
         val shownWidth = (viewportWidth * zoom).roundToInt()
         LaunchedEffect(jump) {
@@ -230,14 +252,14 @@ private fun ContinuousPages(
                     panX = (bounds.left - viewportWidth / 4f).coerceIn(0f, (shownWidth - viewportWidth).toFloat())
                     reportZoom(zoom, panX)
                 }
-                val offset = bounds?.let { (it.top - viewportHeight / 3f).roundToInt() } ?: 0
+                val offset = bounds?.let { (it.top + topPaddingPx - viewportHeight / 3f).roundToInt() } ?: 0
                 list.scrollToItem(jump.page, offset.coerceIn(0, height - 1))
                 onJumpConsumed()
             }
         }
         val renderWidth = (viewportWidth * settledZoom).roundToInt()
         val lastHeight = lastAspect?.let { pageHeight(shownWidth, it) }
-        val endPadding by remember(list, document, viewportHeight, lastHeight, density) {
+        val endPadding by remember(list, document, viewportHeight, lastHeight, topPaddingPx, density) {
             derivedStateOf {
                 if (lastHeight == null) {
                     0.dp
@@ -245,7 +267,7 @@ private fun ContinuousPages(
                     val last = list.layoutInfo.visibleItemsInfo.lastOrNull()
                     // A taller viewport would otherwise clamp the scroll offset near the end.
                     val lastTop = if (last?.index == document.pageCount - 1) last.offset else 0
-                    with(density) { (viewportHeight - lastHeight - lastTop.coerceAtMost(0)).coerceAtLeast(0).toDp() }
+                    with(density) { (viewportHeight - topPaddingPx - lastHeight - lastTop.coerceAtMost(0)).coerceAtLeast(0).toDp() }
                 }
             }
         }
@@ -257,9 +279,10 @@ private fun ContinuousPages(
             panX = ((panX + anchor.x) * scale - anchor.x - pan.x).coerceIn(0f, maxPan)
             if (scale != 1f || pan.y != 0f) {
                 val visible = list.layoutInfo.visibleItemsInfo
-                val item = visible.lastOrNull { it.offset <= anchor.y } ?: visible.firstOrNull()
+                val contentY = anchor.y - topPaddingPx
+                val item = visible.lastOrNull { it.offset <= contentY } ?: visible.firstOrNull()
                 if (item != null) {
-                    val offset = ((anchor.y - item.offset) * scale - anchor.y - pan.y).roundToInt()
+                    val offset = ((contentY - item.offset) * scale - contentY - pan.y).roundToInt()
                     list.requestScrollToItem(item.index, offset)
                 }
             }
@@ -304,7 +327,10 @@ private fun ContinuousPages(
         LazyColumn(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).then(gestures),
             state = list,
-            contentPadding = PaddingValues(bottom = endPadding),
+            contentPadding = PaddingValues(
+                top = pagePadding.calculateTopPadding(),
+                bottom = maxOf(pagePadding.calculateBottomPadding(), endPadding),
+            ),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(document.pageCount) { page ->
@@ -329,7 +355,7 @@ private fun ContinuousPages(
                             onPageTap, onLockedTap, onSelectionChanged,
                         ) { point ->
                             val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }?.offset ?: 0
-                            currentTransform(point + Offset(0f, top.toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
+                            currentTransform(point + Offset(0f, (top + topPaddingPx).toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
                         }
                     } else if (render.failed) {
                         PageRenderError(tab.nightMode)
@@ -356,6 +382,7 @@ private fun SinglePages(
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
+    pagePadding: PaddingValues,
 ) {
     val pager = rememberPagerState(tab.page.coerceIn(0, document.pageCount - 1)) { document.pageCount }
     val reportPosition by rememberUpdatedState(onPosition)
@@ -368,7 +395,7 @@ private fun SinglePages(
         }
     }
     HorizontalPager(pager, Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) { page ->
-        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(pagePadding), contentAlignment = Alignment.Center) {
             val geometry = pageGeometry(document, page, crop, uniform, geometries)
             if (geometry == null) {
                 CircularProgressIndicator()

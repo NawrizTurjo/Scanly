@@ -1,6 +1,13 @@
 package dev.turjo.paperless.feature.reader
 
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.Dp
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -30,6 +37,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.delay
+
+internal fun <T> readerChromeTween() = tween<T>(durationMillis = 220, easing = FastOutSlowInEasing)
+
+internal fun readerPagePadding(topOverlay: Dp, bottomBar: Dp, navigationInset: Dp) =
+    PaddingValues(top = topOverlay, bottom = bottomBar + navigationInset)
 
 @Composable
 internal fun ReaderWindowMode(chrome: ReaderChrome, onImmersiveChanged: (Boolean) -> Unit) {
@@ -63,20 +75,26 @@ internal fun ReaderWindowMode(chrome: ReaderChrome, onImmersiveChanged: (Boolean
 }
 
 @Composable
-internal fun ReaderLockIndicator(reveal: Int, modifier: Modifier, onUnlock: () -> Unit) {
+internal fun ReaderLockIndicator(reveal: Int, ready: Boolean, modifier: Modifier, onUnlock: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    var visible by remember { mutableStateOf(true) }
-    LaunchedEffect(reveal, pressed) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(ready, reveal, pressed) {
+        if (!ready) return@LaunchedEffect
         visible = true
         if (!pressed) {
             delay(2_000)
             visible = false
         }
     }
-    if (visible) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(readerChromeTween()),
+        exit = fadeOut(readerChromeTween()),
+    ) {
         Surface(
-            modifier.padding(12.dp),
+            Modifier.padding(12.dp),
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.76f),
         ) {
