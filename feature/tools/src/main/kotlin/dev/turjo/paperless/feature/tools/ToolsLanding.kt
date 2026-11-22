@@ -1,5 +1,10 @@
 package dev.turjo.paperless.feature.tools
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import android.content.ActivityNotFoundException
 import android.text.format.DateUtils
 import androidx.compose.foundation.combinedClickable
@@ -67,6 +72,7 @@ internal fun ToolsLanding(model: ToolsModel, openPdf: (File) -> Unit) {
     val pinCards = history.pins.map { ToolCardInfo.valueOf(it.name) }
     val pin: (Tool, Boolean) -> Unit = model::setPinned
 
+    val focus = LocalFocusManager.current
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = query,
@@ -83,7 +89,14 @@ internal fun ToolsLanding(model: ToolsModel, openPdf: (File) -> Unit) {
                 }
             } else null,
         )
-        Box(Modifier.weight(1f)) {
+        // Touching the tools (scroll, tap, long-press) drops focus from the search field, so the keyboard and the
+        // system autofill chip don't linger over the page.
+        Box(Modifier.weight(1f).pointerInput(focus) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                focus.clearFocus()
+            }
+        }) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
