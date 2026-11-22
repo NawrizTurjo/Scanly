@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.UserSettings
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -131,7 +133,10 @@ class ScanRobustnessTest {
     private fun openDatabase(name: String) = Room.databaseBuilder(context, PaperlessDatabase::class.java, name).build()
 
     private fun sessions(database: PaperlessDatabase) =
-        RoomScanSessionRepository(database, database.documentDao(), database.scanSessionDao(), files)
+        RoomScanSessionRepository(
+            database, database.documentDao(), database.scanSessionDao(), files,
+            documents(database), flowOf(UserSettings()),
+        )
 
     private fun documents(database: PaperlessDatabase) =
         RoomDocumentRepository(database, database.documentDao(), files, thumbnails)

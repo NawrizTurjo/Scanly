@@ -3,6 +3,9 @@ package dev.turjo.paperless.feature.camera
 import android.graphics.Bitmap
 import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
+import dev.turjo.paperless.core.data.DuplexPhase
+import dev.turjo.paperless.core.data.DuplexProgress
+import dev.turjo.paperless.core.data.DuplexProgressStore
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
@@ -40,6 +43,13 @@ class CameraViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val sessions = Sessions()
     private val documents = Documents()
+    private val duplexStore = object : DuplexProgressStore {
+        private val progress = mutableMapOf<String, DuplexProgress>()
+        override suspend fun read(sessionId: String) = progress[sessionId] ?: DuplexProgress()
+        override suspend fun write(sessionId: String, progress: DuplexProgress) {
+            this.progress[sessionId] = progress
+        }
+    }
     private lateinit var model: CameraViewModel
     private lateinit var temp: File
     private val pageModes = mutableListOf<PageMode>()
@@ -78,6 +88,22 @@ class CameraViewModelTest {
         runCurrent()
 
         assertEquals(0, sessions.starts.size)
+        assertEquals(listOf("page-0"), model.state.value.pageIds)
+    }
+
+    @Test fun newScanRequiresChoiceBeforeAppendingToPopulatedDraft() = runTest {
+        sessions.current = session
+        documents.addExistingPage()
+        createModel(target = null)
+        runCurrent()
+
+        assertEquals(1, model.state.value.pendingScan?.pageCount)
+        assertFalse(model.state.value.canEdit)
+        model.capture { error("Capture must wait for a choice") }
+        model.continueScan()
+        runCurrent()
+
+        assertTrue(model.state.value.canEdit)
         assertEquals(listOf("page-0"), model.state.value.pageIds)
     }
 
@@ -215,6 +241,7 @@ class CameraViewModelTest {
         createModel()
         runCurrent()
         model.toggleDuplex()
+        runCurrent()
         model.scanBacks()
         assertEquals(DuplexPhase.FRONTS, model.state.value.duplexPhase)
         model.importImages(listOf("front1", "front2")) { image, file -> file.writeText(image) }
@@ -224,6 +251,7 @@ class CameraViewModelTest {
         assertEquals(2, model.state.value.frontCount)
 
         model.scanBacks()
+        runCurrent()
         assertEquals(DuplexPhase.BACKS, model.state.value.duplexPhase)
         model.capture { it.writeText("back2") }
         runCurrent()
@@ -241,13 +269,46 @@ class CameraViewModelTest {
         assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
     }
 
+    @Test fun duplexRestoresItsOwnSidesAndLeavesEarlierPagesInOrder() = runTest {
+        repeat(3) { documents.addExistingPage() }
+        createModel()
+        runCurrent()
+        model.toggleDuplex()
+        runCurrent()
+        assertEquals(0, model.state.value.frontCount)
+
+        model.importImages(List(4) { "front" }) { image, file -> file.writeText(image) }
+        runCurrent()
+        model.scanBacks()
+        runCurrent()
+        model.importImages(List(2) { "back" }) { image, file -> file.writeText(image) }
+        runCurrent()
+        model.viewModelScope.cancel()
+        createModel()
+        runCurrent()
+
+        assertEquals(DuplexPhase.BACKS, model.state.value.duplexPhase)
+        assertEquals(4, model.state.value.frontCount)
+        assertEquals(2, model.state.value.backCount)
+        model.importImages(List(2) { "back" }) { image, file -> file.writeText(image) }
+        runCurrent()
+        model.review()
+        runCurrent()
+
+        val indexes = listOf(0, 1, 2, 3, 10, 4, 9, 5, 8, 6, 7)
+        assertEquals(indexes.map { "page-$it" }, model.state.value.pageIds)
+        assertEquals(DuplexProgress(), duplexStore.read(session.id))
+    }
+
     @Test fun duplexMismatchCanReturnToCameraOrKeepScanOrder() = runTest {
         createModel()
         runCurrent()
         model.toggleDuplex()
+        runCurrent()
         model.importImages(listOf("front1", "front2")) { image, file -> file.writeText(image) }
         runCurrent()
         model.scanBacks()
+        runCurrent()
         model.importImages(listOf("back2")) { image, file -> file.writeText(image) }
         runCurrent()
 
@@ -262,6 +323,7 @@ class CameraViewModelTest {
         model.review()
         runCurrent()
         model.keepDuplexOrder()
+        runCurrent()
         assertTrue(documents.reorders.isEmpty())
         assertEquals(listOf("page-0", "page-1", "page-2"), model.state.value.pageIds)
         assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
@@ -316,11 +378,11 @@ class CameraViewModelTest {
         assertEquals(CameraEvent.Close, model.events.first())
     }
 
-    private fun createModel(single: Boolean = false) {
+    private fun createModel(single: Boolean = false, target: String? = "target") {
         model = CameraViewModel(
-            CameraArgs("target", 3, single), sessions, documents, processing,
+            CameraArgs(target, 3, single), sessions, documents, processing,
             { temporary.newFile().also { temp = it } },
-            { PixelSize(400, 300) }, { error("No thumbnail needed") }, dispatcher,
+            { PixelSize(400, 300) }, { error("No thumbnail needed") }, dispatcher, duplexStore,
         )
     }
 

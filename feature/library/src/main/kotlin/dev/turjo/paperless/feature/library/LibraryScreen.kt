@@ -51,9 +51,11 @@ fun LibraryScreen(
     onOpenDocument: (String) -> Unit = {},
     onOpenRecent: ((PdfKey) -> Unit)? = null,
     onOpenPdfAtPage: ((PdfKey, Int) -> Unit)? = null,
+    onOpenDraft: (String) -> Unit = {},
 ) {
     val model: LibraryViewModel = hiltViewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
+    val unsavedScan by model.unsavedScan.collectAsStateWithLifecycle()
     val recent by model.continueReading.collectAsStateWithLifecycle()
     val filter by model.filter.collectAsStateWithLifecycle()
     val selection by model.selection.collectAsStateWithLifecycle()
@@ -64,10 +66,12 @@ fun LibraryScreen(
     var bin by rememberSaveable { mutableStateOf(false) }
     var move by rememberSaveable { mutableStateOf(false) }
     var create by rememberSaveable { mutableStateOf(false) }
+    var discardSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     val currentFolder = folders.firstOrNull { it.folder.id == filter.folderId }?.folder
     val childFolders = folders.filter { it.folder.parentId == filter.folderId }
     val folderGrid = folderMode && filter.folderId == null
     val selecting = selection.isNotEmpty()
+    val visibleScan = unsavedScan.takeIf { filter.query.isBlank() && !selecting && !bin }
     val snackbar = remember { SnackbarHostState() }
     val moved = stringResource(R.string.library_moved_to_bin)
     val undo = stringResource(R.string.library_undo)
@@ -228,10 +232,11 @@ fun LibraryScreen(
         val hits = if (showContentSearch) insideDocumentHits(filter.query) else emptyList()
         when {
             bin -> RecycleBin(content, deleted, model::restore, model::deleteForever)
-            !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId) -> Box(content, contentAlignment = Alignment.Center) {
+            visibleScan == null && !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId) -> Box(content, contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            !showContentSearch && !showRecent && visibleFolders.isEmpty() && (folderGrid || state.documents.isEmpty()) -> {
+            visibleScan == null && !showContentSearch && !showRecent && visibleFolders.isEmpty() &&
+                (folderGrid || state.documents.isEmpty()) -> {
                 if (!folderMode && filter.query.isBlank() && !filter.favouritesOnly) EmptyLibrary(content)
                 else Box(content, contentAlignment = Alignment.Center) {
                     val label = if (folderGrid) R.string.library_no_folders else R.string.no_documents
@@ -246,6 +251,16 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (visibleScan != null) {
+                        item(key = "unsaved-scan", span = { GridItemSpan(maxLineSpan) }) {
+                            UnsavedScanCard(
+                                visibleScan,
+                                model.thumbnailFile,
+                                onContinue = { onOpenDraft(visibleScan.draftId) },
+                                onDiscard = { discardSessionId = visibleScan.sessionId },
+                            )
+                        }
+                    }
                     if (showRecent) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             ContinueReadingRow(recent, onOpenRecent)
@@ -262,7 +277,7 @@ fun LibraryScreen(
                             onDelete = { model.deleteFolder(summary.folder.id) },
                         )
                     }
-                    if (!folderGrid) items(state.documents, key = DocumentSummary::id) { document ->
+                    if (!folderGrid && state.filter.folderId == filter.folderId) items(state.documents, key = DocumentSummary::id) { document ->
                         DocumentCard(
                             document, listLayout, document.id in selection,
                             onClick = {
@@ -287,6 +302,24 @@ fun LibraryScreen(
         }
     }
 
+    if (discardSessionId != null && discardSessionId == visibleScan?.sessionId) {
+        AlertDialog(
+            onDismissRequest = { discardSessionId = null },
+            title = { Text(stringResource(R.string.library_discard_scan_title)) },
+            text = { Text(stringResource(R.string.library_discard_scan_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    discardSessionId?.let(model::discardScan)
+                    discardSessionId = null
+                }) { Text(stringResource(R.string.library_discard_scan)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { discardSessionId = null }) {
+                    Text(stringResource(R.string.detail_cancel))
+                }
+            },
+        )
+    }
     if (create) FolderNameDialog(onDismiss = { create = false }) { name ->
         model.createFolder(name, filter.folderId)
         create = false
@@ -296,6 +329,42 @@ fun LibraryScreen(
         onSelect = { move = false; model.moveSelected(it) },
         onCreate = { move = false; model.moveSelectedToNewFolder(it) },
     )
+}
+
+@Composable
+private fun UnsavedScanCard(
+    scan: UnsavedScan,
+    thumbnailFile: (String) -> File,
+    onContinue: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    val count = pluralStringResource(R.plurals.page_count, scan.pageCount, scan.pageCount)
+    val time = DateUtils.getRelativeTimeSpanString(
+        scan.startedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+    )
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(R.string.library_unsaved_scan, count, time),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (pageId in scan.thumbnailPageIds) {
+                    AsyncImage(
+                        model = thumbnailFile(pageId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(width = 48.dp, height = 64.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onContinue) { Text(stringResource(R.string.library_continue_scan)) }
+                TextButton(onClick = onDiscard) { Text(stringResource(R.string.library_discard_scan)) }
+            }
+        }
+    }
 }
 
 @Composable

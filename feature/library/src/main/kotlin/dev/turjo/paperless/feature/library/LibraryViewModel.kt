@@ -4,11 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
+import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.FolderRepository
+import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.ReaderRepository
+import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.LibraryFilter
 import dev.turjo.paperless.core.model.PdfKey
+import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,7 +20,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -31,6 +38,14 @@ internal data class LibraryUiState(
     val documents: List<DocumentSummary> = emptyList(),
     val isLoading: Boolean = true,
     val filter: LibraryFilter = LibraryFilter(),
+)
+
+internal data class UnsavedScan(
+    val sessionId: String,
+    val draftId: String,
+    val startedAt: Long,
+    val pageCount: Int,
+    val thumbnailPageIds: List<String>,
 )
 
 internal data class ContinueReadingItem(
@@ -49,11 +64,24 @@ internal sealed interface LibraryNotice {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
-internal class LibraryViewModel @Inject constructor(
+internal class LibraryViewModel(
     private val documents: DocumentRepository,
     private val folders: FolderRepository,
     reader: ReaderRepository,
+    private val sessions: ScanSessionRepository,
+    private val awaitIdle: suspend (Collection<String>) -> Unit,
+    val thumbnailFile: (String) -> File,
 ) : ViewModel() {
+    @Inject
+    constructor(
+        documents: DocumentRepository,
+        folders: FolderRepository,
+        reader: ReaderRepository,
+        sessions: ScanSessionRepository,
+        processing: PageProcessing,
+        files: FileStore,
+    ) : this(documents, folders, reader, sessions, processing::awaitIdle, files::thumbFile)
+
     private val mutableFilter = MutableStateFlow(LibraryFilter())
     val filter = mutableFilter.asStateFlow()
     private val mutableSelection = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -69,6 +97,17 @@ internal class LibraryViewModel @Inject constructor(
             LibraryUiState(documents = it, isLoading = false, filter = active)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
+    val unsavedScan = sessions.observeActive().flatMapLatest { session ->
+        if (session == null) flowOf(null)
+        else documents.observeDocument(session.draftDocumentId).map { draft ->
+            if (draft == null || !draft.document.isDraft || draft.pages.isEmpty()) null
+            else UnsavedScan(
+                session.id, session.draftDocumentId, session.startedAt, draft.pages.size,
+                draft.pages.take(3).map { it.id },
+            )
+        }
+    }.combine(filter) { scan, active -> scan.takeIf { active.query.isBlank() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val continueReading = reader.observeRecent().map { recent ->
         recent.asSequence().filter { it.pageCount > 0 }.take(5).map {
             ContinueReadingItem(it.pdfKey, it.title, it.lastPage.coerceIn(0, it.pageCount - 1) + 1, it.pageCount)
@@ -134,6 +173,13 @@ internal class LibraryViewModel @Inject constructor(
     fun deleteFolder(id: String) = change { folders.delete(id) }
     fun restore(id: String) = change { documents.restore(id) }
     fun deleteForever(ids: List<String>) = change { ids.forEach { documents.deleteForever(it) } }
+
+    fun discardScan(sessionId: String) = change {
+        val session = sessions.active()?.takeIf { it.id == sessionId } ?: return@change
+        val pages = documents.observeDocument(session.draftDocumentId).first()?.pages.orEmpty()
+        awaitIdle(pages.map { it.id })
+        sessions.discard(session.id)
+    }
 
     private fun removeSelection(ids: Set<String>) = mutableSelection.update { it - ids }
 

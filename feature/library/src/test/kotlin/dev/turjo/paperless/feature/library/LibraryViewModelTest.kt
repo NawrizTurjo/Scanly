@@ -6,17 +6,24 @@ import app.cash.turbine.test
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FolderRepository
 import dev.turjo.paperless.core.data.ReaderRepository
+import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.DeletedDocument
+import dev.turjo.paperless.core.model.Document
 import dev.turjo.paperless.core.model.DocumentSummary
+import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibraryFilter
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.model.PageFilter
+import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.core.model.RecentPdf
+import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.TabState
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
@@ -26,6 +33,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -46,7 +54,7 @@ class LibraryViewModelTest {
     @Test
     fun stateReflectsInitialAndUpdatedLibrary() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val viewModel = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
+        val viewModel = createModel(repository)
         val document = DocumentSummary("doc", "Receipt", 1, null, 100, true)
 
         viewModel.uiState.test {
@@ -59,9 +67,48 @@ class LibraryViewModelTest {
     }
 
     @Test
+    fun unsavedScanRequiresAnActiveDraftWithPagesAndHidesDuringSearch() = runTest(dispatcher) {
+        val repository = FakeRepository()
+        val sessions = TestSessions()
+        val model = createModel(repository, sessions = sessions)
+        val session = ScanSession("session", "draft", 100, null, null)
+        val draft = Document("draft", "", null, false, true, 100, 100, null, null)
+        val pages = List(4) { index ->
+            Page(
+                "page-$index", draft.id, index, PageMode.NORMAL, "", 100, 100,
+                null, 0, PageFilter.ORIGINAL, 0f, 0f, false, false, null, null, false, 100,
+            )
+        }
+
+        try {
+            model.unsavedScan.test {
+                assertNull(awaitItem())
+                sessions.current.value = session
+                repository.draft.value = DocumentWithPages(draft, emptyList())
+                runCurrent()
+                expectNoEvents()
+
+                repository.draft.value = DocumentWithPages(draft, pages)
+                val card = UnsavedScan("session", "draft", 100, 4, listOf("page-0", "page-1", "page-2"))
+                assertEquals(card, awaitItem())
+
+                model.updateFilter { it.copy(query = "receipt") }
+                assertNull(awaitItem())
+                model.updateFilter { it.copy(query = "") }
+                assertEquals(card, awaitItem())
+
+                sessions.current.value = null
+                assertNull(awaitItem())
+            }
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
     fun continueReadingShowsFiveReadableEntriesWithOneBasedClampedProgress() = runTest(dispatcher) {
         val reader = TestReaderRepository()
-        val model = LibraryViewModel(FakeRepository(), TestFolders(), reader)
+        val model = createModel(FakeRepository(), reader = reader)
         val pdfs = listOf(
             RecentPdf(PdfKey("unknown"), "Unknown page count", 7, 0, 0),
             RecentPdf(PdfKey("pdf"), "Manual", 6, 340, 11),
@@ -94,7 +141,7 @@ class LibraryViewModelTest {
     @Test
     fun deletingSelectionEmitsUndoForExactlyThoseDocuments() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val model = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
+        val model = createModel(repository)
         val first = DocumentSummary("first", "First", 1, null, 0, false)
         val second = first.copy(id = "second")
         val excluded = first.copy(id = "excluded")
@@ -119,7 +166,7 @@ class LibraryViewModelTest {
     @Test
     fun mixedSelectionFavouritesAllAndAllFavouritesAreCleared() = runTest(dispatcher) {
         val repository = FakeRepository()
-        val model = LibraryViewModel(repository, TestFolders(), TestReaderRepository())
+        val model = createModel(repository)
         val first = DocumentSummary("first", "First", 1, null, 0, false)
         val second = first.copy(id = "second", isFavorite = true)
         model.toggleSelection(first)
@@ -139,7 +186,7 @@ class LibraryViewModelTest {
     @Test
     fun movesSelectionToExistingAndNewFolders() = runTest(dispatcher) {
         val folders = TestFolders()
-        val model = LibraryViewModel(FakeRepository(), folders, TestReaderRepository())
+        val model = createModel(FakeRepository(), folders)
         val document = DocumentSummary("doc", "Receipt", 1, null, 0, false)
         model.toggleSelection(document)
         model.moveSelected("existing")
@@ -152,6 +199,28 @@ class LibraryViewModelTest {
         assertEquals("Receipts", folders.createdName)
         assertEquals(setOf("doc") to "new", folders.lastMove)
         assertEquals(emptyMap<String, Boolean>(), model.selection.value)
+    }
+
+    private fun createModel(
+        repository: DocumentRepository,
+        folders: FolderRepository = TestFolders(),
+        reader: ReaderRepository = TestReaderRepository(),
+        sessions: ScanSessionRepository = TestSessions(),
+    ) = LibraryViewModel(
+        repository, folders, reader, sessions,
+        awaitIdle = { error("Unexpected processing wait") },
+        thumbnailFile = { error("Unexpected thumbnail request") },
+    )
+
+    private class TestSessions : ScanSessionRepository {
+        val current = MutableStateFlow<ScanSession?>(null)
+
+        override fun observeActive() = current
+        override suspend fun active() = current.value
+        override suspend fun start(targetDocumentId: String?, insertAt: Int?): Nothing =
+            error("Unexpected session start")
+        override suspend fun finish(sessionId: String): Unit = error("Unexpected session finish")
+        override suspend fun discard(sessionId: String): Unit = error("Unexpected session discard")
     }
 
     private class TestReaderRepository : ReaderRepository {
@@ -170,6 +239,7 @@ class LibraryViewModelTest {
 
     internal open class FakeRepository : DocumentRepository {
         val library = MutableStateFlow<List<DocumentSummary>>(emptyList())
+        val draft = MutableStateFlow<DocumentWithPages?>(null)
 
         val deletedIds = mutableSetOf<String>()
         val favorites = mutableMapOf<String, Boolean>()
@@ -178,8 +248,7 @@ class LibraryViewModelTest {
         override fun observeLibrary(filter: LibraryFilter) = library
         override fun observeDeleted() = flowOf(emptyList<DeletedDocument>())
         override suspend fun purgeDeletedOlderThan(days: Int) { purgedAfterDays = days }
-        override fun observeDocument(id: String): kotlinx.coroutines.flow.Flow<dev.turjo.paperless.core.model.DocumentWithPages?> =
-            unsupported()
+        override fun observeDocument(id: String): Flow<DocumentWithPages?> = draft
         override suspend fun getPage(id: String): Nothing = unsupported()
         override suspend fun updatePage(page: Page): Nothing = unsupported()
         override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Nothing =

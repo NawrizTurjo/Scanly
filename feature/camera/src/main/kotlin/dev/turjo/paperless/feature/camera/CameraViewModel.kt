@@ -8,10 +8,15 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
+import dev.turjo.paperless.core.data.DuplexPhase
+import dev.turjo.paperless.core.data.DuplexProgress
+import dev.turjo.paperless.core.data.DuplexProgressStore
+import dev.turjo.paperless.core.data.FileDuplexProgressStore
 import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
+import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.interleaveDuplex
@@ -34,7 +39,14 @@ internal fun interface CaptureController {
     suspend fun capture(destination: File)
 }
 
-internal data class CameraArgs(val targetDocumentId: String?, val insertAt: Int?, val singleMode: Boolean)
+internal data class CameraArgs(
+    val targetDocumentId: String?,
+    val insertAt: Int?,
+    val singleMode: Boolean,
+    val resumeDraftId: String? = null,
+)
+
+internal data class PendingScan(val session: ScanSession, val pageCount: Int)
 
 internal enum class ScanMode(val pageMode: PageMode) {
     DOCUMENT(PageMode.NORMAL),
@@ -42,8 +54,6 @@ internal enum class ScanMode(val pageMode: PageMode) {
     BOOK(PageMode.BOOK_L),
     WHITEBOARD(PageMode.WHITEBOARD),
 }
-
-internal enum class DuplexPhase { FRONTS, BACKS }
 
 internal data class CameraState(
     val ready: Boolean = false,
@@ -55,6 +65,8 @@ internal data class CameraState(
     val importing: Boolean = false,
     val closing: Boolean = false,
     val confirmDiscard: Boolean = false,
+    val pendingScan: PendingScan? = null,
+    val confirmDiscardPrevious: Boolean = false,
     val confirmDuplexMismatch: Boolean = false,
     val duplexPhase: DuplexPhase? = null,
     val frontCount: Int = 0,
@@ -67,6 +79,7 @@ internal data class CameraState(
 
 internal sealed interface CameraEvent {
     data class Review(val draftId: String) : CameraEvent
+    data class Saved(val title: String) : CameraEvent
     data object Captured : CameraEvent
     data object Close : CameraEvent
     data object Error : CameraEvent
@@ -82,6 +95,7 @@ internal class CameraViewModel internal constructor(
     private val imageSize: (File) -> PixelSize,
     val thumbnailFile: (String) -> File,
     private val io: CoroutineDispatcher,
+    private val duplexStore: DuplexProgressStore,
     val liveQuadSource: LiveQuadSource? = null,
 ) : ViewModel() {
     @AssistedInject
@@ -92,9 +106,10 @@ internal class CameraViewModel internal constructor(
         processing: PageProcessing,
         files: FileStore,
         liveQuadSource: Optional<LiveQuadSource>,
+        duplexStore: FileDuplexProgressStore,
     ) : this(
         args, sessions, documents, processing, { files.newTempFile(".jpg") },
-        ::readImageSize, files::thumbFile, Dispatchers.IO, liveQuadSource.orElse(null),
+        ::readImageSize, files::thumbFile, Dispatchers.IO, duplexStore, liveQuadSource.orElse(null),
     )
 
     @AssistedFactory
@@ -111,29 +126,101 @@ internal class CameraViewModel internal constructor(
     private var initializationFailed = false
     private val autoCapture = AutoCaptureController()
     private var latestQuad: OverlayQuad? = null
-    private val duplexSides = mutableMapOf<String, DuplexPhase>()
+    private var duplex = DuplexProgress()
     private var waitForDerivedPages = false
-    private var lastDuplexPhase = DuplexPhase.FRONTS
 
     init {
         viewModelScope.launch {
             initializationFailed = !reportErrors {
-                session = sessions.active() ?: sessions.start(args.targetDocumentId, args.insertAt)
-                val rememberedMode = lastSessionMode?.takeIf { it.first == session.id }?.second
-                val initialPages = documents.observeDocument(session.draftDocumentId).first()?.pages.orEmpty()
-                val idBack = initialPages.lastOrNull()?.mode == PageMode.ID_FRONT
+                val active = sessions.active()
+                if (active == null) {
+                    openSession(sessions.start(args.targetDocumentId, args.insertAt))
+                } else {
+                    val draft = documents.observeDocument(active.draftDocumentId).first()
+                    val pageCount = draft?.pages.orEmpty().size
+                    val sameTarget = args.targetDocumentId != null && args.targetDocumentId == active.targetDocumentId
+                    when {
+                        args.resumeDraftId == active.draftDocumentId || (pageCount > 0 && sameTarget) ->
+                            openSession(active, draft)
+                        pageCount > 0 -> mutableState.update { it.copy(pendingScan = PendingScan(active, pageCount)) }
+                        active.targetDocumentId == args.targetDocumentId && active.insertAt == args.insertAt ->
+                            openSession(active, draft)
+                        else -> replaceSession(saveExisting = true, expectedSessionId = active.id)
+                    }
+                }
+            }
+        }
+    }
+
+    fun continueScan() = resolvePendingScan { pending ->
+        check(sessions.active()?.id == pending.session.id)
+        openSession(pending.session)
+    }
+
+    fun requestDiscardPrevious(confirm: Boolean) {
+        if (state.value.pendingScan != null && !state.value.closing) {
+            mutableState.update { it.copy(confirmDiscardPrevious = confirm) }
+        }
+    }
+
+    fun startFresh(saveExisting: Boolean) = resolvePendingScan { pending ->
+        val pages = documents.observeDocument(pending.session.draftDocumentId).first()?.pages.orEmpty()
+        if (!saveExisting) processing.awaitIdle(pages.map { it.id })
+        replaceSession(saveExisting, pending.session.id)
+    }
+
+    private suspend fun replaceSession(saveExisting: Boolean, expectedSessionId: String) {
+        val result = sessions.startFresh(saveExisting, args.targetDocumentId, args.insertAt, expectedSessionId)
+        result.savedTitle?.let { eventChannel.send(CameraEvent.Saved(it)) }
+        openSession(result.session)
+    }
+
+    private fun resolvePendingScan(action: suspend (PendingScan) -> Unit) {
+        val pending = state.value.pendingScan ?: return
+        if (state.value.closing) return
+        mutableState.update { it.copy(closing = true, confirmDiscardPrevious = false) }
+        viewModelScope.launch {
+            try {
+                reportErrors { action(pending) }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
+    }
+
+    private suspend fun openSession(active: ScanSession) =
+        openSession(active, documents.observeDocument(active.draftDocumentId).first())
+
+    private suspend fun openSession(active: ScanSession, draft: DocumentWithPages?) {
+        val progress = duplexStore.read(active.id)
+        session = active
+        duplex = progress
+        val pages = draft?.pages.orEmpty()
+        val idBack = pages.lastOrNull()?.mode == PageMode.ID_FRONT
+        val rememberedMode = lastSessionMode?.takeIf { it.first == active.id }?.second
+        waitForDerivedPages = pages.any {
+            it.mode == PageMode.BOOK_L || it.mode == PageMode.ID_FRONT || it.mode == PageMode.ID_BACK
+        }
+        mutableState.update {
+            it.copy(
+                pendingScan = null,
+                ready = draft?.document?.isDraft == true,
+                pageIds = pages.map { page -> page.id },
+                mode = when {
+                    progress.enabled -> ScanMode.DOCUMENT
+                    idBack -> ScanMode.ID_CARD
+                    else -> rememberedMode ?: ScanMode.DOCUMENT
+                },
+                singleMode = it.singleMode && !progress.enabled,
+                idBack = idBack && !progress.enabled,
+                duplexPhase = progress.phase.takeIf { progress.enabled },
+            ).withSideCounts()
+        }
+        viewModelScope.launch {
+            documents.observeDocument(active.draftDocumentId).collect { current ->
+                val ids = current?.pages.orEmpty().map { it.id }
                 mutableState.update {
-                    it.copy(
-                        mode = if (idBack) ScanMode.ID_CARD else rememberedMode ?: ScanMode.DOCUMENT,
-                        idBack = idBack,
-                    )
-                }
-                waitForDerivedPages = initialPages.any {
-                    it.mode == PageMode.BOOK_L || it.mode == PageMode.ID_FRONT || it.mode == PageMode.ID_BACK
-                }
-                documents.observeDocument(session.draftDocumentId).collect { draft ->
-                    val ids = draft?.pages.orEmpty().map { it.id }
-                    mutableState.update { it.copy(ready = draft != null, pageIds = ids).withSideCounts() }
+                    it.copy(ready = current?.document?.isDraft == true, pageIds = ids).withSideCounts()
                 }
             }
         }
@@ -173,16 +260,31 @@ internal class CameraViewModel internal constructor(
     fun toggleDuplex() {
         val current = state.value
         if (!current.canEdit || current.singleMode || current.mode != ScanMode.DOCUMENT) return
-        val phase = if (current.duplexPhase == null) lastDuplexPhase else null
-        mutableState.update { it.copy(duplexPhase = phase) }
+        changeDuplex(duplex.copy(enabled = !duplex.enabled))
     }
 
     fun scanBacks() {
         val current = state.value
         if (current.canEdit && current.duplexPhase == DuplexPhase.FRONTS && current.frontCount > 0) {
-            lastDuplexPhase = DuplexPhase.BACKS
-            mutableState.update { it.copy(duplexPhase = lastDuplexPhase) }
+            changeDuplex(duplex.copy(phase = DuplexPhase.BACKS))
         }
+    }
+
+    private fun changeDuplex(progress: DuplexProgress) {
+        mutableState.update { it.copy(closing = true) }
+        viewModelScope.launch {
+            try {
+                reportErrors { updateDuplex(progress) }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
+    }
+
+    private suspend fun updateDuplex(progress: DuplexProgress) {
+        duplexStore.write(session.id, progress)
+        duplex = progress
+        mutableState.update { it.copy(duplexPhase = progress.phase.takeIf { progress.enabled }).withSideCounts() }
     }
 
     fun capture(controller: CaptureController) {
@@ -231,7 +333,8 @@ internal class CameraViewModel internal constructor(
     }
 
     fun close() {
-        if (initializationFailed || (::session.isInitialized && !state.value.ready)) {
+        val current = state.value
+        if (initializationFailed || (!current.closing && (current.pendingScan != null || !current.ready))) {
             eventChannel.trySend(CameraEvent.Close)
             return
         }
@@ -266,8 +369,14 @@ internal class CameraViewModel internal constructor(
 
     fun keepDuplexOrder() {
         if (!state.value.confirmDuplexMismatch) return
-        dismissDuplexMismatch()
-        reviewDraft()
+        mutableState.update { it.copy(confirmDuplexMismatch = false, closing = true) }
+        viewModelScope.launch {
+            try {
+                reportErrors { completeDuplexReview() }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
     }
 
     fun discard() {
@@ -293,43 +402,32 @@ internal class CameraViewModel internal constructor(
     }
 
     private fun prepareReview() {
-        if (state.value.duplexPhase == null && !waitForDerivedPages) {
+        if (duplex == DuplexProgress() && !waitForDerivedPages) {
             reviewDraft()
             return
         }
         mutableState.update { it.copy(closing = true) }
         viewModelScope.launch {
             try {
-                reportErrors {
-                    if (state.value.duplexPhase == null) {
-                        reviewWhenReady()
-                        return@reportErrors
-                    }
-                    if (waitForDerivedPages) processing.awaitIdle(latestPageIds())
-                    val ids = latestPageIds()
-                    val fronts = ids.filter { duplexSides[it] != DuplexPhase.BACKS }
-                    val draftIds = ids.toSet()
-                    val backs = duplexSides.filter { (id, side) ->
-                        id in draftIds && side == DuplexPhase.BACKS
-                    }.keys.toList()
-                    val result = interleaveDuplex(fronts, backs)
-                    if (result.mismatch) {
-                        mutableState.update { it.copy(pageIds = ids, confirmDuplexMismatch = true).withSideCounts() }
-                    } else {
-                        documents.reorderPages(session.draftDocumentId, result.pages)
-                        reviewDraft()
-                    }
-                }
+                reportErrors { reviewWhenReady() }
             } finally {
                 mutableState.update { it.copy(closing = false) }
             }
         }
     }
 
-    private fun CameraState.withSideCounts(): CameraState {
-        val backs = pageIds.count { duplexSides[it] == DuplexPhase.BACKS }
-        return copy(frontCount = pageIds.size - backs, backCount = backs)
+    private suspend fun completeDuplexReview(ordered: List<String>? = null) {
+        withContext(NonCancellable) {
+            if (ordered != null) documents.reorderPages(session.draftDocumentId, ordered)
+            updateDuplex(DuplexProgress())
+        }
+        reviewDraft()
     }
+
+    private fun CameraState.withSideCounts() = copy(
+        frontCount = pageIds.count { duplex.sides[it] == DuplexPhase.FRONTS },
+        backCount = pageIds.count { duplex.sides[it] == DuplexPhase.BACKS },
+    )
 
     private fun reviewDraft() {
         eventChannel.trySend(CameraEvent.Review(session.draftDocumentId))
@@ -337,16 +435,34 @@ internal class CameraViewModel internal constructor(
 
     private suspend fun reviewWhenReady() {
         if (waitForDerivedPages) processing.awaitIdle(latestPageIds())
-        reviewDraft()
+        if (duplex == DuplexProgress()) {
+            reviewDraft()
+            return
+        }
+
+        val ids = latestPageIds()
+        val draftIds = ids.toSet()
+        val sides = duplex.sides.filterKeys { it in draftIds }
+        val fronts = sides.filterValues { it == DuplexPhase.FRONTS }.keys.toList()
+        val backs = sides.filterValues { it == DuplexPhase.BACKS }.keys.toList()
+        val result = interleaveDuplex(fronts, backs)
+        if (result.mismatch) {
+            mutableState.update { it.copy(pageIds = ids, confirmDuplexMismatch = true).withSideCounts() }
+        } else {
+            val interleaved = result.pages.iterator()
+            val ordered = ids.map { if (it in sides) interleaved.next() else it }
+            completeDuplexReview(ordered.takeUnless { it == ids })
+        }
     }
 
     private suspend fun addPage(write: suspend (File) -> Unit): Boolean {
         val current = state.value
         val mode = if (current.idBack) PageMode.ID_BACK else current.mode.pageMode
-        val pageId = persistPage(mode, write)
-        if (current.duplexPhase != null) {
-            duplexSides[pageId] = current.duplexPhase
-            mutableState.update { it.withSideCounts() }
+        withContext(NonCancellable) {
+            val pageId = persistPage(mode, write)
+            current.duplexPhase?.let { side ->
+                updateDuplex(duplex.copy(sides = duplex.sides + (pageId to side)))
+            }
         }
         if (mode == PageMode.BOOK_L || current.mode == ScanMode.ID_CARD) waitForDerivedPages = true
         if (current.mode == ScanMode.ID_CARD) {
@@ -363,7 +479,7 @@ internal class CameraViewModel internal constructor(
             write(temp)
             val size = imageSize(temp)
             require(size.width > 0 && size.height > 0)
-            documents.addPage(session.draftDocumentId, temp, size.width, size.height)
+            documents.addDraftPage(session.draftDocumentId, temp, size.width, size.height)
         } finally {
             temp.delete()
         }

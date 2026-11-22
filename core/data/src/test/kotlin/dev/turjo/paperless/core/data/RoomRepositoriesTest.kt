@@ -11,6 +11,7 @@ import dev.turjo.paperless.core.model.LibrarySort
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.Quad
+import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
 import java.time.Duration
@@ -19,6 +20,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.After
@@ -51,7 +53,10 @@ class RoomRepositoriesTest {
         dao = database.documentDao()
         files = FileStore(context)
         documents = RoomDocumentRepository(database, dao, files, ThumbnailMaker(files))
-        sessions = RoomScanSessionRepository(database, dao, database.scanSessionDao(), files)
+        sessions = RoomScanSessionRepository(
+            database, dao, database.scanSessionDao(), files, documents,
+            flowOf(UserSettings(autoNamePattern = "Filed {date}")),
+        )
         jpeg = files.newTempFile(".jpg")
         val bitmap = Bitmap.createBitmap(960, 480, Bitmap.Config.ARGB_8888)
         try {
@@ -430,6 +435,96 @@ class RoomRepositoriesTest {
         assertEquals(240, bounds.outWidth)
         assertEquals(480, bounds.outHeight)
         assertEquals("image/webp", bounds.outMimeType)
+    }
+
+    @Test
+    fun startFreshSavesPreviousDraftAsAStandaloneDocument() = runBlocking {
+        val target = saved("Target")
+        val previous = sessions.start(target, 0)
+        val page = add(previous.draftDocumentId)
+        val progress = files.duplexFile(previous.id)
+        progress.finishWrite(progress.startWrite())
+
+        val fresh = sessions.startFresh(true, expectedSessionId = previous.id)
+
+        assertTrue(fresh.session.id != previous.id)
+        assertEquals(fresh.session, sessions.active())
+        assertTrue(dao.pages(fresh.session.draftDocumentId).isEmpty())
+        assertEquals(false, dao.document(previous.draftDocumentId)?.isDraft)
+        val saved = documents.observeLibrary().first().single { it.id == previous.draftDocumentId }
+        assertEquals(fresh.savedTitle, saved.title)
+        assertTrue(saved.title.startsWith("Filed "))
+        assertEquals(listOf(page.id), dao.pages(saved.id).map { it.id })
+        assertTrue(dao.pages(target).isEmpty())
+        assertFalse(progress.baseFile.exists())
+    }
+
+    @Test
+    fun startFreshDiscardsPreviousDraftAndItsFiles() = runBlocking {
+        val previous = sessions.start()
+        val page = add(previous.draftDocumentId)
+        val progress = files.duplexFile(previous.id)
+        progress.finishWrite(progress.startWrite())
+
+        val fresh = sessions.startFresh(false, expectedSessionId = previous.id)
+
+        assertTrue(fresh.session.id != previous.id)
+        assertEquals(fresh.session, sessions.active())
+        assertNull(fresh.savedTitle)
+        assertNull(dao.document(previous.draftDocumentId))
+        assertFalse(File(page.originalPath).exists())
+        assertFalse(progress.baseFile.exists())
+    }
+
+    @Test
+    fun startFreshReusesAndRetargetsAnEmptyDraft() = runBlocking {
+        val target = saved("Target")
+        val previous = sessions.start()
+
+        val fresh = sessions.startFresh(true, target, 2)
+
+        assertEquals(previous.copy(targetDocumentId = target, insertAt = 2), fresh.session)
+        assertEquals(fresh.session, sessions.active())
+        assertNull(fresh.savedTitle)
+        assertEquals(listOf(target), documents.observeLibrary().first().map { it.id })
+    }
+
+    @Test
+    fun startFreshRejectsConfirmationForAReplacedDraft() = runBlocking {
+        val first = sessions.start()
+        add(first.draftDocumentId)
+        val second = sessions.startFresh(false, expectedSessionId = first.id).session
+        val page = add(second.draftDocumentId)
+
+        val failure = runCatching { sessions.startFresh(false, expectedSessionId = first.id) }
+
+        assertTrue(failure.exceptionOrNull() is IllegalStateException)
+        assertEquals(second, sessions.active())
+        assertEquals(listOf(page.id), dao.pages(second.draftDocumentId).map { it.id })
+    }
+
+    @Test
+    fun duplexProgressSurvivesReopeningTheStoreAndIsClearedWhenTheSessionFinishes() = runBlocking {
+        val session = sessions.start()
+        val previous = DuplexProgress(
+            phase = DuplexPhase.BACKS,
+            enabled = true,
+            sides = linkedMapOf(
+                "f2" to DuplexPhase.FRONTS,
+                "f1" to DuplexPhase.FRONTS,
+                "b1" to DuplexPhase.BACKS,
+            ),
+        )
+        FileDuplexProgressStore(files).write(session.id, previous)
+
+        val reopened = FileDuplexProgressStore(files)
+        val actual = reopened.read(session.id)
+        assertEquals(previous, actual)
+        assertEquals(previous.sides.keys.toList(), actual.sides.keys.toList())
+
+        sessions.finish(session.id)
+
+        assertEquals(DuplexProgress(), reopened.read(session.id))
     }
 
     private suspend fun draft() = sessions.start().draftDocumentId

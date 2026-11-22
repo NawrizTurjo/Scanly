@@ -21,9 +21,9 @@
     <string name="camera_auto_capture">Auto-capture</string>
     <string name="camera_auto_capture_short" translatable="false">A</string>
     <string name="camera_duplex">Duplex</string>
-    <string name="camera_duplex_fronts">Fronts: %1$d</string>
+    <string name="camera_duplex_counts">Fronts %1$d · Backs %2$d</string>
     <string name="camera_duplex_now_backs">Now backs</string>
-    <string name="camera_duplex_backs">Backs: %1$d / %2$d · scan in the order they come off the stack</string>
+    <string name="camera_duplex_scan_backs">Scan the backs in the order they come off the stack</string>
     <string name="camera_duplex_mismatch_title">Uneven duplex batch</string>
     <string name="camera_duplex_mismatch">%1$s but %2$s — keep the scan order?</string>
     <string name="camera_back_to_camera">Back to camera</string>
@@ -46,4 +46,13 @@
     <string name="camera_mode_whiteboard">Whiteboard</string>
     <string name="camera_id_front">Front side</string>
     <string name="camera_id_back">Back side</string>
+    <string name="camera_unsaved_scan">Unsaved scan</string>
+    <plurals name="camera_unsaved_pages">
+        <item quantity="one">%1$d page from %2$s</item>
+        <item quantity="other">%1$d pages from %2$s</item>
+    </plurals>
+    <string name="camera_continue_scan">Continue it</string>
+    <string name="camera_save_start_new">Save it and start new</string>
+    <string name="camera_discard_previous">Discard it</string>
+    <string name="camera_saved_to_library">Saved to Library as %1$s</string>
 </resources>

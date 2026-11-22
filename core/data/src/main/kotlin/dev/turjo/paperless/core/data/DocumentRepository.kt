@@ -44,6 +44,8 @@ interface DocumentRepository {
     suspend fun getPage(id: String): Page?
     suspend fun updatePage(page: Page)
     suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int? = null): Page
+    suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int): Page =
+        addPage(draftId, originalFile, width, height)
     suspend fun addPageCopy(sourcePageId: String, at: Int): Page =
         throw UnsupportedOperationException("Page copying unavailable")
     suspend fun splitBookPage(left: Page, rightQuad: Quad): Page =
@@ -192,17 +194,24 @@ class RoomDocumentRepository @Inject constructor(
     }
 
     override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Page =
-        withContext(Dispatchers.IO) {
-            require(width > 0 && height > 0)
-            val pageId = UUID.randomUUID().toString()
-            val original = files.originalFile(pageId)
-            // Keep cancellation from splitting file creation and its database transaction.
-            withContext(NonCancellable) {
-                files.pageCreationLock.withLock {
-                    addPageFilesAndRow(documentId, originalFile, width, height, at, pageId, original)
-                }
+        addPage(documentId, originalFile, width, height, at, requireDraft = false)
+
+    override suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int): Page =
+        addPage(draftId, originalFile, width, height, null, requireDraft = true)
+
+    private suspend fun addPage(
+        documentId: String, originalFile: File, width: Int, height: Int, at: Int?, requireDraft: Boolean,
+    ): Page = withContext(Dispatchers.IO) {
+        require(width > 0 && height > 0)
+        val pageId = UUID.randomUUID().toString()
+        val original = files.originalFile(pageId)
+        // Keep cancellation from splitting file creation and its database transaction.
+        withContext(NonCancellable) {
+            files.pageCreationLock.withLock {
+                addPageFilesAndRow(documentId, originalFile, width, height, at, pageId, original, requireDraft)
             }
         }
+    }
 
     private suspend fun addPageFilesAndRow(
         documentId: String,
@@ -212,13 +221,14 @@ class RoomDocumentRepository @Inject constructor(
         at: Int?,
         pageId: String,
         original: File,
+        requireDraft: Boolean,
     ): Page {
         return try {
             originalFile.copyTo(original)
             thumbnails.make(original, pageId)
             database.withTransaction {
                 val document = requireDocument(documentId)
-                check(document.deletedAt == null)
+                check(document.deletedAt == null && (!requireDraft || document.isDraft))
                 val index = insertionIndex(at, dao.pages(documentId).size)
                 val page = Page(
                     pageId, documentId, index, PageMode.NORMAL, original.path, width, height,

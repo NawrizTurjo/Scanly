@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.SystemClock
+import android.text.format.DateUtils
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,11 +26,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -75,6 +78,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +93,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import dev.turjo.paperless.core.data.DuplexPhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -101,9 +106,10 @@ fun CameraScreen(
     singleMode: Boolean,
     onReview: (draftDocumentId: String) -> Unit,
     onClose: () -> Unit,
+    resumeDraftId: String? = null,
 ) {
     val model = hiltViewModel<CameraViewModel, CameraViewModel.Factory> {
-        it.create(CameraArgs(targetDocumentId, insertAt, singleMode))
+        it.create(CameraArgs(targetDocumentId, insertAt, singleMode, resumeDraftId))
     }
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -169,14 +175,18 @@ fun CameraScreen(
     }
     val reviewCallback by rememberUpdatedState(onReview)
     val closeCallback by rememberUpdatedState(onClose)
+    val resources = LocalResources.current
     val operationError = stringResource(R.string.camera_operation_error)
     val previewError = stringResource(R.string.camera_preview_error)
-    LaunchedEffect(model, lifecycle, haptic, operationError) {
+    LaunchedEffect(model, lifecycle, haptic, operationError, resources) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             model.events.collect { event ->
                 when (event) {
                     is CameraEvent.Review -> reviewCallback(event.draftId)
                     CameraEvent.Close -> closeCallback()
+                    is CameraEvent.Saved -> launch {
+                        snackbar.showSnackbar(resources.getString(R.string.camera_saved_to_library, event.title))
+                    }
                     CameraEvent.Error -> launch {
                         if (snackbar.currentSnackbarData == null) snackbar.showSnackbar(operationError)
                     }
@@ -339,18 +349,26 @@ fun CameraScreen(
                         label = { Text(stringResource(R.string.camera_duplex)) },
                         enabled = state.canEdit,
                     )
-                    when (state.duplexPhase) {
-                        DuplexPhase.FRONTS -> {
-                            Text(stringResource(R.string.camera_duplex_fronts, state.frontCount), color = Color.White)
-                            Button(onClick = model::scanBacks, enabled = state.canEdit && state.frontCount > 0) {
-                                Text(stringResource(R.string.camera_duplex_now_backs))
+                    if (state.duplexPhase != null) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.camera_duplex_counts, state.frontCount, state.backCount),
+                                color = Color.White,
+                            )
+                            when (state.duplexPhase) {
+                                DuplexPhase.FRONTS -> Button(
+                                    onClick = model::scanBacks,
+                                    enabled = state.canEdit && state.frontCount > 0,
+                                ) {
+                                    Text(stringResource(R.string.camera_duplex_now_backs))
+                                }
+                                DuplexPhase.BACKS -> Text(
+                                    stringResource(R.string.camera_duplex_scan_backs),
+                                    color = Color.White,
+                                )
+                                null -> Unit
                             }
                         }
-                        DuplexPhase.BACKS -> Text(
-                            stringResource(R.string.camera_duplex_backs, state.backCount, state.frontCount),
-                            color = Color.White,
-                        )
-                        null -> Unit
                     }
                 }
             }
@@ -395,6 +413,51 @@ fun CameraScreen(
                 }
                 ReviewThumbnail(model, state)
             }
+        }
+    }
+
+    state.pendingScan?.let { pending ->
+        if (state.confirmDiscardPrevious) {
+            AlertDialog(
+                onDismissRequest = { model.requestDiscardPrevious(false) },
+                title = {
+                    Text(pluralStringResource(R.plurals.camera_discard_title, pending.pageCount, pending.pageCount))
+                },
+                confirmButton = {
+                    TextButton(onClick = { model.startFresh(saveExisting = false) }) {
+                        Text(stringResource(R.string.camera_discard))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { model.requestDiscardPrevious(false) }) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                },
+            )
+        } else {
+            val time = DateUtils.getRelativeTimeSpanString(
+                pending.session.startedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+            )
+            AlertDialog(
+                onDismissRequest = { if (!state.closing) model.close() },
+                title = { Text(stringResource(R.string.camera_unsaved_scan)) },
+                text = {
+                    Column {
+                        Text(pluralStringResource(R.plurals.camera_unsaved_pages, pending.pageCount, pending.pageCount, time))
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = model::continueScan, enabled = !state.closing) {
+                            Text(stringResource(R.string.camera_continue_scan))
+                        }
+                        TextButton(onClick = { model.startFresh(saveExisting = true) }, enabled = !state.closing) {
+                            Text(stringResource(R.string.camera_save_start_new))
+                        }
+                        TextButton(onClick = { model.requestDiscardPrevious(true) }, enabled = !state.closing) {
+                            Text(stringResource(R.string.camera_discard_previous))
+                        }
+                    }
+                },
+                confirmButton = {},
+            )
         }
     }
 
