@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M32,41V36Q32,32 36,32H41 M67,32H72Q76,32 76,36V41 M76,67V72Q76,76 72,76H67 M41,76H36Q32,76 32,72V67" />
+    <!-- Page outline with the text lines and fold cut out, so it reads at a single tint -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M41,37H61L68,44V71Q68,72 67,72H41Q40,72 40,71V38Q40,37 41,37Z M44,47.5H62V49.5H44Z M44,51.5H59V53.5H44Z M44,61H62V63H44Z M44,65H56V67H44Z M61,38.5V43H65.5Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M35,57H73" />
+</vector>

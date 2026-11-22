@@ -1,5 +1,7 @@
 <resources>
     <style name="Theme.Scanly" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">#F8F9FF</item>
+        <item name="android:windowSplashScreenBackground">#F8F9FF</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#2B5285</item>
     </style>
 </resources>

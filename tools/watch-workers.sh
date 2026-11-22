@@ -12,7 +12,7 @@ for n in "$@"; do state[$n]=running; done
 start=$(date +%s); last_beat=$start
 
 pids_for() {  # codex processes whose command line mentions the worktree
-  powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name like 'codex%'\" | Where-Object { \$_.CommandLine -match 'Paperless-wt\\\\$1' } | ForEach-Object { \$_.ProcessId }" 2>/dev/null | tr -d '\r'
+  powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name like 'codex%'\" | Where-Object { \$_.CommandLine -match 'Paperless-wt[\\\\/]$1' } | ForEach-Object { \$_.ProcessId }" 2>/dev/null | tr -d '\r'
 }
 
 while :; do
