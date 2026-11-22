@@ -1,5 +1,6 @@
 package dev.turjo.paperless.core.imaging
 
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint
@@ -34,6 +35,14 @@ internal fun quadIou(a: FloatArray, b: FloatArray): Double = a.pointMat().useMat
 // How much brighter than the interior reference paper may be: a lighting gradient across a page (window light) can lift one
 // side well above the 70th-percentile reference, and that side is still paper (lab: detect2.PAPER_UP).
 private const val PAPER_UP = 60.0
+private const val SHADOW_NORM = 0.08
+private const val LONG_FOLD = 0.6
+private const val SPLIT_LO = 0.05
+private const val SPLIT_HI = 0.95
+private const val SPLIT_MIN_LEN = 0.15
+private const val VALLEY = 8.0
+private const val SLIVER_LEN = 0.3
+private const val SLIVER = 0.25
 
 internal class PageScore(
     channels: List<Mat>,
@@ -55,6 +64,7 @@ internal class PageScore(
     private val statsHeight = Math.rint(height * scale).toInt().coerceAtLeast(1)
     private val size = Size(statsWidth.toDouble(), statsHeight.toDouble())
     private val luma = FloatArray(statsWidth * statsHeight)
+    private val rawLuma = FloatArray(luma.size)
     private val paper = ByteArray(luma.size)
     private val median: Double
     private val selection = FloatArray(luma.size)
@@ -64,6 +74,21 @@ internal class PageScore(
         val (l, a, b) = channels.map { mat -> ByteArray(pixels).also { mat.get(0, 0, it) } }
         median = Percentiles.ofHistogram(Percentiles.histogram(l), 50.0)
         newMat { channels[0].convertTo(it, CvType.CV_32F) }.useMat { fullLuma ->
+            newMat { Imgproc.resize(fullLuma, it, size, 0.0, 0.0, Imgproc.INTER_AREA) }.useMat {
+                it.get(0, 0, rawLuma)
+            }
+            val k = (Math.rint(maxSide * SHADOW_NORM).toInt() or 1).toDouble()
+            Mat().useMat { background ->
+                Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k, k)).useMat { kernel ->
+                    Imgproc.dilate(fullLuma, background, kernel)
+                }
+                Imgproc.GaussianBlur(background, background, Size(), k / 3.0)
+                Core.max(background, Scalar(1.0), background)
+                Core.divide(fullLuma, background, fullLuma)
+                Core.multiply(fullLuma, Scalar(230.0), fullLuma)
+                Core.min(fullLuma, Scalar(255.0), fullLuma)
+            }
+            val normalized = FloatArray(pixels).also { fullLuma.get(0, 0, it) }
             val local = newMat { Imgproc.blur(fullLuma, it, Size(21.0, 21.0)) }.useMat {
                 FloatArray(pixels).also { values -> it.get(0, 0, values) }
             }
@@ -79,7 +104,7 @@ internal class PageScore(
                     val ca = a[i].unsigned() - 128
                     val cb = b[i].unsigned() - 128
                     edges[i] = if (edges[i] == 0.toByte() && ca * ca + cb * cb < 24 * 24 &&
-                        abs(l[i].unsigned() - local[i]) < 12f) 1 else 0
+                        abs(normalized[i] - local[i]) < 12f) 1 else 0
                 }
                 mask.put(0, 0, edges)
                 newMat { Imgproc.resize(mask, it, size, 0.0, 0.0, Imgproc.INTER_NEAREST) }.useMat {
@@ -98,9 +123,9 @@ internal class PageScore(
             ByteArray(luma.size).also { mask.get(0, 0, it) }
         }
 
-    private fun select(mask: ByteArray): Int {
+    private fun select(mask: ByteArray, values: FloatArray = luma): Int {
         var count = 0
-        for (i in luma.indices) if (mask[i] != 0.toByte()) selection[count++] = luma[i]
+        for (i in values.indices) if (mask[i] != 0.toByte()) selection[count++] = values[i]
         return count
     }
 
@@ -185,7 +210,8 @@ internal class PageScore(
                 covered.toDouble() / maxOf(1, available)
             }
         }
-        return Stats(page, rim, cover, ((ref - median) / 25.0).coerceIn(0.0, 1.0), ref)
+        val rawRef = reference(select(selected, rawLuma))
+        return Stats(page, rim, cover, ((rawRef - median) / 25.0).coerceIn(0.0, 1.0), rawRef)
     }
 
     fun score(quad: FloatArray, aspectPrior: Float?): Candidate? {
@@ -266,11 +292,13 @@ internal class PageScore(
             val real = candidate.support.filterNotNull()
             if (real.average() < 0.6 || real.min() < 0.45 ||
                 candidate.area !in (1.6 * best.area)..(2.6 * best.area)) continue
-            val fold = fold(candidate.quad.vectors(), lines, 0.3, 0.7) ?: continue
-            val first = quadIou(fold.first.orderedQuad(), best.quad)
-            val second = quadIou(fold.second.orderedQuad(), best.quad)
+            val quad = candidate.quad.vectors()
+            val fold = fold(quad, lines, 0.3, 0.7) ?: continue
+            val (firstHalf, secondHalf) = halves(quad, fold)
+            val first = quadIou(firstHalf.orderedQuad(), best.quad)
+            val second = quadIou(secondHalf.orderedQuad(), best.quad)
             if (maxOf(first, second) < 0.8) continue
-            val (mine, other) = if (first >= second) fold.first to fold.second else fold.second to fold.first
+            val (mine, other) = if (first >= second) firstHalf to secondHalf else secondHalf to firstHalf
             val ratio = across(other, fold.axis) / maxOf(1e-6, across(mine, fold.axis))
             if (ratio !in 0.8..1.25 || !pageShaped(other)) continue
             val stats = pageStats(other.orderedQuad())
@@ -304,12 +332,13 @@ private fun floatCentre(q: Array<Vec>): Vec {
     return Vec((x / 4).toDouble(), (y / 4).toDouble())
 }
 
-private data class Fold(val axis: Int, val first: Array<Vec>, val second: Array<Vec>)
+private data class Fold(val centreOffset: Double, val axis: Int, val x1: Vec, val x2: Vec, val lengthRatio: Double)
 
-private fun fold(q: Array<Vec>, lines: List<DocumentLine>, lo: Double, hi: Double): Fold? {
+private fun folds(
+    q: Array<Vec>, lines: List<DocumentLine>, lo: Double, hi: Double, minLength: Double,
+): List<Fold> {
     val (tl, tr, br, bl) = q
-    var best: Fold? = null
-    var bestOffset = Double.POSITIVE_INFINITY
+    val found = mutableListOf<Fold>()
     val alignment = cos(Math.toRadians(10.0))
     for (axis in 0..1) {
         val s1 = if (axis == 0) bl - tl else tr - tl
@@ -322,20 +351,57 @@ private fun fold(q: Array<Vec>, lines: List<DocumentLine>, lo: Double, hi: Doubl
         val cross1 = DocumentLine(tl, d1, 0f)
         val cross2 = DocumentLine(start2, d2, 0f)
         for (line in lines) {
-            if (abs(line.direction.dot(fdir)) < alignment || line.length < 0.6 * span) continue
+            if (abs(line.direction.dot(fdir)) < alignment || line.length < minLength * span) continue
             val x1 = line.intersect(cross1) ?: continue
             val x2 = line.intersect(cross2) ?: continue
             val u1 = (x1 - tl).dot(d1) / d1.dot(d1)
             val u2 = (x2 - start2).dot(d2) / d2.dot(d2)
             if (u1 <= lo || u1 >= hi || u2 <= lo || u2 >= hi || abs(u1 - u2) >= 0.15) continue
             val offset = abs(0.5 * (u1 + u2) - 0.5)
-            if (offset >= bestOffset) continue
-            bestOffset = offset
-            best = if (axis == 0) Fold(axis, arrayOf(tl, x1, x2, bl), arrayOf(x1, tr, br, x2))
-                else Fold(axis, arrayOf(tl, tr, x2, x1), arrayOf(x1, x2, br, bl))
+            found.add(Fold(offset, axis, x1, x2, line.length / span))
         }
     }
-    return best
+    return found
+}
+
+private fun fold(q: Array<Vec>, lines: List<DocumentLine>, lo: Double, hi: Double): Fold? =
+    folds(q, lines, lo, hi, LONG_FOLD).minByOrNull { it.centreOffset }
+
+private fun halves(q: Array<Vec>, fold: Fold): Pair<Array<Vec>, Array<Vec>> {
+    val (tl, tr, br, bl) = q
+    val x1 = fold.x1
+    val x2 = fold.x2
+    return if (fold.axis == 0) arrayOf(tl, x1, x2, bl) to arrayOf(x1, tr, br, x2)
+    else arrayOf(tl, tr, x2, x1) to arrayOf(x1, x2, br, bl)
+}
+
+private fun valley(soft: ByteArray, width: Int, height: Int, fold: Fold, span: Double): Pair<Double, Double> {
+    val d = fold.x2 - fold.x1
+    val normal = d.normal() * (1.0 / (d.length() + 1e-9))
+    val base = Array(40) { i -> fold.x1 + d * (if (i == 39) 0.9 else 0.1 + i * (0.8 / 39)) }
+    val offsets = DoubleArray(33) { i -> (if (i == 32) 0.08 else -0.08 + i * (0.16 / 32)) * span }
+    val bands = Array(5) { IntArray(offsets.size) }
+    val profile = IntArray(offsets.size)
+    for (i in offsets.indices) {
+        val shift = normal * offsets[i]
+        for (j in base.indices) {
+            val p = base[j] + shift
+            val x = Math.rint(p.x).toInt().coerceIn(0, width - 1)
+            val y = Math.rint(p.y).toInt().coerceIn(0, height - 1)
+            val value = soft[y * width + x].unsigned()
+            bands[j / 8][i] += value
+            profile[i] += value
+        }
+    }
+    val floor = offsets.indices.filter { abs(offsets[it]) <= 0.04 * span }.minBy { profile[it] }
+    if (floor == 0 || floor == offsets.lastIndex) return 0.0 to 0.0
+    // A binding must stay dark even in the weakest fifth of the samples.
+    val depth = bands.minOf { band ->
+        val left = (0 until floor).maxOf { band[it] }
+        val right = (floor + 1..offsets.lastIndex).maxOf { band[it] }
+        (minOf(left, right) - band[floor]) / 8.0
+    }
+    return depth to offsets[floor]
 }
 
 private fun across(q: Array<Vec>, axis: Int): Double = if (axis == 0) {
@@ -350,15 +416,41 @@ private fun pageShaped(q: Array<Vec>): Boolean {
     return maxOf(a, b) / maxOf(1e-6, minOf(a, b)) in 1.1..2.0
 }
 
-internal fun splitSpread(q: Array<Vec>, lines: List<DocumentLine>, width: Int, height: Int): Array<Vec>? {
-    val found = fold(q, lines, 0.12, 0.88) ?: return null
+internal fun splitSpread(q: Array<Vec>, lines: List<DocumentLine>, soft: Mat): Array<Vec>? {
+    val found = folds(q, lines, SPLIT_LO, SPLIT_HI, SPLIT_MIN_LEN)
+    if (found.isEmpty()) return null
+    val width = soft.cols()
+    val height = soft.rows()
+    val pixels = ByteArray(width * height).also { soft.get(0, 0, it) }
+    val longest = found.filter { it.lengthRatio >= LONG_FOLD }.minByOrNull { it.centreOffset }
+    val valleys = found.mapNotNull { fold ->
+        val (first, second) = halves(q, fold)
+        val span = across(first, fold.axis) + across(second, fold.axis)
+        val (depth, offset) = valley(pixels, width, height, fold, span)
+        if (depth < VALLEY) return@mapNotNull null
+        val d = fold.x2 - fold.x1
+        val normal = d.normal() * (1.0 / (d.length() + 1e-9))
+        val moved = DocumentLine(fold.x1 + normal * offset, d, 0f)
+        folds(q, listOf(moved), SPLIT_LO, SPLIT_HI, 0.0).firstOrNull()?.let { depth to it }
+    }.sortedByDescending { it.first }
+    val slivers = found.filter { it.lengthRatio >= SLIVER_LEN && it.lengthRatio < LONG_FOLD }
+    val ordered = listOfNotNull(longest).map { it to 0.8 } +
+        valleys.map { it.second to 0.8 } + slivers.map { it to SLIVER }
     val margin = 0.012 * maxOf(width, height)
-    fun clipped(half: Array<Vec>, foldSide: Int): Boolean = half.indices.any {
-        it != foldSide && borderSide(half[it], half[(it + 1) % 4], width, height, margin)
+    fun rounded(point: Vec) = Vec(Math.rint(point.x * 1000), Math.rint(point.y * 1000))
+    for ((fold, limit) in ordered) {
+        val (first, second) = halves(q, fold)
+        val foldPoints = setOf(rounded(fold.x1), rounded(fold.x2))
+        fun clipped(half: Array<Vec>): Boolean = half.indices.any {
+            val a = half[it]
+            val b = half[(it + 1) % 4]
+            borderSide(a, b, width, height, margin) && setOf(rounded(a), rounded(b)) != foldPoints
+        }
+        val firstCut = clipped(first)
+        val secondCut = clipped(second)
+        if (firstCut == secondCut) continue
+        val (keep, cut) = if (firstCut) second to first else first to second
+        if (across(cut, fold.axis) <= limit * across(keep, fold.axis) && pageShaped(keep)) return keep
     }
-    val firstCut = clipped(found.first, if (found.axis == 0) 1 else 2)
-    val secondCut = clipped(found.second, if (found.axis == 0) 3 else 0)
-    if (firstCut == secondCut) return null
-    val (keep, cut) = if (firstCut) found.second to found.first else found.first to found.second
-    return keep.takeIf { across(cut, found.axis) <= 0.8 * across(keep, found.axis) && pageShaped(keep) }
+    return null
 }
