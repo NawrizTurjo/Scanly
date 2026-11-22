@@ -36,7 +36,7 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
 fun DocumentScreen(
     documentId: String,
     onBack: () -> Unit,
-    onOpenPage: (pageId: String) -> Unit,
+    onViewPage: (pageId: String) -> Unit,
     onAddPages: (documentId: String, insertAt: Int?) -> Unit,
     onExport: (documentId: String) -> Unit,
     onOpenInReader: ((String) -> Unit)? = null,
@@ -174,7 +174,7 @@ fun DocumentScreen(
             if (state.sharing) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (document != null) {
                 DocumentPages(
-                    document, state, busy, model, onOpenPage,
+                    document, state, busy, model, onViewPage,
                     onDelete = { id ->
                         if (document.pages.size == 1) deleteLastId = id else model.deletePage(id)
                     },
@@ -247,7 +247,7 @@ private fun DocumentPages(
     state: DocumentState,
     busy: Set<String>,
     model: DocumentViewModel,
-    onOpenPage: (String) -> Unit,
+    onViewPage: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
     val pagesById = remember(document.pages) { document.pages.associateBy(Page::id) }
@@ -281,7 +281,7 @@ private fun DocumentPages(
                             if (order != savedOrder) model.reorder(order)
                         },
                     ),
-                    onOpen = { onOpenPage(id) },
+                    onOpen = { onViewPage(id) },
                     onDelete = { onDelete(id) },
                 )
             }

@@ -38,7 +38,7 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
 @Composable
 fun ReviewScreen(
     draftDocumentId: String,
-    onEditPage: (pageId: String) -> Unit,
+    onViewPage: (pageId: String) -> Unit,
     onAddMore: () -> Unit,
     onSaved: (documentId: String) -> Unit,
     onBack: () -> Unit,
@@ -118,7 +118,7 @@ fun ReviewScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             ReviewGrid(
-                state.pages, state.groups, canAct, onEditPage, vm::reorder, vm::rotate, vm::delete,
+                state.pages, state.groups, canAct, onViewPage, vm::reorder, vm::rotate, vm::delete,
                 vm::splitHere, vm::join, vm::renameGroup, vm::restoreSeparator,
             )
             when {
@@ -225,7 +225,7 @@ private fun ReviewGrid(
     pages: List<ReviewPage>,
     groups: List<ReviewGroup>,
     enabled: Boolean,
-    onEdit: (String) -> Unit,
+    onView: (String) -> Unit,
     onReorder: (List<String>) -> Unit,
     onRotate: (String, Int) -> Unit,
     onDelete: (String) -> Unit,
@@ -307,7 +307,7 @@ private fun ReviewGrid(
                     )
                     ReviewTile(
                         item, ids.indexOf(id) + 1, enabled,
-                        edit = { onEdit(id) }, rotate = { onRotate(id, it) }, delete = { onDelete(id) },
+                        view = { onView(id) }, rotate = { onRotate(id, it) }, delete = { onDelete(id) },
                         split = { onSplit(id) }.takeIf { id != kept.firstOrNull() },
                         dragHandle = {
                             val dragLabel = stringResource(R.string.review_reorder)
@@ -342,7 +342,7 @@ private fun ReviewTile(
     number: Int,
     enabled: Boolean,
     dragHandle: @Composable () -> Unit,
-    edit: () -> Unit,
+    view: () -> Unit,
     rotate: (Int) -> Unit,
     delete: () -> Unit,
     split: (() -> Unit)?,
@@ -356,7 +356,7 @@ private fun ReviewTile(
     val background = MaterialTheme.colorScheme.surfaceContainerHighest
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(background)
-            .clickable(enabled = enabled, onClick = edit),
+            .clickable(enabled = enabled, onClick = view),
     ) {
         // Controls sit below the thumbnail so they never cover the page corners.
         Box(Modifier.fillMaxWidth().aspectRatio(0.78f)) {

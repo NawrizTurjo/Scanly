@@ -310,6 +310,71 @@ class EditorViewModelTest {
         assertEquals(listOf("first"), processing.renderedIds)
     }
 
+    @Test
+    fun viewerStartsOnRequestedPageAndMapsProcessingById() = runTest(dispatcher) {
+        val vm = viewer("second")
+        processing.busyPageIds.value = setOf("second", "unrelated")
+        runCurrent()
+
+        assertEquals(1, vm.state.value.selectedIndex)
+        assertEquals(listOf(false, true), vm.state.value.pages.map { it.busy })
+        processing.busyPageIds.value = emptySet()
+        runCurrent()
+        assertEquals(listOf(false, false), vm.state.value.pages.map { it.busy })
+    }
+
+    @Test
+    fun viewerRotatesClockwiseAndEnqueuesRender() = runTest(dispatcher) {
+        val vm = viewer("second")
+        runCurrent()
+
+        vm.rotate("second")
+        assertTrue(vm.state.value.changing)
+        vm.rotate("second")
+        runCurrent()
+
+        assertEquals(listOf(listOf("second")), processing.waits)
+        assertEquals(listOf("second" to 90), documents.rotations)
+        assertEquals(listOf("second"), processing.renderedIds)
+        assertFalse(vm.state.value.changing)
+    }
+
+    @Test
+    fun viewerDeleteSelectsNextPageOrPreviousAtEndAndClosesWhenEmpty() = runTest(dispatcher) {
+        documents.setDraftPages(listOf("first", "second", "third"))
+        val vm = viewer("second")
+        runCurrent()
+
+        vm.delete("second")
+        runCurrent()
+        assertEquals(listOf("second"), documents.deletedIds)
+        assertEquals("third", vm.state.value.pages[vm.state.value.selectedIndex].page.id)
+        assertFalse(vm.state.value.close)
+
+        vm.delete("third")
+        runCurrent()
+        assertEquals("first", vm.state.value.pages[vm.state.value.selectedIndex].page.id)
+
+        vm.delete("first")
+        runCurrent()
+        assertTrue(vm.state.value.pages.isEmpty())
+        assertTrue(vm.state.value.close)
+        assertFalse(vm.state.value.changing)
+    }
+
+    @Test
+    fun viewerOpensSavedDocumentsAndFallsBackToFirstPageForMissingStartId() = runTest(dispatcher) {
+        val vm = viewer("missing", "target")
+        runCurrent()
+
+        assertEquals("existing", vm.state.value.pages.single().page.id)
+        assertEquals(0, vm.state.value.selectedIndex)
+        assertFalse(vm.state.value.close)
+    }
+
+    private fun viewer(pageId: String, documentId: String = "draft") =
+        PageViewerViewModel(documentId, pageId, documents, processing).also(viewModels::add)
+
     private fun review(savedState: SavedStateHandle = SavedStateHandle()) = ReviewViewModel(
         "draft", documents, sessions, processing, { id -> File("$id.webp") }, dispatcher, savedState,
     ).also(viewModels::add)
@@ -331,6 +396,7 @@ class EditorViewModelTest {
         val commits = mutableListOf<Commit>()
         val splitDocuments = mutableListOf<DocumentWithPages>()
         val deletedIds = mutableListOf<String>()
+        val rotations = mutableListOf<Pair<String, Int>>()
         var failNextSplitAt: Int? = null
 
         fun setDraftPages(ids: List<String>) {
@@ -402,7 +468,9 @@ class EditorViewModelTest {
         private fun keepDraftPages(pages: List<Page>) {
             draftFlow.value = draft.copy(pages = pages.mapIndexed { index, page -> page.copy(index = index) })
         }
-        override suspend fun rotatePage(pageId: String, delta: Int): Nothing = unexpected()
+        override suspend fun rotatePage(pageId: String, delta: Int) {
+            rotations += pageId to delta
+        }
         override suspend fun rename(id: String, title: String): Nothing = unexpected()
         override suspend fun setFavorite(id: String, isFavorite: Boolean): Nothing = unexpected()
         override suspend fun softDelete(id: String): Nothing = unexpected()
