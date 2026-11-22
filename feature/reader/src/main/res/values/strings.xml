@@ -11,8 +11,11 @@
     <string name="reader_options">Reader options</string>
     <string name="reader_single_page">Single page</string>
     <string name="reader_continuous">Continuous scroll</string>
-    <string name="reader_night_on">Turn on night mode</string>
-    <string name="reader_night_off">Turn off night mode</string>
+    <string name="reader_page_tone">Page tone</string>
+    <string name="reader_tone_normal">Normal</string>
+    <string name="reader_tone_night">Night</string>
+    <string name="reader_tone_sepia">Sepia</string>
+    <string name="reader_tone_warm">Warm (less blue light)</string>
     <string name="reader_thumbnails">Thumbnails</string>
     <string name="reader_recent">Recently opened</string>
     <string name="reader_recent_progress">p. %1$d of %2$d</string>

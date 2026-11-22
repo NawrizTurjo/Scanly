@@ -81,6 +81,7 @@ internal class PageJump(val page: Int, val match: TextMatch? = null)
 internal fun ReaderPages(
     document: PdfDocumentHandle,
     tab: TabState,
+    tone: PageTone,
     horizontalOffset: Float,
     search: SearchState,
     requestedJump: PageJump?,
@@ -137,15 +138,16 @@ internal fun ReaderPages(
             external = link.uri?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
         }
     }
-    Box(Modifier.fillMaxSize()) {
+    val background = tone.readerBackground(MaterialTheme.colorScheme.surfaceContainer)
+    Box(Modifier.fillMaxSize().background(background)) {
         key(tab.viewMode, crop, uniform) {
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
-                    document, tab, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
+                    document, tab, tone, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
                     annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged, pagePadding,
                 )
                 ReaderViewMode.SINGLE_PAGE -> SinglePages(
-                    document, tab, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
+                    document, tab, tone, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
                     onPageTap, onLockedTap, onSelectionChanged, pagePadding,
                 )
             }
@@ -184,7 +186,7 @@ internal fun ReaderPages(
         )
         if (showJump) JumpDialog(displayPage, document.pageCount, { showJump = false }, onJump)
         if (showThumbnails) {
-            ThumbnailSheet(document, tab.nightMode, displayPage, onDismissThumbnails, onJump)
+            ThumbnailSheet(document, tone, displayPage, onDismissThumbnails, onJump)
         }
     }
 }
@@ -193,6 +195,7 @@ internal fun ReaderPages(
 private fun ContinuousPages(
     document: PdfDocumentHandle,
     tab: TabState,
+    tone: PageTone,
     horizontalOffset: Float,
     jump: PageJump?,
     onJumpConsumed: () -> Unit,
@@ -325,7 +328,7 @@ private fun ContinuousPages(
             }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer).then(gestures),
+            modifier = Modifier.fillMaxSize().then(gestures),
             state = list,
             contentPadding = PaddingValues(
                 top = pagePadding.calculateTopPadding(),
@@ -336,20 +339,20 @@ private fun ContinuousPages(
             items(document.pageCount) { page ->
                 val geometry = pageGeometry(document, page, crop, uniform, geometries)
                 val height = pageHeight(shownWidth, geometry?.aspect ?: initialAspect)
-                val render = geometry?.let { pageBitmap(document, page, fullRenderWidth(renderWidth, it), tab.nightMode) }
+                val render = geometry?.let { pageBitmap(document, page, fullRenderWidth(renderWidth, it)) }
                     ?: PageRender()
                 val label = stringResource(R.string.reader_page_label, page + 1)
                 val maxPan = (shownWidth - viewportWidth).coerceAtLeast(0).toFloat()
                 Box(
                     Modifier.fillMaxWidth().height(with(density) { height.toDp() })
-                        .clipToBounds().background(paperColor(tab.nightMode))
+                        .clipToBounds().background(tone.paperColor)
                         .semantics { contentDescription = label },
                     contentAlignment = Alignment.Center,
                 ) {
                     val bitmap = render.bitmap
                     if (bitmap != null && geometry != null) {
                         PageOverlay(
-                            document, page, bitmap, geometry,
+                            document, page, bitmap, tone, geometry,
                             PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat(), -panX.coerceIn(0f, maxPan)),
                             search, { onLink(page, it) }, annotationLayer, onAnnotation,
                             onPageTap, onLockedTap, onSelectionChanged,
@@ -358,7 +361,7 @@ private fun ContinuousPages(
                             currentTransform(point + Offset(0f, (top + topPaddingPx).toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
                         }
                     } else if (render.failed) {
-                        PageRenderError(tab.nightMode)
+                        PageRenderError(tone)
                     }
                 }
             }
@@ -370,6 +373,7 @@ private fun ContinuousPages(
 private fun SinglePages(
     document: PdfDocumentHandle,
     tab: TabState,
+    tone: PageTone,
     jump: PageJump?,
     onJumpConsumed: () -> Unit,
     onPosition: (Int, Int) -> Unit,
@@ -394,7 +398,7 @@ private fun SinglePages(
             onJumpConsumed()
         }
     }
-    HorizontalPager(pager, Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainer)) { page ->
+    HorizontalPager(pager, Modifier.fillMaxSize()) { page ->
         BoxWithConstraints(Modifier.fillMaxSize().padding(pagePadding), contentAlignment = Alignment.Center) {
             val geometry = pageGeometry(document, page, crop, uniform, geometries)
             if (geometry == null) {
@@ -403,17 +407,17 @@ private fun SinglePages(
                 val width = minOf(constraints.maxWidth, (constraints.maxHeight / geometry.aspect).roundToInt()).coerceAtLeast(1)
                 val height = pageHeight(width, geometry.aspect)
                 val density = LocalDensity.current
-                val render = pageBitmap(document, page, fullRenderWidth(width, geometry), tab.nightMode)
+                val render = pageBitmap(document, page, fullRenderWidth(width, geometry))
                 Box(with(density) { Modifier.width(width.toDp()).height(height.toDp()) }
-                    .clipToBounds().background(paperColor(tab.nightMode))) {
+                    .clipToBounds().background(tone.paperColor)) {
                     render.bitmap?.let {
-                        PageOverlay(document, page, it, geometry,
+                        PageOverlay(document, page, it, tone, geometry,
                             PageTransform(geometry.crop, width.toFloat(), height.toFloat()),
                             search, { link -> onLink(page, link) }, annotationLayer, onAnnotation,
                             onPageTap, onLockedTap, onSelectionChanged,
                         )
                     }
-                    if (render.failed) PageRenderError(tab.nightMode)
+                    if (render.failed) PageRenderError(tone)
                 }
             }
         }
@@ -424,7 +428,7 @@ private fun SinglePages(
 @Composable
 private fun ThumbnailSheet(
     document: PdfDocumentHandle,
-    night: Boolean,
+    tone: PageTone,
     currentPage: Int,
     onDismiss: () -> Unit,
     onJump: (Int) -> Unit,
@@ -456,9 +460,9 @@ private fun ThumbnailSheet(
                     val aspect = pageAspect(document, page, ratios)
                     val frame = Modifier.fillMaxWidth().aspectRatio(0.72f)
                     if (aspect == null) {
-                        Box(frame.background(paperColor(night)))
+                        Box(frame.background(tone.paperColor))
                     } else {
-                        PagePreview(document, page, boundedRenderWidth(192, aspect), night, frame)
+                        PagePreview(document, page, boundedRenderWidth(192, aspect), tone, frame)
                     }
                     Text((page + 1).toString(), style = MaterialTheme.typography.labelMedium)
                 }
@@ -472,45 +476,48 @@ private fun PagePreview(
     document: PdfDocumentHandle,
     page: Int,
     width: Int,
-    night: Boolean,
+    tone: PageTone,
     modifier: Modifier,
 ) {
-    val render = pageBitmap(document, page, width, night)
+    val render = pageBitmap(document, page, width)
     val label = stringResource(R.string.reader_page_label, page + 1)
     Box(
-        modifier.background(paperColor(night))
+        modifier.background(tone.paperColor)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         val bitmap = render.bitmap
         if (bitmap != null) {
-            Image(remember(bitmap) { bitmap.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            Image(
+                remember(bitmap) { bitmap.asImageBitmap() },
+                null,
+                Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                colorFilter = rememberPageToneFilter(tone),
+            )
         } else if (render.failed) {
-            PageRenderError(night)
+            PageRenderError(tone)
         }
     }
 }
 
 @Composable
-private fun PageRenderError(night: Boolean) {
+private fun PageRenderError(tone: PageTone) {
     Text(
         stringResource(R.string.reader_render_error),
         Modifier.padding(4.dp),
-        color = if (night) Color.White else Color.Black,
+        color = if (tone == PageTone.NIGHT) Color.White else Color.Black,
     )
 }
-
-private fun paperColor(night: Boolean): Color =
-    if (night) Color(0xFF222222) else Color(0xFFF2F2F2)
 
 private data class PageRender(val bitmap: Bitmap? = null, val failed: Boolean = false)
 
 @Composable
-private fun pageBitmap(document: PdfDocumentHandle, page: Int, width: Int, night: Boolean): PageRender {
-    var render by remember(document, page, night) { mutableStateOf(PageRender()) }
-    LaunchedEffect(document, page, width, night) {
+private fun pageBitmap(document: PdfDocumentHandle, page: Int, width: Int): PageRender {
+    var render by remember(document, page) { mutableStateOf(PageRender()) }
+    LaunchedEffect(document, page, width) {
         render = try {
-            PageRender(document.render(page, width, night))
+            PageRender(document.render(page, width))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
