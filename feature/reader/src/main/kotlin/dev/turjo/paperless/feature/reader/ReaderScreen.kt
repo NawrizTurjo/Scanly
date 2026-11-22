@@ -135,8 +135,10 @@ fun ReaderScreen(
     var closePending by remember { mutableStateOf<String?>(null) }
     var splitRequested by rememberSaveable { mutableStateOf(false) }
     var rightId by rememberSaveable { mutableStateOf<String?>(null) }
+    val annotationLayer = tab?.let { viewModel.annotationLayers[it.tabId] }
+    val annotating = annotationLayer?.editing == true
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val split = landscape && splitRequested
+    val split = landscape && splitRequested && !annotating
     val search = tab?.let { searches[it.tabId] } ?: SearchState()
     val crop = tab?.let { crops[it.tabId] } ?: CropMode.OFF
     LaunchedEffect(tab?.tabId, document, search.query, searchMode) {
@@ -156,6 +158,10 @@ fun ReaderScreen(
         result.current?.let { jump = PageJump(it.page, it) }
     }
     BackHandler(enabled = searchMode && tab != null && !showOutline) { searchMode = false }
+    BackHandler(enabled = annotating) { tab?.let { viewModel.finishAnnotations(it.tabId) } }
+    viewModel.annotationPrompt?.let { prompt ->
+        viewModel.annotationLayers[prompt.tabId]?.let { AnnotationSavePrompt(prompt, it, viewModel) }
+    }
     closePending?.let { id ->
         AlertDialog(
             onDismissRequest = { closePending = null },
@@ -172,7 +178,15 @@ fun ReaderScreen(
 
     Scaffold(
         topBar = {
-            if (searchMode && tab != null) {
+            if (tab != null && annotationLayer != null && annotating) {
+                AnnotationToolbar(
+                    annotationLayer,
+                    { viewModel.editAnnotations(tab.tabId, it) },
+                    { redo -> viewModel.stepAnnotationHistory(tab.tabId, redo) },
+                ) {
+                    viewModel.finishAnnotations(tab.tabId)
+                }
+            } else if (searchMode && tab != null) {
                 Column(Modifier.statusBarsPadding()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         ReaderIcon("×", "Close search") { searchMode = false }
@@ -196,6 +210,9 @@ fun ReaderScreen(
                     title = { Text(stringResource(R.string.reader_title)) },
                     actions = {
                         if (tab != null && document != null) {
+                            TextButton({
+                                viewModel.editAnnotations(tab.tabId) { it.copy(editing = true) }
+                            }, enabled = annotationLayer != null) { Text("Annotate") }
                             ReaderIcon("⌕", "Search") { searchMode = true }
                             ReaderIcon("☰", "Bookmarks") { showOutline = true }
                             ReaderMenu(
@@ -244,6 +261,10 @@ fun ReaderScreen(
                                     onDismissThumbnails = { showThumbnails = false },
                                     onPosition = { page, offset -> viewModel.updatePosition(tab.tabId, page, offset) },
                                     onZoom = { zoom, offset -> viewModel.updateZoom(tab.tabId, zoom, offset) },
+                                    annotationLayer = annotationLayer,
+                                    onAnnotation = { page, tool, color, width, points, note ->
+                                        viewModel.annotate(tab.tabId, document, page, tool, color, width, points, note)
+                                    },
                                 )
                             }
                         }
@@ -462,6 +483,7 @@ private fun SplitReader(
     DisposableEffect(right.pdfKey, same) {
         onDispose { if (!same) viewModel.releasePane(right.pdfKey) }
     }
+    LaunchedEffect(right.tabId, right.pdfKey) { viewModel.observeAnnotations(right.tabId, right.pdfKey) }
     val document = if (same) activeDocument else opened.second
     val positions = viewModel.secondaryPositions
     val pans = viewModel.secondaryPans
@@ -488,8 +510,11 @@ private fun SplitReader(
                     } else key(right.tabId, document) {
                         val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode, nightMode = right.nightMode)
                         ReaderPages(
-                            document, pane, pans[right.tabId] ?: 0f,
-                            viewModel.searches[right.tabId] ?: SearchState(), null, {}, crop, false, {},
+                            annotationLayer = viewModel.annotationLayers[right.tabId],
+                            document = document, tab = pane, horizontalOffset = pans[right.tabId] ?: 0f,
+                            search = viewModel.searches[right.tabId] ?: SearchState(),
+                            requestedJump = null, onJumpConsumed = {}, crop = crop, showThumbnails = false,
+                            onDismissThumbnails = {},
                             onPosition = { page, offset ->
                                 positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
                                 if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)

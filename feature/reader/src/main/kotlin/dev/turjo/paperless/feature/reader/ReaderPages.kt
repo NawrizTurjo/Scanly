@@ -84,6 +84,8 @@ internal fun ReaderPages(
     onDismissThumbnails: () -> Unit,
     onPosition: (Int, Int) -> Unit,
     onZoom: (Float, Float) -> Unit,
+    annotationLayer: AnnotationLayer? = null,
+    onAnnotation: AnnotationGesture? = null,
 ) {
     var showJump by remember { mutableStateOf(false) }
     var localJump by remember { mutableStateOf<PageJump?>(null) }
@@ -128,8 +130,11 @@ internal fun ReaderPages(
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
                     document, tab, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
+                    annotationLayer, onAnnotation,
                 )
-                ReaderViewMode.SINGLE_PAGE -> SinglePages(document, tab, jump, consumed, onPosition, search, crop, uniform, onLink)
+                ReaderViewMode.SINGLE_PAGE -> SinglePages(
+                    document, tab, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
+                )
             }
         }
         val displayPage = tab.page.coerceIn(0, document.pageCount - 1)
@@ -169,6 +174,8 @@ private fun ContinuousPages(
     crop: CropMode,
     uniform: PageRect?,
     onLink: (Int, PageLink) -> Unit,
+    annotationLayer: AnnotationLayer?,
+    onAnnotation: AnnotationGesture?,
 ) {
     val startingPage = remember { tab.page.coerceIn(0, document.pageCount - 1) }
     val startingOffset = remember { tab.scrollOffsetPx }
@@ -297,7 +304,7 @@ private fun ContinuousPages(
                         PageOverlay(
                             document, page, bitmap, geometry,
                             PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat(), -panX.coerceIn(0f, maxPan)),
-                            search, { onLink(page, it) },
+                            search, { onLink(page, it) }, annotationLayer, onAnnotation,
                         ) { point ->
                             val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }?.offset ?: 0
                             currentTransform(point + Offset(0f, top.toFloat()), Offset.Zero, if (zoom > 1f) 1f else 2.5f)
@@ -322,6 +329,8 @@ private fun SinglePages(
     crop: CropMode,
     uniform: PageRect?,
     onLink: (Int, PageLink) -> Unit,
+    annotationLayer: AnnotationLayer?,
+    onAnnotation: AnnotationGesture?,
 ) {
     val pager = rememberPagerState(tab.page.coerceIn(0, document.pageCount - 1)) { document.pageCount }
     val reportPosition by rememberUpdatedState(onPosition)
@@ -347,7 +356,7 @@ private fun SinglePages(
                     .clipToBounds().background(paperColor(tab.nightMode))) {
                     render.bitmap?.let {
                         PageOverlay(document, page, it, geometry,
-                            PageTransform(geometry.crop, width.toFloat(), height.toFloat()), search, { link -> onLink(page, link) })
+                            PageTransform(geometry.crop, width.toFloat(), height.toFloat()), search, { link -> onLink(page, link) }, annotationLayer, onAnnotation)
                     }
                     if (render.failed) PageRenderError(tab.nightMode)
                 }

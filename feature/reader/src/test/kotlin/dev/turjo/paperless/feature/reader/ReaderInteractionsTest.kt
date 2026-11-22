@@ -9,6 +9,28 @@ import org.junit.Test
 
 class ReaderInteractionsTest {
     @Test
+    fun annotationCoordinatesRoundTripAtOneTwoAndFourTimesZoom() {
+        for ((width, height) in listOf(600f to 800f, 800f to 600f)) {
+            val crop = PageRect(13f, 17f, width - 23f, height - 29f)
+            for (zoom in listOf(1f, 2f, 4f)) {
+                val screenWidth = 480f * zoom
+                val screenHeight = screenWidth * (crop.bottom - crop.top) / (crop.right - crop.left)
+                val transform = PageTransform(crop, screenWidth, screenHeight, -57f * (zoom - 1), -91f)
+                for ((x, y) in listOf(
+                    crop.left to crop.top,
+                    width * 0.434f to height * 0.792f,
+                    crop.right to crop.bottom,
+                )) {
+                    val mapped = transform.map(PageRect(x, y, x, y))
+                    val (restoredX, restoredY) = transform.unmap(mapped.left, mapped.top)
+                    assertEquals(x, restoredX, 0.01f)
+                    assertEquals(y, restoredY, 0.01f)
+                }
+            }
+        }
+    }
+
+    @Test
     fun mapsAtZoomWithPanAndInvertsPointerCoordinates() {
         val transform = PageTransform(PageRect(10f, 20f, 110f, 220f), 200f, 400f, -30f, 15f)
         assertEquals(PageRect(-10f, 55f, 50f, 95f), transform.map(PageRect(20f, 40f, 50f, 60f)))

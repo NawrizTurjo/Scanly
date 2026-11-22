@@ -62,7 +62,7 @@ class ReaderOutlineFiles internal constructor(
 }
 
 // The reader repository owns both SAF grants and library PDF materialization.
-private suspend fun readerSource(context: Context, repository: ReaderRepository, key: PdfKey): ReaderOutlineFiles.Source {
+internal suspend fun readerSource(context: Context, repository: ReaderRepository, key: PdfKey): ReaderOutlineFiles.Source {
     PdfBox.ensureInit(context)
     val uri = repository.resolveUri(key)
     if (uri.scheme == "file") return ReaderOutlineFiles.Source(File(requireNotNull(uri.path)))
