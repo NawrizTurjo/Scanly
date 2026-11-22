@@ -26,6 +26,7 @@ OUT = ROOT / "work" / "lab"
 HIT_DIAG = 0.02        # SC-1: corner within 2% of the diagonal
 MEAN_DIAG = 0.015      # docs/06: mean error < 1.5% of the diagonal
 DETECT_RATE = 0.90     # docs/06: >= 90% detected (synthetic)
+DESK_MIN_HITS = 37     # detector v2 scores 40/56 on the desk set; guard against regressions
 WARP_SSIM = 0.85       # docs/06: SSIM >= 0.85 on clean/skewed
 DESK_HIT_DIAG = 0.03
 
@@ -134,6 +135,10 @@ def main():
             print(f"  {r['cat']}/{r['name']} ({error})")
         if args.sheet and thumbs:
             write_sheet(thumbs, "desk_sheet.jpg")
+        hits = len(rows) - len(misses)
+        if hits < DESK_MIN_HITS:
+            print(f"FAIL: desk hits {hits} < {DESK_MIN_HITS}")
+            sys.exit(1)
         return
     syn = [r for r in rows if r["group"] == "synthetic"]
     syn_hit = sum(1 for r in syn if r["found"] and r["max"] <= HIT_DIAG) / max(1, len(syn))

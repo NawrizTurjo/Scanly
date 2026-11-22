@@ -24,6 +24,7 @@ from lab.geometry import output_size, warp  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 SYN = ROOT / "test-data" / "scanner" / "synthetic"
 SPECIAL = ROOT / "test-data" / "special"
+DESK = ROOT / "test-data" / "scanner" / "desk"
 OUT = ROOT / "test-data" / "imaging-goldens"
 
 PICKS = [
@@ -32,7 +33,13 @@ PICKS = [
     SYN / "low-light" / "low-light_02.jpg", SYN / "busy-background" / "busy-background_03.jpg",
     SYN / "handwriting" / "handwriting_04.jpg", SYN / "tables" / "tables_05.jpg",
     SPECIAL / "id-cards" / "id-cards_03.jpg", SPECIAL / "whiteboards" / "whiteboards_02.jpg",
+    DESK / "desk-sheet" / "desk-sheet_05.jpg", DESK / "dim-desk" / "dim-desk_02.jpg",
+    DESK / "clipped-sheet" / "clipped-sheet_03.jpg", DESK / "notebook-left" / "notebook-left_02.jpg",
+    DESK / "notebook-right" / "notebook-right_01.jpg", DESK / "notebook-spread" / "notebook-spread_02.jpg",
+    DESK / "occluded" / "occluded_02.jpg",
 ]
+# id-cards are also checked with the ID-mode aspect prior (1.586)
+ASPECT_PICKS = {"id-cards_03": 1.586}
 FILTER_INPUTS = {"shadows_01", "low-light_02", "handwriting_04"}
 WARP_LONG = 700  # keep goldens small; the Kotlin test warps to the same explicit size
 
@@ -63,6 +70,9 @@ def main():
             "input": f"inputs/{p.name}", "quad": [[round(float(x), 2), round(float(y), 2)] for x, y in quad],
             "confidence": round(conf, 3), "output_size_snapped": [w, h], "warp_size": list(size),
             "glare_warning": warn,
+            **({"aspect_prior": {"value": ASPECT_PICKS[name], "quad": [[round(float(x), 2), round(float(y), 2)]
+                                                                     for x, y in detect_quad(img, aspect_prior=ASPECT_PICKS[name])[0]]}}
+               if name in ASPECT_PICKS else {}),
             "live": {"frame": f"live/{name}.png", "size": [luma.shape[1], luma.shape[0]],
                      "quad": None if lq is None else [[round(float(x), 2), round(float(y), 2)] for x, y in lq],
                      "confidence": round(lconf, 3)},

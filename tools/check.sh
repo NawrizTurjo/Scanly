@@ -29,6 +29,8 @@ fi
 if [ -f tools/imaging-lab/run_regression.py ]; then
   step "Imaging lab regression: detection + warp"
   "$PY" tools/imaging-lab/run_regression.py
+  step "Imaging lab regression: desk scenes (clutter, notebooks, clipped pages)"
+  "$PY" tools/imaging-lab/run_regression.py --set desk
   step "Imaging lab regression: enhancement"
   "$PY" tools/imaging-lab/run_enhance.py
   step "Imaging lab regression: page tools (deskew, blank, ink removal, book gutter)"

@@ -36,7 +36,7 @@ internal class PageViewerViewModel @AssistedInject constructor(
 ) : ViewModel() {
     @AssistedFactory
     interface Factory {
-        fun create(@Assisted("document") private val documentId: String, @Assisted("page") startPageId: String): PageViewerViewModel
+        fun create(@Assisted("document") documentId: String, @Assisted("page") startPageId: String): PageViewerViewModel
     }
 
     private val mutableState = MutableStateFlow(PageViewerState())

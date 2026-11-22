@@ -287,8 +287,8 @@ def _refine(img, quad, band=6):
 LIVE_MAX = 480
 
 
-def detect_quad_live(gray):
-    """Fast variant for the camera overlay: luma only (the camera's Y plane), 480 px, one map, no refinement.
+def detect_quad_live_contour(gray):
+    """v1, kept for comparison. Fast variant for the camera overlay: luma only (the camera's Y plane), 480 px, one map, no refinement.
     Returns (quad in the input's pixel coords or None, confidence)."""
     small, s = _resize_max(gray, LIVE_MAX)
     h, w = small.shape[:2]
@@ -321,8 +321,8 @@ def detect_quad_live(gray):
     return order_quad(best) / s, float(min(1.0, best_score))
 
 
-def detect_quad(image, refine=True):
-    """Return (quad TL,TR,BR,BL in image px or None, confidence 0..1)."""
+def detect_quad_contour(image, refine=True):
+    """Contour-only detector (v1, kept for comparison). Return (quad TL,TR,BR,BL in image px or None, confidence)."""
     small, s = _resize_max(image, WORK_MAX)
     h, w = small.shape[:2]
     grads = _colour_gradient(small)
@@ -349,3 +349,16 @@ def detect_quad(image, refine=True):
         big, s2 = _resize_max(image, REFINE_MAX)
         quad = _refine(big, quad * s2) / s2
     return order_quad(quad), float(min(1.0, best_score))
+
+
+def detect_quad(image, refine=True, aspect_prior=None):
+    """Document detector (v2: contour + line candidates, page-aware scoring; see detect2.py).
+    Return (quad TL,TR,BR,BL in image px or None, confidence 0..1)."""
+    from .detect2 import detect_quad as _v2
+    return _v2(image, refine=refine, aspect_prior=aspect_prior)
+
+
+def detect_quad_live(gray):
+    """Camera overlay detector (v2 pipeline on the luma frame at 480 px; see detect2.detect_quad_live)."""
+    from .detect2 import detect_quad_live as _live
+    return _live(gray)
