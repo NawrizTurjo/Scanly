@@ -391,6 +391,7 @@ fun CameraScreen(
                     Text(stringResource(R.string.camera_importing), color = Color.White)
                 }
             }
+            CaptureThumbnailStrip(model, state)
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -459,6 +460,20 @@ fun CameraScreen(
                 confirmButton = {},
             )
         }
+    }
+
+    state.pageToDelete?.let { pageId ->
+        val pageNumber = state.pageIds.indexOf(pageId) + 1
+        AlertDialog(
+            onDismissRequest = model::dismissPageDeletion,
+            title = { Text(stringResource(R.string.camera_delete_page_title, pageNumber)) },
+            confirmButton = {
+                TextButton(onClick = model::confirmPageDeletion) { Text(stringResource(R.string.camera_delete_page)) }
+            },
+            dismissButton = {
+                TextButton(onClick = model::dismissPageDeletion) { Text(stringResource(android.R.string.cancel)) }
+            },
+        )
     }
 
     if (state.confirmDiscard) {
