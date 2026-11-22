@@ -26,7 +26,7 @@ OUT = ROOT / "work" / "lab"
 HIT_DIAG = 0.02        # SC-1: corner within 2% of the diagonal
 MEAN_DIAG = 0.015      # docs/06: mean error < 1.5% of the diagonal
 DETECT_RATE = 0.90     # docs/06: >= 90% detected (synthetic)
-DESK_MIN_HITS = 37     # detector v2 scores 40/56 on the desk set; guard against regressions
+DESK_MIN_HITS = 58     # detector v2.1 scores 61/84 on the desk set (incl. book scenes); guard against regressions
 WARP_SSIM = 0.85       # docs/06: SSIM >= 0.85 on clean/skewed
 DESK_HIT_DIAG = 0.03
 

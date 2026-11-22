@@ -32,6 +32,21 @@ FRAME_RIM = (0.004, 0.008, 0.012)
 # How much brighter than the interior reference paper may be (lighting gradients across a page), and how far the rim
 # may differ from the deep interior.
 PAPER_UP = 60
+# Extra closing (x the edge-map kernel) for the paper-tone maps; 1 = off.
+PAPER_CLOSE = 1
+# Shadow normalisation kernel as a fraction of the long side; 0 = off.
+SHADOW_NORM = 0.08
+# Where a fold may sit (fraction across the outline) when the other page runs off the photo.
+SPLIT_LO, SPLIT_HI = 0.05, 0.95
+# Blur (px at 1000 px) for the extra fold search; 0 = off.
+FOLD_BLUR = 3
+# Shorter fold lines (fraction of the page height) qualify for a split when the fold is a shading valley this much
+# darker than the paper on both sides.
+SPLIT_MIN_LEN = 0.15
+VALLEY = 8.0
+# Sliver folds: minimum line length (fraction of page height) and maximum cut-off width (fraction of the kept page).
+SLIVER_LEN = 0.3
+SLIVER = 0.25
 RIM_TOL = 25
 LIVE_TOP_LINE = 30
 LIVE_STATS_MAX = 240
@@ -67,7 +82,20 @@ def _context(chans, mag, gthresh, stats_max=None):
     """Per-image maps for the page measures. Paper = neutral, locally even (lighting gradients pass, clutter and
     leftover text don't) and not on an edge, so page-toned regions are cut apart by their outlines."""
     L, A, B = chans
+    if PAPER_CLOSE > 1:
+        # Close-ups have letters too big for the edge-map closing; close harder for the paper-tone measures only.
+        k = int(round(max(L.shape) / 90.0 * PAPER_CLOSE)) | 1
+        L = cv2.morphologyEx(L, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
     Lf = L.astype(np.float32)
+    raw = Lf
+    if SHADOW_NORM:
+        # Even out soft shadows and lighting gradients: divide by a large-scale estimate of the brightest nearby
+        # surface. A page half in a hand shadow then reads as one tone; a dark desk next to paper stays dark,
+        # because its estimate comes from the paper beside it.
+        k = int(round(max(L.shape) * SHADOW_NORM)) | 1
+        bg = cv2.dilate(Lf, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+        bg = cv2.GaussianBlur(bg, (0, 0), k / 3.0)
+        Lf = np.clip(Lf / np.maximum(bg, 1.0) * 230.0, 0, 255)
     chroma = np.hypot(A.astype(np.float32) - 128, B.astype(np.float32) - 128)
     local = cv2.blur(Lf, (21, 21))
     edge = cv2.dilate((mag >= gthresh).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
@@ -76,8 +104,10 @@ def _context(chans, mag, gthresh, stats_max=None):
     f = (stats_max or STATS_MAX) / float(max(L.shape))
     size = (int(round(L.shape[1] * f)), int(round(L.shape[0] * f)))
     Ls = cv2.resize(Lf, size, interpolation=cv2.INTER_AREA)
+    Lr = Ls if raw is Lf else cv2.resize(raw, size, interpolation=cv2.INTER_AREA)
     ps = cv2.resize(paperish.astype(np.uint8), size, interpolation=cv2.INTER_NEAREST).astype(bool)
-    return dict(L=Ls, paperish=ps, median=float(np.median(Lf)), f=f)
+    # Brightness and "same paper" comparisons use the raw lightness: normalisation would make a grey table look white.
+    return dict(L=Ls, raw=Lr, paperish=ps, median=float(np.median(raw)), f=f)
 
 
 def _page_stats(ctx, q, shape, frame_sides=()):
@@ -126,8 +156,9 @@ def _page_stats(ctx, q, shape, frame_sides=()):
     total = np.bincount(lbl.ravel(), minlength=n)
     keep = [i for i in range(1, n) if inside[i] >= 0.05 * qm.sum()]
     cover = float(inside[keep].sum() / max(1, total[keep].sum())) if keep else 0.0
-    bright = float(np.clip((ref - ctx["median"]) / 25.0, 0.0, 1.0))
-    return page, min(rims), cover, bright, ref
+    raw_ref = float(np.percentile(ctx["raw"][sel], 70))
+    bright = float(np.clip((raw_ref - ctx["median"]) / 25.0, 0.0, 1.0))
+    return page, min(rims), cover, bright, raw_ref
 
 
 def _total(q, grads, gthresh, ctx, shape, area_img):
@@ -196,11 +227,12 @@ def _side_line_dist(p, a, b):
     return float(abs(d[0] * (p[1] - a[1]) - d[1] * (p[0] - a[0])) / (np.linalg.norm(d) + 1e-9))
 
 
-def _fold(q, lines, lo=0.12, hi=0.88):
-    """A notebook fold inside q: a long line parallel to two opposite sides crossing the other two at a relative
-    position in (lo, hi). Returns (axis, halves) or None; axis 0 = the fold runs top->bottom."""
+def _folds(q, lines, lo=0.12, hi=0.88, min_len=0.6):
+    """Fold candidates inside q: lines parallel to two opposite sides (within 10 deg), at least min_len of their length,
+    crossing the other two at a relative position in (lo, hi). Returns [(centre_offset, axis, x1, x2, length/span)];
+    axis 0 = the fold runs top->bottom."""
     tl, tr, br, bl = q
-    best = None
+    out = []
     for axis in (0, 1):
         if axis == 0:
             s1, s2 = (tl, bl), (tr, br)        # sides parallel to the fold
@@ -212,7 +244,7 @@ def _fold(q, lines, lo=0.12, hi=0.88):
         fdir /= np.linalg.norm(fdir)
         span = 0.5 * (np.linalg.norm(s1[1] - s1[0]) + np.linalg.norm(s2[1] - s2[0]))
         for ln in lines:
-            if abs(float(ln.d @ fdir)) < np.cos(np.radians(10)) or ln.length < 0.6 * span:
+            if abs(float(ln.d @ fdir)) < np.cos(np.radians(10)) or ln.length < min_len * span:
                 continue
             pts = []
             for a, b in (c1, c2):
@@ -225,15 +257,59 @@ def _fold(q, lines, lo=0.12, hi=0.88):
             (u1, x1), (u2, x2) = pts
             if not (lo < u1 < hi and lo < u2 < hi and abs(u1 - u2) < 0.15):
                 continue
-            centre = abs(0.5 * (u1 + u2) - 0.5)
-            if best is None or centre < best[0]:
-                best = (centre, axis, x1, x2)
-    if best is None:
-        return None
-    _, axis, x1, x2 = best
+            out.append((abs(0.5 * (u1 + u2) - 0.5), axis, x1, x2, ln.length / span))
+    return out
+
+
+def _halves(q, axis, x1, x2):
+    tl, tr, br, bl = q
     if axis == 0:
-        return axis, (np.array([tl, x1, x2, bl]), np.array([x1, tr, br, x2]))
-    return axis, (np.array([tl, tr, x2, x1]), np.array([x1, x2, br, bl]))
+        return np.array([tl, x1, x2, bl]), np.array([x1, tr, br, x2])
+    return np.array([tl, tr, x2, x1]), np.array([x1, x2, br, bl])
+
+
+def _fold(q, lines, lo=0.12, hi=0.88):
+    """The most central long fold (see _folds) as (axis, halves), or None."""
+    found = _folds(q, lines, lo, hi)
+    if not found:
+        return None
+    _, axis, x1, x2, _ = min(found, key=lambda f: f[0])
+    return axis, _halves(q, axis, x1, x2)
+
+
+def _valley(soft, x1, x2, width):
+    """Shading valley near the line x1-x2 (soft = blurred grey): scan a band of +-8 % of width across it and find the
+    darkest offset within +-4 %. Returns (depth, offset): how much darker that point is than the brighter paper on
+    both sides, and where it lies along the line normal."""
+    h, w = soft.shape
+    d = x2 - x1
+    n = np.array([-d[1], d[0]]) / (np.linalg.norm(d) + 1e-9)
+    t = np.linspace(0.1, 0.9, 40)
+    base = x1[None, :] + t[:, None] * d[None, :]
+    offs = np.linspace(-0.08, 0.08, 33) * width
+    prof = []
+    for off in offs:
+        p = base + off * n
+        xi = np.clip(np.round(p[:, 0]).astype(int), 0, w - 1)
+        yi = np.clip(np.round(p[:, 1]).astype(int), 0, h - 1)
+        prof.append(float(soft[yi, xi].mean()))
+    prof = np.array(prof)
+    inner = np.where(np.abs(offs) <= 0.04 * width)[0]
+    i = inner[np.argmin(prof[inner])]
+    if i == 0 or i == len(prof) - 1:
+        return 0.0, 0.0
+    # A binding stays dark along its whole length; a heading or a shadow edge doesn't. Score the weakest fifth.
+    depths = []
+    for part in np.array_split(np.arange(len(t)), 5):
+        col = []
+        for off in offs:
+            p = base[part] + off * n
+            xi = np.clip(np.round(p[:, 0]).astype(int), 0, w - 1)
+            yi = np.clip(np.round(p[:, 1]).astype(int), 0, h - 1)
+            col.append(float(soft[yi, xi].mean()))
+        col = np.array(col)
+        depths.append(min(col[:i].max(), col[i + 1:].max()) - col[i])
+    return float(min(depths)), float(offs[i])
 
 
 def _across(hq, axis):
@@ -249,35 +325,56 @@ def _page_shaped(hq):
     return 1.1 <= max(a, b) / max(1e-6, min(a, b)) <= 2.0
 
 
-def _split_spread(q, lines, shape):
-    """The winner is a spread whose one page is clearly cut by the frame: return the fully visible page."""
+def _split_spread(q, lines, shape, soft=None):
+    """The winner is a spread whose one page is clearly cut by the frame: return the fully visible page.
+    A fold candidate qualifies in one of three ways:
+      long    a line over 60 % of the page height (notebook fold), the most central one;
+      valley  a shorter line on a shading band darker than the paper on both sides (a book's binding), moved to the
+              bottom of the band;
+      sliver  a line over SLIVER_LEN of the height that cuts off only a thin strip (< SLIVER of the kept page) at the
+              photo edge: the neighbouring page of a book whose binding curves up into the light."""
     h, w = shape
     margin = 0.012 * max(h, w)
-    found = _fold(q, lines)
-    if found is None:
-        return None
-    axis, halves = found
+    found = _folds(q, lines, SPLIT_LO, SPLIT_HI, SPLIT_MIN_LEN)
+    order = [("long", f) for f in sorted([f for f in found if f[4] >= 0.6], key=lambda f: f[0])[:1]]
+    if soft is not None:
+        valleys = []
+        for f in found:
+            hv = _halves(q, f[1], f[2], f[3])
+            depth, off = _valley(soft, f[2], f[3], _across(hv[0], f[1]) + _across(hv[1], f[1]))
+            if depth >= VALLEY:
+                d = f[3] - f[2]
+                n = np.array([-d[1], d[0]]) / (np.linalg.norm(d) + 1e-9)
+                moved = _folds(q, [LN.Line(f[2] + off * n, d, 0)], SPLIT_LO, SPLIT_HI, 0.0)
+                if moved:
+                    valleys.append((depth, moved[0][:4] + (f[4],)))
+        order += [("valley", f) for _, f in sorted(valleys, key=lambda v: -v[0])]
+    order += [("sliver", f) for f in found if SLIVER_LEN <= f[4] < 0.6]
+    for kind, (_, axis, x1, x2, _) in order:
+        halves = _halves(q, axis, x1, x2)
+        fold_pts = {tuple(np.round(p, 3)) for p in (x1, x2)}
 
-    def clipped(hq):
-        # side 0 of the first half / side 2 of the second... simpler: any side except the fold on the frame
-        fold_pts = {tuple(np.round(p, 3)) for p in (halves[0][1], halves[0][2])} if axis == 0 else             {tuple(np.round(p, 3)) for p in (halves[0][2], halves[0][3])}
-        for i in range(4):
-            a, b = hq[i], hq[(i + 1) % 4]
-            if {tuple(np.round(a, 3)), tuple(np.round(b, 3))} == fold_pts:
-                continue
-            if D._border_side(a, b, (h, w), margin):
-                return True
-        return False
+        def clipped(hq):
+            for i in range(4):
+                a, b = hq[i], hq[(i + 1) % 4]
+                if {tuple(np.round(a, 3)), tuple(np.round(b, 3))} == fold_pts:
+                    continue
+                if D._border_side(a, b, (h, w), margin):
+                    return True
+            return False
 
-    c = [clipped(hq) for hq in halves]
-    if c[0] == c[1]:
-        return None
-    keep, cut = (halves[1], halves[0]) if c[0] else (halves[0], halves[1])
-    # Only a clearly cut page counts: a spread whose outer edge merely touches the frame stays whole.
-    if _across(cut, axis) > 0.8 * _across(keep, axis):
-        return None
-    # the kept half must be page-shaped (a single sheet with a table rule is not a spread)
-    return keep if _page_shaped(keep) else None
+        c = [clipped(hq) for hq in halves]
+        if c[0] == c[1]:
+            continue
+        keep, cut = (halves[1], halves[0]) if c[0] else (halves[0], halves[1])
+        # Only a clearly cut page counts: a spread whose outer edge merely touches the frame stays whole.
+        limit = SLIVER if kind == "sliver" else 0.8
+        if _across(cut, axis) > limit * _across(keep, axis):
+            continue
+        # the kept half must be page-shaped (a single sheet with a table rule is not a spread)
+        if _page_shaped(keep):
+            return keep
+    return None
 
 
 def _grow_to_spread(best, scored, lines, ctx, shape):
@@ -357,9 +454,14 @@ def detect_quad(image, refine=True, debug=False, aspect_prior=None, work_max=WOR
     if best_score < MIN_SCORE:
         return (None, best_score, scored) if debug else (None, best_score)
     best = _prefer_enclosing(best, scored, (h, w), ctx)
+    if FOLD_BLUR:
+        # A book's binding is a soft shading band, not a crisp line; LSD on a blurred copy picks it up as a long edge.
+        soft = cv2.GaussianBlur(gray, (0, 0), FOLD_BLUR)
+        diag = float(np.hypot(w, h))
+        lines = lines + LN._merge(LN._segments([soft], diag), diag)
     if aspect_prior is None:
         best = _grow_to_spread(best, scored, lines, ctx, (h, w))
-    half = _split_spread(order_quad(best).astype(np.float64), lines, (h, w))
+    half = _split_spread(order_quad(best).astype(np.float64), lines, (h, w), cv2.GaussianBlur(gray, (0, 0), 3))
     if half is not None:
         half = order_quad(half.astype(np.float32))
         # the half inherits the spread's outer sides; prefer a scored candidate that traces that page itself
