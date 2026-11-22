@@ -185,7 +185,7 @@ internal object LineCandidates {
         }
     }
 
-    private fun mergedLines(maps: List<Mat>, diagonal: Double): List<DocumentLine> {
+    fun mergedLines(maps: List<Mat>, diagonal: Double): List<DocumentLine> {
         val detector = Imgproc.createLineSegmentDetector()
         val segments = mutableListOf<Segment>()
         try {

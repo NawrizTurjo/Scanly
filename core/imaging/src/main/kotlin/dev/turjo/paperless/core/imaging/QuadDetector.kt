@@ -21,6 +21,7 @@ internal const val LIVE_WORK_MAX = 480
 private const val LIVE_TOP_LINE = 30
 private const val LIVE_STATS_MAX = 240.0
 private const val MIN_SCORE = 0.45
+private const val FOLD_BLUR = 3.0
 
 data class Detection(val quad: FloatArray?, val confidence: Float)
 
@@ -64,6 +65,7 @@ class QuadDetector {
         val width = small.cols()
         val height = small.rows()
         val channels = List(3) { Mat() }
+        val gray = Mat()
         try {
             val k = closingSize(small)
             newMat {
@@ -78,20 +80,17 @@ class QuadDetector {
             for (i in 1..2) Imgproc.medianBlur(channels[i], channels[i], k)
             val gradients = Gradients(channels, width, height)
             val threshold = maxOf(12.0, Percentiles.ofFloats(gradients.magnitude, 85.0))
+            Imgproc.cvtColor(small, gray, Imgproc.COLOR_BGR2GRAY)
             val stats = PageScore(channels, gradients, threshold, if (live) LIVE_STATS_MAX else 500.0)
             // Camera frames are luma only (a/b flat) and must be fast: no contour pass, lines from closed and plain
             // luma only, fewer candidates and smaller page statistics (lab: detect2 live profile).
             val found = if (live) {
-                newMat { Imgproc.cvtColor(small, it, Imgproc.COLOR_BGR2GRAY) }.useMat { gray ->
-                    LineCandidates.find(listOf(channels[0], gray), gradients, threshold, keep = LIVE_TOP_LINE)
-                }
+                LineCandidates.find(listOf(channels[0], gray), gradients, threshold, keep = LIVE_TOP_LINE)
             } else {
                 val clahe = Imgproc.createCLAHE(3.0, Size(8.0, 8.0))
                 try {
-                    newMat { Imgproc.cvtColor(small, it, Imgproc.COLOR_BGR2GRAY) }.useMat { gray ->
-                        newMat { clahe.apply(channels[0], it) }.useMat { enhanced ->
-                            LineCandidates.find(channels + listOf(gray, enhanced), gradients, threshold)
-                        }
+                    newMat { clahe.apply(channels[0], it) }.useMat { enhanced ->
+                        LineCandidates.find(channels + listOf(gray, enhanced), gradients, threshold)
                     }
                 } finally {
                     clahe.collectGarbage()
@@ -105,14 +104,19 @@ class QuadDetector {
             val winner = scored.firstOrNull() ?: return Detection(null, 0f)
             if (winner.total < MIN_SCORE) return Detection(null, winner.total.toFloat())
             val enclosing = stats.preferEnclosing(winner, scored)
-            val best = if (aspectPrior == null) stats.growToSpread(enclosing, scored, found.merged) else enclosing
-            val half = splitSpread(best.quad.vectors(), found.merged, width, height)?.orderedQuad()
-            val quad = if (half == null) best.quad else {
-                val match = scored.maxBy { quadIou(it.quad, half) }
-                if (quadIou(match.quad, half) >= 0.85) match.quad else half
+            val quad = newMat { Imgproc.GaussianBlur(gray, it, Size(), FOLD_BLUR) }.useMat { soft ->
+                val diagonal = hypot(width.toDouble(), height.toDouble())
+                val lines = found.merged + LineCandidates.mergedLines(listOf(soft), diagonal)
+                val best = if (aspectPrior == null) stats.growToSpread(enclosing, scored, lines) else enclosing
+                val half = splitSpread(best.quad.vectors(), lines, soft)?.orderedQuad()
+                if (half == null) best.quad else {
+                    val match = scored.maxBy { quadIou(it.quad, half) }
+                    if (quadIou(match.quad, half) >= 0.85) match.quad else half
+                }
             }
             return Detection(Geometry.orderQuad(quad), minOf(1.0, winner.total).toFloat())
         } finally {
+            gray.release()
             channels.forEach(Mat::release)
         }
     }
