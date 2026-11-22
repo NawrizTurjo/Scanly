@@ -7,7 +7,7 @@ From the repository root:
 & G:/Paperless-Scanner/.venv/Scripts/python.exe -m unittest discover -s tools/fixtures/tests -v
 ```
 
-Use `--out PATH` to select another output directory, or `--only scanner|special|pdf` to generate one set. The PDF generator can run independently because it renders its flat JPEGs from the same source renderer as the scanner.
+Use `--out PATH` to select another output directory, or `--only scanner|special|pdf|desk` to generate one set. The PDF generator can run independently because it renders its flat JPEGs from the same source renderer as the scanner.
 
 The seed is 1234. Independent random streams are derived from the generator, category, and example indexes. JPEG settings and PDF metadata are fixed. The AES-256 example uses deterministic fixture keys and IVs through a local patch of pypdf's randomness sources. These are only for the known-password fixture. Generate with the same dependency versions and available Windows fonts for byte-identical output.
 

@@ -1,45 +1,117 @@
-# Paperless — personal offline document scanner + PDF toolkit (Android)
+<div align="center">
 
-Working name: **Paperless**. You can rename it at the planning gate (session S1).
+# Scanly
 
-Native Android app for the Pixel 8 Pro. It replaces CamScanner: no watermark, no Pro pop-ups, no account, no cloud, no AI APIs.
-- **Scanner:** batch and single-page capture, auto edge detection, auto-capture, shadow and glare cleanup, ID card, book and whiteboard modes, two-sided batches, auto-split of a pile at blank sheets, pen-ink removal, auto-deskew, share-to-scan, and a Quick Settings tile.
-- **Document library:** folders, favourites, name and in-document search, adding pages to an old scan, biometric lock, and plain-file backup/restore.
-- **PDF reader:** multiple tabs, outline and bookmark editor, auto chapter suggestions, find/select/copy, links, crop-margins mode, reading progress, side-by-side.
-- **PDF toolkit:** merge, split, page edits, compress, image↔PDF, annotations, "same page width" (the GoodNotes fix), password, N-up print layouts with duplex cut orders, page numbers, metadata, sanitize, grayscale, and batch runs on folders.
+**An offline document scanner and PDF toolkit for Android.**
 
-This folder holds **only the plan**. Code gets written on the desktop.
+No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 
-## How to start on the desktop
+![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-5.1-5C3EE8?logo=opencv&logoColor=white)
+![Offline](https://img.shields.io/badge/network-none-555)
+![Version](https://img.shields.io/badge/version-0.2.0%20test%20build-orange)
 
-1. Copy this whole folder to a **short path with no spaces**, for example `D:\dev\paperless`. Gradle and the Android NDK break on long Windows paths or paths with spaces, and `E:\4-1 Course Works\...` has both.
-2. Work through [docs/08-desktop-setup.md](docs/08-desktop-setup.md): Android Studio, SDK, adb, Pixel USB debugging, Python, Codex, and Claude Code.
-3. Open a terminal in the folder and run `claude` (model: Opus 5.5).
-4. Paste the **S1 kickoff prompt** from [docs/09-session-prompts.md](docs/09-session-prompts.md).
-5. After each session, Claude updates [tracker.md](tracker.md). Start the next session with the matching prompt from doc 09.
+<img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
 
-## What's in here
+</div>
 
-| File | What it is |
+## What it does
+
+Scanly turns phone photos of paper into clean, flat pages, keeps them in a local library, and exports PDFs or images. A built-in reader and fourteen PDF tools cover the rest of your paperwork.
+
+| | |
 |---|---|
-| [CLAUDE.md](CLAUDE.md) | Project rules Claude Code loads automatically: orchestration (Opus + Sonnet + Codex), stack, hard constraints |
-| [tracker.md](tracker.md) | Session-by-session progress checklist |
-| [docs/00-chatgpt-brainstorm-transcript.md](docs/00-chatgpt-brainstorm-transcript.md) | The original ChatGPT conversation, saved verbatim |
-| [docs/00b-chatgpt-pdf-tools-transcript.md](docs/00b-chatgpt-pdf-tools-transcript.md) | Second ChatGPT chat (why PDF tools exist), the source of the 2026-11-15 additions |
-| [docs/01-PRD.md](docs/01-PRD.md) | Consolidated requirements: v1 scope, excluded features, future features |
-| [docs/02-architecture.md](docs/02-architecture.md) | Modules, data model, image pipeline, reader design |
-| [docs/03-dependencies-licensing.md](docs/03-dependencies-licensing.md) | Free/Apache-licensed stack, plus what to avoid (AGPL, commercial SDKs) |
-| [docs/04-screens-navigation.md](docs/04-screens-navigation.md) | Screen-by-screen spec and navigation flow |
-| [docs/05-roadmap-sessions.md](docs/05-roadmap-sessions.md) | Phased roadmap with **session estimates** and worker split |
-| [docs/06-testing-strategy.md](docs/06-testing-strategy.md) | Test dataset, automated tests, on-device checks |
-| [docs/07-risks-open-questions.md](docs/07-risks-open-questions.md) | Technical risks, plus decisions for the S1 gate (each has a recommended default) |
-| [docs/08-desktop-setup.md](docs/08-desktop-setup.md) | One-time desktop setup |
-| [docs/09-session-prompts.md](docs/09-session-prompts.md) | Copy-paste prompts for each session |
-| [tools/codex-usage.sh](tools/codex-usage.sh) | Prints Codex 5-hour and weekly usage; used to decide how many workers to run |
-| [tools/pdf-fixwidth/](tools/pdf-fixwidth/) | Working desktop tool that makes every PDF page the same width (the GoodNotes fix). It's usable today, and it's the reference and test oracle for the app's PT-9 feature |
+| **Scan** | Batch or single capture, live page outline, auto-capture, gallery import, share-to-scan, Quick Settings tile |
+| **Clean up** | Auto-crop, perspective fix, Document / Colour / B&W / Grayscale / Whiteboard filters, shadow and glare fixes, auto-deskew, coloured-ink removal |
+| **Special modes** | ID card (front and back on one A4 page), Book (a spread becomes two pages), Whiteboard, two-sided batches, auto-split at blank sheets |
+| **Library** | Folders, favourites, search by name, folder, date and text inside PDFs, recycle bin, app lock, plain-file backup and restore |
+| **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations |
+| **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs |
 
-## Estimate in one line
+## Screenshots
 
-About **26–29 Opus-orchestrated sessions** for the full v1 (16–19 before the 2026-11-15 additions). The minimal version (batch scan → auto edges → white enhancement → export PDF/images, plus adding pages to an old scan) is a **daily driver after about 6 sessions**. One session means one Claude Code 5-hour usage window, roughly 2–4 hours of wall-clock time. Details are in [docs/05-roadmap-sessions.md](docs/05-roadmap-sessions.md).
+<img src="docs/images/screens-library.jpg" alt="Library, document, export sheet and reader" width="100%">
 
-**Total extra cost: ৳0.** Every dependency is free. A Play Store listing is optional, at US$25 one time, and isn't planned.
+## Page detection
+
+A phone photo of notes tends to hold more than one sheet: open notebooks, a laptop, a desk mat, pens and other paper in the same frame. Scanly finds the page with straight-edge candidates and a paper-likeness score, then flattens it.
+
+<img src="docs/images/detection-pipeline.jpg" alt="Detection steps: photo, text removed, straight edges, candidate quads, best quad, flattened page" width="100%">
+
+The same photos with the v0.1 detector (red) and the current one (green):
+
+<img src="docs/images/detection-before-after.jpg" alt="Old and new detector on six cluttered desk scenes" width="100%">
+
+| Test set | v0.1 | v0.2 |
+|---|---:|---:|
+| Synthetic scans (58) | 58 | 58 |
+| Cluttered desk scenes (56) | 1 | 40 |
+| Real phone photos of notes (27) | about half | 26 |
+
+With an open notebook, Scanly crops the whole spread when both pages are in the frame. When one page runs off the edge, it crops the page you can see in full. You can drag any corner in the editor; a magnifier follows your finger.
+
+[How detection works →](docs/detection.md)
+
+## Install
+
+Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
+
+Builds before 1.0 are marked **pre-release** while testing on a real phone continues.
+
+## Privacy
+
+- The app has no `INTERNET` permission, so it cannot send anything anywhere.
+- No analytics, ads, accounts or AI services.
+- Exports carry no watermark or branding. PDF metadata holds only the title and producer.
+- Photos stay as you took them. Edits write a processed copy, so you can re-crop or change a filter later.
+
+## Build from source
+
+You need JDK 21, the Android SDK (platform 37.1) and NDK 30.0.16248370.
+
+```bash
+./gradlew assembleDebug             # debug APK, arm64 + x86_64
+./gradlew testDebugUnitTest lint    # unit tests and lint
+bash tools/check.sh                 # full gate: build, tests, lint, imaging regressions, no-INTERNET check
+```
+
+Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 46 MB.
+
+## Project layout
+
+```mermaid
+flowchart LR
+    app[":app<br/>navigation, DI"] --> features
+    subgraph features[feature modules]
+        camera & editor & library & reader & tools & export & settings
+    end
+    features --> data[":core:data<br/>Room, files, processing queue"]
+    features --> pdf[":core:pdf<br/>PdfRenderer, PdfBox"]
+    data --> imaging[":core:imaging<br/>OpenCV detection and filters"]
+    data --> pdf
+    data --> model[":core:model"]
+    imaging --> model
+```
+
+| Path | Contents |
+|---|---|
+| `app/`, `core/`, `feature/` | The Android app |
+| `tools/imaging-lab/` | Python reference for every image algorithm; the Kotlin port must match it |
+| `tools/fixtures/` | Generators for the labelled test photos and PDFs in `test-data/` |
+| `tools/pdf-fixwidth/` | Desktop tool that gives every PDF page the same width |
+| `docs/` | Requirements, architecture, testing, roadmap |
+
+## Documentation
+
+- [Requirements](docs/01-PRD.md): what v1 includes and leaves out
+- [Architecture](docs/02-architecture.md): modules, data model, image pipeline, reader
+- [Page detection](docs/detection.md): the algorithm, test sets and known limits
+- [Dependencies and licences](docs/03-dependencies-licensing.md): Apache-2.0, MIT and BSD only
+- [Testing](docs/06-testing-strategy.md): fixtures, parity tests, emulator checks
+- [Roadmap](docs/05-roadmap-sessions.md) and [progress tracker](tracker.md)
+
+## Licences
+
+Scanly uses OpenCV, PdfBox-Android, AndroidX, Coil and a few other libraries, all under Apache-2.0, MIT or BSD. The full list with versions is in the app under Settings → About → Open-source licences, and in [docs/03](docs/03-dependencies-licensing.md).

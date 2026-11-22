@@ -1,6 +1,6 @@
 # 02 — Architecture
 
-This is a proposal. Opus confirms or adjusts it at the S1 gate, and should keep it lean.
+Sections 1 to 7 hold the design written before coding started. Section 8 lists where the shipped app differs. For page detection, [detection.md](detection.md) supersedes the pipeline sketch in section 3.
 
 ## 1. Module map (Gradle multi-module)
 
@@ -176,10 +176,13 @@ Bookmarks (RD-2), page edits (PT-10), password (PT-11), page numbers (PT-14), me
 - **Processing:** `PageProcessing` (core:data) is the single entry point: auto-detect on the still, render processed JPEG
   + thumbnail, previews from a cached 1600 px upright copy, all full-resolution work serialised on an app-wide scope
   (≤ 1 full-res page in memory). Quads are in upright (EXIF-applied) original pixels.
-- **Detection:** the stills detector adds real-photo cues: gradient support measured across each side on
-  text-suppressed Lab channels, frame-clipped sides, and overlap with the bright paper region. The live overlay uses a
-  luma-only 480 px variant on 640×480 CameraX analysis frames (~11 ms on the emulator) with a median smoother that also
-  reports stability, sharpness and a 16×16 fingerprint for auto-capture.
+- **Detection (v0.2):** contour and straight-line candidates, scored on edge support, page-likeness, inner rim,
+  paper coverage and brightness, with card and notebook-spread rules; see [detection.md](detection.md). The camera overlay
+  runs a lighter profile on 480 px luma frames, and a median smoother reports stability, sharpness and a 16×16
+  fingerprint for auto-capture.
+- **Camera:** preview, capture and analysis all use 4:3. The preview sits letterboxed in a 3:4 box, so the frame you see
+  matches the saved photo.
+- **Page viewer:** a tap on a page opens the processed result in a pager; Edit leads to the crop and filter editor.
 - **Build:** AGP 9.5.2 (built-in Kotlin), compileSdk **37.1** (Compose 1.13 requires it), JDK **21** for Gradle (the
   bundled JBR 25 crashed the daemon's C2 compiler), NDK 30 pinned for stripping; release = arm64 only, R8, signed with the
   local keystore from `keystore.properties`.
