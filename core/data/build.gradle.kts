@@ -13,8 +13,16 @@ ksp {
     arg("room.schemaLocation", file("schemas").path)
 }
 
+tasks.withType<Test>().configureEach {
+    val fixtures = rootProject.layout.projectDirectory.dir("test-data/pdf")
+    inputs.dir(fixtures)
+    systemProperty("paperless.pdfFixtures", fixtures.asFile.absolutePath)
+}
+
 dependencies {
     implementation(libs.room.runtime)
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.pdfbox.android)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     testImplementation(libs.room.testing)

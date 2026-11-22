@@ -24,6 +24,11 @@ class FileStore @Inject constructor(@ApplicationContext private val context: Con
         if (!directory.deleteRecursively()) throw IOException("Could not delete $directory")
     }
 
+    internal fun deleteRestoredPdf(documentId: String) {
+        val directory = restoredReaderPdfDir(context, documentId)
+        if (!directory.deleteRecursively()) throw IOException("Could not delete restored PDF for $documentId")
+    }
+
     fun newTempFile(suffix: String): File {
         val directory = File(context.cacheDir, "tmp")
         directory.mkdirs()

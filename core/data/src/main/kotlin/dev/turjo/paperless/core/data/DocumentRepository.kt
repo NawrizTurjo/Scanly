@@ -153,13 +153,18 @@ class RoomDocumentRepository @Inject constructor(
 
     private suspend fun deleteFromBin(id: String, cutoff: Long?) = withContext(Dispatchers.IO + NonCancellable) {
         val pageIds = database.withTransaction {
-            val deletedAt = dao.document(id)?.deletedAt ?: return@withTransaction emptyList()
-            if (cutoff != null && deletedAt >= cutoff) return@withTransaction emptyList()
+            val deletedAt = dao.document(id)?.deletedAt ?: return@withTransaction null
+            if (cutoff != null && deletedAt >= cutoff) return@withTransaction null
             val pages = dao.pages(id).map(PageEntity::id)
             dao.deleteDocument(id)
             pages
+        } ?: return@withContext
+        var failure: java.io.IOException? = try {
+            files.deleteRestoredPdf(id)
+            null
+        } catch (error: java.io.IOException) {
+            error
         }
-        var failure: java.io.IOException? = null
         for (pageId in pageIds) {
             try {
                 files.deletePageFiles(pageId)

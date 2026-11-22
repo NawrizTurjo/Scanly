@@ -50,6 +50,7 @@ fun LibraryScreen(
     onScan: () -> Unit = {},
     onOpenDocument: (String) -> Unit = {},
     onOpenRecent: ((PdfKey) -> Unit)? = null,
+    onOpenPdfAtPage: ((PdfKey, Int) -> Unit)? = null,
 ) {
     val model: LibraryViewModel = hiltViewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -223,12 +224,14 @@ fun LibraryScreen(
         val showRecent = onOpenRecent != null && recent.isNotEmpty() && !folderMode && !selecting &&
             filter.folderId == null && filter.query.isBlank() && !filter.favouritesOnly
         val visibleFolders = if (folderMode && filter.query.isBlank()) childFolders else emptyList()
+        val showContentSearch = !bin && !folderGrid && !selecting && filter.query.trim().length >= 2
+        val hits = if (showContentSearch) insideDocumentHits(filter.query) else emptyList()
         when {
             bin -> RecycleBin(content, deleted, model::restore, model::deleteForever)
             !folderGrid && (state.isLoading || state.filter.folderId != filter.folderId) -> Box(content, contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            !showRecent && visibleFolders.isEmpty() && (folderGrid || state.documents.isEmpty()) -> {
+            !showContentSearch && !showRecent && visibleFolders.isEmpty() && (folderGrid || state.documents.isEmpty()) -> {
                 if (!folderMode && filter.query.isBlank() && !filter.favouritesOnly) EmptyLibrary(content)
                 else Box(content, contentAlignment = Alignment.Center) {
                     val label = if (folderGrid) R.string.library_no_folders else R.string.no_documents
@@ -267,6 +270,17 @@ fun LibraryScreen(
                             },
                             onLongClick = { model.toggleSelection(document) },
                         )
+                    }
+                    if (showContentSearch) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(stringResource(R.string.inside_documents), style = MaterialTheme.typography.titleMedium)
+                        }
+                        if (hits.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(stringResource(R.string.inside_documents_empty))
+                        }
+                        items(hits, key = { "text-${it.pdfKey.value}-${it.pageIndex}" }, span = { GridItemSpan(maxLineSpan) }) { hit ->
+                            InsideDocumentHit(hit, onOpenPdfAtPage?.let { open -> { open(hit.pdfKey, hit.pageIndex) } })
+                        }
                     }
                 }
             }

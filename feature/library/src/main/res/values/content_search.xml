@@ -1,0 +1,5 @@
+<resources>
+    <string name="inside_documents">Inside documents</string>
+    <string name="inside_documents_page">Page %1$d</string>
+    <string name="inside_documents_empty">No matching PDF text</string>
+</resources>

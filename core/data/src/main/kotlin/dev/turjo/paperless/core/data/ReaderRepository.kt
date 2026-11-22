@@ -45,6 +45,7 @@ interface ReaderRepository {
 class RoomReaderRepository internal constructor(
     private val database: PaperlessDatabase,
     private val context: Context,
+    private val enqueueIndex: () -> Unit = {},
     private val writePdf: suspend (DocumentEntity, File) -> Long,
 ) : ReaderRepository {
     @Inject
@@ -52,7 +53,10 @@ class RoomReaderRepository internal constructor(
         database: PaperlessDatabase,
         @ApplicationContext context: Context,
         processing: PageProcessing,
-    ) : this(database, context, scanPdfWriter(database.documentDao(), processing, PdfExporter(context)))
+    ) : this(
+        database, context, { LibraryJobs.index(context) },
+        scanPdfWriter(database.documentDao(), processing, PdfExporter(context)),
+    )
 
     private val dao = database.readerDao()
     private val documents = database.documentDao()
@@ -86,7 +90,7 @@ class RoomReaderRepository internal constructor(
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
         val persisted = persistPermission(uri, read or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ||
             persistPermission(uri, read)
-        database.withTransaction {
+        val key = database.withTransaction {
             val existing = dao.externalByUri(uri.toString())
             if (existing == null) {
                 val id = UUID.randomUUID().toString()
@@ -100,10 +104,13 @@ class RoomReaderRepository internal constructor(
                 PdfKey(existing.id)
             }
         }
+        enqueueIndex()
+        key
     }
 
     override suspend fun pdfKeyForDocument(documentId: String): PdfKey {
         ensureDocumentPdf(documentId)
+        enqueueIndex()
         return PdfKey("$DOCUMENT_PREFIX$documentId")
     }
 
@@ -116,9 +123,13 @@ class RoomReaderRepository internal constructor(
 
     internal suspend fun resolveUri(key: PdfKey): Uri {
         val documentId = key.documentId()
-        if (documentId != null) return Uri.fromFile(ensureDocumentPdf(documentId))
-        val uri = dao.externalUri(key.value) ?: throw FileNotFoundException("Unknown external PDF ${key.value}")
-        return Uri.parse(uri)
+        val uri = if (documentId != null) {
+            Uri.fromFile(ensureDocumentPdf(documentId))
+        } else {
+            Uri.parse(dao.externalUri(key.value) ?: throw FileNotFoundException("Unknown external PDF ${key.value}"))
+        }
+        enqueueIndex()
+        return uri
     }
 
     internal suspend fun readerTitle(key: PdfKey): String? {
@@ -139,6 +150,7 @@ class RoomReaderRepository internal constructor(
         require(id.isNotEmpty() && id != "." && id != ".." && '/' !in id && '\\' !in id)
         exportLock.withLock {
             val document = documents.readableDocument(id)
+            restoredReaderPdf(context, id, document.updatedAt)?.let { return@withLock it }
             val directory = File(context.cacheDir, "pdf")
             val target = File(directory, "$id.pdf")
             if (target.isFile && target.lastModified() >= document.updatedAt) return@withLock target
@@ -170,7 +182,7 @@ private suspend fun DocumentDao.readableDocument(id: String): DocumentEntity =
     document(id)?.takeIf { it.deletedAt == null && !it.isDraft }
         ?: throw FileNotFoundException("Unknown document $id")
 
-private fun scanPdfWriter(
+internal fun scanPdfWriter(
     documents: DocumentDao,
     processing: PageProcessing,
     exporter: PdfExporter,
