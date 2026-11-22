@@ -2,13 +2,28 @@ package dev.turjo.paperless.feature.reader
 
 import android.provider.OpenableColumns
 import android.content.res.Configuration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,7 +59,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -62,6 +76,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +105,7 @@ fun ReaderScreen(
     openRequestTitle: String? = null,
     active: Boolean = true,
     onImmersiveChanged: (Boolean) -> Unit = {},
+    bottomBarHeight: Dp = 0.dp,
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -144,12 +160,23 @@ fun ReaderScreen(
     val annotating = annotationLayer?.editing == true
     val canImmerse = active && tab != null && !annotating
     var chrome by remember(canImmerse) { mutableStateOf(ReaderChrome.VISIBLE) }
+    fun changeChrome(next: ReaderChrome) {
+        chrome = next
+        onImmersiveChanged(next.immersive)
+    }
+    val topOverlay = remember { MutableTransitionState(true) }
+    topOverlay.targetState = !chrome.immersive
+    val density = LocalDensity.current
+    var topOverlayHeight by remember { mutableIntStateOf(0) }
+    val systemBars = WindowInsets.systemBarsIgnoringVisibility
+    val bottomInset = systemBars.asPaddingValues().calculateBottomPadding()
+    val pagePadding = readerPagePadding(with(density) { topOverlayHeight.toDp() }, bottomBarHeight, bottomInset)
     var lockReveal by remember(chrome) { mutableStateOf(0) }
     var selectingPages by remember { mutableIntStateOf(0) }
     val onSelectionChanged: (Boolean) -> Unit = { selecting -> selectingPages += if (selecting) 1 else -1 }
     val revealLock: () -> Unit = { lockReveal++ }
     val onPageTap: () -> Unit = {
-        if (canImmerse && selectingPages == 0) chrome = chrome.pageTap(annotating)
+        if (canImmerse && selectingPages == 0) changeChrome(chrome.pageTap(annotating))
     }
     ReaderWindowMode(chrome, onImmersiveChanged)
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -183,7 +210,7 @@ fun ReaderScreen(
                 scope.launch { snackbar.showSnackbar(lockedHint) }
             }
         } else {
-            chrome = ReaderChrome.VISIBLE
+            changeChrome(ReaderChrome.VISIBLE)
         }
     }
     viewModel.annotationPrompt?.let { prompt ->
@@ -203,124 +230,155 @@ fun ReaderScreen(
             viewModel, { jump = PageJump(it); showOutline = false }, { showOutline = false })
     }
 
-    Scaffold(
-        topBar = topBar@{
-            if (chrome.immersive) return@topBar
-            if (tab != null && annotationLayer != null && annotating) {
-                AnnotationToolbar(
-                    annotationLayer,
-                    { viewModel.editAnnotations(tab.tabId, it) },
-                    { redo -> viewModel.stepAnnotationHistory(tab.tabId, redo) },
-                ) {
-                    viewModel.finishAnnotations(tab.tabId)
-                }
-            } else if (searchMode && tab != null) {
-                Column(Modifier.statusBarsPadding()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ReaderIcon("×", "Close search") { searchMode = false }
-                        OutlinedTextField(search.query, {
-                            searches[tab.tabId] = SearchState(it, status = if (it.isBlank()) null else SearchStatus.PENDING)
-                        }, Modifier.weight(1f), singleLine = true, placeholder = { Text(stringResource(R.string.reader_find_in_pdf)) })
-                        if (search.matches.isNotEmpty()) Text("${search.index + 1} / ${search.matches.size}")
-                        for ((symbol, delta) in listOf("↑" to -1, "↓" to 1)) {
-                            ReaderIcon(symbol, if (delta < 0) "Previous match" else "Next match",
-                                enabled = search.current != null) {
-                                val next = search.step(delta)
-                                searches[tab.tabId] = next
-                                next.current?.let { jump = PageJump(it.page, it) }
-                            }
-                        }
-                    }
-                    search.status?.let { Text(it.label, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
-                }
-            } else {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.reader_title)) },
-                    actions = {
-                        if (tab != null && document != null) {
-                            TextButton({
-                                viewModel.editAnnotations(tab.tabId) { it.copy(editing = true) }
-                            }, enabled = annotationLayer != null) { Text("Annotate") }
-                            ReaderIcon("⌕", "Search") { searchMode = true }
-                            ReaderIcon("☰", "Bookmarks") { showOutline = true }
-                            ReaderMenu(
-                                tab, crop, landscape, split,
-                                onViewMode = { viewModel.toggleViewMode(tab.tabId) },
-                                onNight = { viewModel.toggleNightMode(tab.tabId) },
-                                onThumbnails = { showThumbnails = true },
-                                onCrop = { crops[tab.tabId] = it },
-                                onSplit = { splitRequested = !splitRequested },
-                                onLock = { chrome = ReaderChrome.LOCKED },
+    val right = if (split && tab != null) {
+        state.tabs.firstOrNull { it.tabId == rightId }
+            ?: state.tabs.firstOrNull { it.tabId != tab.tabId } ?: tab
+    } else null
+
+    Box(Modifier.fillMaxSize()) {
+        val lockedTaps = if (chrome.locked) Modifier.pointerInput(Unit) {
+            detectTapGestures { revealLock() }
+        } else Modifier
+        Box(Modifier.fillMaxSize().then(lockedTaps), contentAlignment = Alignment.Center) {
+            val openError = state.openError
+            when {
+                state.restoring -> CircularProgressIndicator()
+                tab == null -> EmptyReader(state.recent, pagePadding, pickPdf, viewModel::openRecent)
+                openError != null -> Text(
+                    stringResource(openError.messageResource),
+                    Modifier.padding(24.dp),
+                )
+                document == null -> CircularProgressIndicator()
+                else -> {
+                    val primary: @Composable () -> Unit = {
+                        key(tab.tabId, document) {
+                            ReaderPages(
+                                document = document,
+                                tab = tab,
+                                horizontalOffset = viewModel.horizontalOffset(tab.tabId),
+                                search = if (searchMode) search else SearchState(),
+                                requestedJump = jump,
+                                onJumpConsumed = { jump = null },
+                                crop = crop,
+                                showThumbnails = showThumbnails,
+                                onDismissThumbnails = { showThumbnails = false },
+                                onPosition = { page, offset -> viewModel.updatePosition(tab.tabId, page, offset) },
+                                onZoom = { zoom, offset -> viewModel.updateZoom(tab.tabId, zoom, offset) },
+                                annotationLayer = annotationLayer,
+                                onAnnotation = { page, tool, color, width, points, note ->
+                                    viewModel.annotate(tab.tabId, document, page, tool, color, width, points, note)
+                                },
+                                immersive = chrome.immersive,
+                                pagePadding = pagePadding,
+                                overlayInsets = systemBars.only(WindowInsetsSides.Horizontal),
+                                onPageTap = onPageTap,
+                                onLockedTap = if (chrome.locked) revealLock else null,
+                                onSelectionChanged = onSelectionChanged,
                             )
                         }
-                    },
-                )
+                    }
+                    if (right != null) {
+                        SplitReader(tab, right, document, viewModel, crops[right.tabId] ?: CropMode.OFF,
+                            chrome, pagePadding, systemBars.only(WindowInsetsSides.Horizontal),
+                            onPageTap, if (chrome.locked) revealLock else null,
+                            onSelectionChanged, primary)
+                    } else primary()
+                }
             }
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().then(if (chrome.immersive) Modifier else Modifier.padding(padding))) {
-            if (!chrome.immersive && state.tabs.isNotEmpty()) {
-                TabStrip(state.tabs, state.activeTabId, viewModel::switch, { id ->
-                    if (drafts[id]?.dirty == true) closePending = id else viewModel.close(id)
-                }, pickPdf)
-            }
-            val lockedTaps = if (chrome.locked) Modifier.pointerInput(Unit) {
-                detectTapGestures { revealLock() }
-            } else Modifier
-            Box(Modifier.weight(1f).fillMaxWidth().then(lockedTaps), contentAlignment = Alignment.Center) {
-                val openError = state.openError
-                when {
-                    state.restoring -> CircularProgressIndicator()
-                    tab == null -> EmptyReader(state.recent, pickPdf, viewModel::openRecent)
-                    openError != null -> Text(
-                        stringResource(openError.messageResource),
-                        Modifier.padding(24.dp),
-                    )
-                    document == null -> CircularProgressIndicator()
-                    else -> {
-                        val primary: @Composable () -> Unit = {
-                            key(tab.tabId, document) {
-                                ReaderPages(
-                                    document = document,
-                                    tab = tab,
-                                    horizontalOffset = viewModel.horizontalOffset(tab.tabId),
-                                    search = if (searchMode) search else SearchState(),
-                                    requestedJump = jump,
-                                    onJumpConsumed = { jump = null },
-                                    crop = crop,
-                                    showThumbnails = showThumbnails,
-                                    onDismissThumbnails = { showThumbnails = false },
-                                    onPosition = { page, offset -> viewModel.updatePosition(tab.tabId, page, offset) },
-                                    onZoom = { zoom, offset -> viewModel.updateZoom(tab.tabId, zoom, offset) },
-                                    annotationLayer = annotationLayer,
-                                    onAnnotation = { page, tool, color, width, points, note ->
-                                        viewModel.annotate(tab.tabId, document, page, tool, color, width, points, note)
-                                    },
-                                    immersive = chrome.immersive,
-                                    onPageTap = onPageTap,
-                                    onLockedTap = if (chrome.locked) revealLock else null,
-                                    onSelectionChanged = onSelectionChanged,
-                                )
+        }
+        AnimatedVisibility(
+            visibleState = topOverlay,
+            enter = slideInVertically(readerChromeTween()) { -it } + fadeIn(readerChromeTween()),
+            exit = slideOutVertically(readerChromeTween()) { -it } + fadeOut(readerChromeTween()),
+        ) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .onSizeChanged { topOverlayHeight = it.height }
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                    .windowInsetsPadding(systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+            ) {
+                if (tab != null && annotationLayer != null && annotating) {
+                    AnnotationToolbar(
+                        annotationLayer,
+                        { viewModel.editAnnotations(tab.tabId, it) },
+                        { redo -> viewModel.stepAnnotationHistory(tab.tabId, redo) },
+                    ) {
+                        viewModel.finishAnnotations(tab.tabId)
+                    }
+                } else if (searchMode && tab != null) {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ReaderIcon("×", "Close search") { searchMode = false }
+                            OutlinedTextField(search.query, {
+                                searches[tab.tabId] = SearchState(it, status = if (it.isBlank()) null else SearchStatus.PENDING)
+                            }, Modifier.weight(1f), singleLine = true, placeholder = { Text(stringResource(R.string.reader_find_in_pdf)) })
+                            if (search.matches.isNotEmpty()) Text("${search.index + 1} / ${search.matches.size}")
+                            for ((symbol, delta) in listOf("↑" to -1, "↓" to 1)) {
+                                ReaderIcon(symbol, if (delta < 0) "Previous match" else "Next match",
+                                    enabled = search.current != null) {
+                                    val next = search.step(delta)
+                                    searches[tab.tabId] = next
+                                    next.current?.let { jump = PageJump(it.page, it) }
+                                }
                             }
                         }
-                        if (split) {
-                            val right = state.tabs.firstOrNull { it.tabId == rightId }
-                                ?: state.tabs.firstOrNull { it.tabId != tab.tabId } ?: tab
-                            SplitReader(state.tabs, tab, right, document, viewModel, crops[right.tabId] ?: CropMode.OFF,
-                                { rightId = it }, chrome, onPageTap, if (chrome.locked) revealLock else null,
-                                onSelectionChanged, primary)
-                        } else primary()
+                        search.status?.let { Text(it.label, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                     }
+                } else {
+                    TopAppBar(
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                        title = { Text(stringResource(R.string.reader_title)) },
+                        actions = {
+                            if (tab != null && document != null) {
+                                TextButton({
+                                    viewModel.editAnnotations(tab.tabId) { it.copy(editing = true) }
+                                }, enabled = annotationLayer != null) { Text("Annotate") }
+                                ReaderIcon("⌕", "Search") { searchMode = true }
+                                ReaderIcon("☰", "Bookmarks") { showOutline = true }
+                                ReaderMenu(
+                                    tab, crop, landscape, split,
+                                    onViewMode = { viewModel.toggleViewMode(tab.tabId) },
+                                    onNight = { viewModel.toggleNightMode(tab.tabId) },
+                                    onThumbnails = { showThumbnails = true },
+                                    onCrop = { crops[tab.tabId] = it },
+                                    onSplit = { splitRequested = !splitRequested },
+                                    onLock = { changeChrome(ReaderChrome.LOCKED) },
+                                )
+                            }
+                        },
+                    )
                 }
-                if (chrome.locked) {
-                    ReaderLockIndicator(lockReveal, Modifier.align(Alignment.TopEnd)) {
-                        snackbar.currentSnackbarData?.takeIf { it.visuals.message == lockedHint }?.dismiss()
-                        chrome = chrome.unlock()
+                if (state.tabs.isNotEmpty()) {
+                    TabStrip(state.tabs, state.activeTabId, viewModel::switch, { id ->
+                        if (drafts[id]?.dirty == true) closePending = id else viewModel.close(id)
+                    }, pickPdf)
+                }
+                if (tab != null && right != null) {
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f)) { PanePicker(state.tabs, tab, viewModel::switch) }
+                        Box(Modifier.weight(1f)) { PanePicker(state.tabs, right) { rightId = it } }
                     }
                 }
             }
         }
+        if (chrome.locked) {
+            ReaderLockIndicator(
+                lockReveal,
+                ready = topOverlay.isIdle && !topOverlay.currentState,
+                Modifier.align(Alignment.TopEnd)
+                    .windowInsetsPadding(systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+            ) {
+                snackbar.currentSnackbarData?.takeIf { it.visuals.message == lockedHint }?.dismiss()
+                changeChrome(chrome.unlock())
+            }
+        }
+        SnackbarHost(
+            snackbar,
+            Modifier.align(Alignment.BottomCenter)
+                .windowInsetsPadding(systemBars.only(WindowInsetsSides.Horizontal))
+                .padding(bottom = if (chrome.immersive) bottomInset else pagePadding.calculateBottomPadding()),
+        )
     }
 }
 
@@ -445,8 +503,13 @@ internal fun ReaderIcon(symbol: String, label: String, enabled: Boolean = true, 
 }
 
 @Composable
-private fun EmptyReader(recent: List<RecentPdf>, onAdd: () -> Unit, onOpen: (RecentPdf) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun EmptyReader(
+    recent: List<RecentPdf>,
+    pagePadding: PaddingValues,
+    onAdd: () -> Unit,
+    onOpen: (RecentPdf) -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = pagePadding, horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             Column(
                 Modifier.padding(vertical = 32.dp),
@@ -510,14 +573,14 @@ internal fun JumpDialog(currentPage: Int, count: Int, onDismiss: () -> Unit, onJ
 
 @Composable
 private fun SplitReader(
-    tabs: List<TabState>,
     left: TabState,
     right: TabState,
     activeDocument: PdfDocumentHandle,
     viewModel: ReaderViewModel,
     crop: CropMode,
-    onRight: (String) -> Unit,
     chrome: ReaderChrome,
+    pagePadding: PaddingValues,
+    overlayInsets: WindowInsets,
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
@@ -541,10 +604,7 @@ private fun SplitReader(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = with(LocalDensity.current) { maxWidth.toPx().coerceAtLeast(1f) }
         Row(Modifier.fillMaxSize()) {
-            Column(Modifier.weight(fraction)) {
-                if (!chrome.immersive) PanePicker(tabs, left, viewModel::switch)
-                Box(Modifier.weight(1f)) { primary() }
-            }
+            Box(Modifier.weight(fraction).fillMaxHeight()) { primary() }
             Box(Modifier.width(12.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant)
                 .pointerInput(width) {
                     detectHorizontalDragGestures { change, pixels ->
@@ -552,39 +612,39 @@ private fun SplitReader(
                         fraction = (fraction + pixels / width).coerceIn(0.25f, 0.75f)
                     }
                 })
-            Column(Modifier.weight(1f - fraction)) {
-                if (!chrome.immersive) PanePicker(tabs, right, onRight)
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    if (document == null) {
-                        if (opened.first) Text(stringResource(R.string.reader_open_error))
-                        else CircularProgressIndicator()
-                    } else key(right.tabId, document) {
-                        val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode, nightMode = right.nightMode)
-                        ReaderPages(
-                            annotationLayer = viewModel.annotationLayers[right.tabId],
-                            document = document, tab = pane, horizontalOffset = pans[right.tabId] ?: 0f,
-                            search = viewModel.searches[right.tabId] ?: SearchState(),
-                            requestedJump = null, onJumpConsumed = {}, crop = crop, showThumbnails = false,
-                            onDismissThumbnails = {},
-                            immersive = chrome.immersive,
-                            onPageTap = onPageTap,
-                            onLockedTap = onLockedTap,
-                            onSelectionChanged = onSelectionChanged,
-                            onPosition = { page, offset ->
-                                positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
-                                if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)
-                            },
-                            onZoom = { zoom, offset ->
-                                positions[right.tabId] = (positions[right.tabId] ?: pane).copy(zoom = zoom)
-                                pans[right.tabId] = offset
-                            },
-                        )
-                    }
+            Box(Modifier.weight(1f - fraction).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                if (document == null) {
+                    if (opened.first) Text(stringResource(R.string.reader_open_error))
+                    else CircularProgressIndicator()
+                } else key(right.tabId, document) {
+                    val pane = (positions[right.tabId] ?: right).copy(viewMode = right.viewMode, nightMode = right.nightMode)
+                    ReaderPages(
+                        annotationLayer = viewModel.annotationLayers[right.tabId],
+                        document = document, tab = pane, horizontalOffset = pans[right.tabId] ?: 0f,
+                        search = viewModel.searches[right.tabId] ?: SearchState(),
+                        requestedJump = null, onJumpConsumed = {}, crop = crop, showThumbnails = false,
+                        onDismissThumbnails = {},
+                        immersive = chrome.immersive,
+                        pagePadding = pagePadding,
+                        overlayInsets = overlayInsets,
+                        onPageTap = onPageTap,
+                        onLockedTap = onLockedTap,
+                        onSelectionChanged = onSelectionChanged,
+                        onPosition = { page, offset ->
+                            positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
+                            if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)
+                        },
+                        onZoom = { zoom, offset ->
+                            positions[right.tabId] = (positions[right.tabId] ?: pane).copy(zoom = zoom)
+                            pans[right.tabId] = offset
+                        },
+                    )
                 }
             }
         }
     }
 }
+
 
 @Composable
 private fun PanePicker(tabs: List<TabState>, tab: TabState, choose: (String) -> Unit) {
