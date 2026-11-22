@@ -55,4 +55,13 @@
     <string name="tools_split_pick_pages">Select the pages to save as separate PDFs.</string>
     <string name="tools_grayscale_note">Text and vector colours stay as they are</string>
     <string name="tools_first_sheet">Sheet 1</string>
+    <string name="tools_enhance">Enhance</string>
+    <string name="tools_enhance_document">Document</string>
+    <string name="tools_enhance_colour">Colour</string>
+    <string name="tools_enhance_bw">Black &amp; white</string>
+    <string name="tools_enhance_gray">Grayscale</string>
+    <string name="tools_enhance_off">Off</string>
+    <string name="tools_enhance_hint">Pages are cropped automatically. To adjust crops, import the photos with Scan instead.</string>
+    <string name="tools_enhancing_progress">Enhancing %1$d of %2$d</string>
+    <string name="tools_unreadable_image">Could not read image %1$d (%2$s).</string>
 </resources>
