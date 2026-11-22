@@ -18,7 +18,7 @@
     <string name="reader_page_range">Page (1–%1$d)</string>
     <string name="reader_page_label">Page %1$d</string>
     <string name="reader_go">Go</string>
-    <string name="reader_encrypted">This PDF is password-protected (unlocking arrives in Phase 6)</string>
+    <string name="reader_encrypted">This PDF is password-protected. Remove the password with Tools → Password, then open the unlocked copy.</string>
     <string name="reader_open_error">Can\'t open this PDF</string>
     <string name="reader_save_error">Couldn\'t save reader state</string>
     <string name="reader_render_error">Couldn\'t render this page</string>

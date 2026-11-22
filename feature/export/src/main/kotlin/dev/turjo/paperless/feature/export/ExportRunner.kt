@@ -10,6 +10,8 @@ import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.paramsHash
 import dev.turjo.paperless.core.pdf.*
+import dev.turjo.paperless.core.pdf.tools.PageWidthNormalizer
+import dev.turjo.paperless.core.pdf.tools.WidthTarget
 import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
@@ -32,6 +34,8 @@ internal data class ExportOptions(
     val format: ExportFormat = ExportFormat.PDF,
     val size: PageSizeOption = PageSizeOption.A4,
     val quality: QualityPreset = QualityPreset.MEDIUM,
+    /** EX-5: with Auto page size each page takes its photo's shape; scale them to one width (GoodNotes zoom fix). */
+    val sameWidth: Boolean = true,
 )
 
 @Singleton
@@ -73,8 +77,21 @@ class ExportRunner internal constructor(
         },
         JpegRecompressor::recompress,
         { pages, options, output, title ->
-            output.outputStream().use {
-                PdfExporter(context).export(pages, options.size, options.quality, it, title)
+            if (options.sameWidth && options.size == PageSizeOption.AUTO) {
+                val raw = File(output.parentFile, output.name + ".raw")
+                try {
+                    raw.outputStream().use {
+                        PdfExporter(context).export(pages, options.size, options.quality, it, title)
+                    }
+                    PdfBox.ensureInit(context)
+                    PageWidthNormalizer.normalize(raw, WidthTarget.Common, output)
+                } finally {
+                    raw.delete()
+                }
+            } else {
+                output.outputStream().use {
+                    PdfExporter(context).export(pages, options.size, options.quality, it, title)
+                }
             }
         },
         { pages, options, dir, name ->

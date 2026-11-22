@@ -112,12 +112,22 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.export_same_width))
-                    Text(stringResource(R.string.export_phase))
+            if (options.format.pdf && options.size == PageSizeOption.AUTO) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.export_same_width))
+                        Text(
+                            stringResource(R.string.export_same_width_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = options.sameWidth,
+                        onCheckedChange = { model.select(options.copy(sameWidth = it)) },
+                        enabled = enabled,
+                    )
                 }
-                Switch(checked = true, onCheckedChange = {}, enabled = false)
             }
             if (!state.loaded) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())

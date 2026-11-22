@@ -16,7 +16,7 @@
     <string name="export_estimate">≈ %1$s</string>
     <string name="export_filename">File name</string>
     <string name="export_same_width">Same width for all pages</string>
-    <string name="export_phase">Phase 6</string>
+    <string name="export_same_width_hint">Narrow pages are scaled to match, so readers such as GoodNotes open every page at the same zoom</string>
     <string name="export_cancel">Cancel</string>
     <string name="export_share">Share</string>
     <string name="export_save">Save to device</string>
