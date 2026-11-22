@@ -239,7 +239,7 @@ internal object LineCandidates {
         return 0.5 * abs(area)
     }
 
-    fun find(maps: List<Mat>, gradients: Gradients, threshold: Double): Result {
+    fun find(maps: List<Mat>, gradients: Gradients, threshold: Double, keep: Int = 60): Result {
         val width = gradients.width
         val height = gradients.height
         val merged = mergedLines(maps, hypot(width.toDouble(), height.toDouble()))
@@ -282,6 +282,6 @@ internal object LineCandidates {
                 candidates.add(score to Geometry.orderQuad(quad))
             }
         }
-        return Result(candidates.sortedByDescending { it.first }.take(60).map { it.second }, merged)
+        return Result(candidates.sortedByDescending { it.first }.take(keep).map { it.second }, merged)
     }
 }

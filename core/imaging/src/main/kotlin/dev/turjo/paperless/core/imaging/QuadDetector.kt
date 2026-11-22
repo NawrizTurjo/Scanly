@@ -18,6 +18,8 @@ import kotlin.math.round
 import kotlin.math.sqrt
 
 internal const val LIVE_WORK_MAX = 480
+private const val LIVE_TOP_LINE = 30
+private const val LIVE_STATS_MAX = 240.0
 private const val MIN_SCORE = 0.45
 
 data class Detection(val quad: FloatArray?, val confidence: Float)
@@ -55,10 +57,10 @@ class QuadDetector {
 
     internal fun detectLive(gray: Mat): Detection =
         newMat { Imgproc.cvtColor(gray, it, Imgproc.COLOR_GRAY2BGR) }.useMat { bgr ->
-            withResized(bgr, imageScale(bgr, LIVE_WORK_MAX)) { detectWorking(it, null) }
+            withResized(bgr, imageScale(bgr, LIVE_WORK_MAX)) { detectWorking(it, null, live = true) }
         }
 
-    private fun detectWorking(small: Mat, aspectPrior: Float?): Detection {
+    private fun detectWorking(small: Mat, aspectPrior: Float?, live: Boolean = false): Detection {
         val width = small.cols()
         val height = small.rows()
         val channels = List(3) { Mat() }
@@ -76,27 +78,35 @@ class QuadDetector {
             for (i in 1..2) Imgproc.medianBlur(channels[i], channels[i], k)
             val gradients = Gradients(channels, width, height)
             val threshold = maxOf(12.0, Percentiles.ofFloats(gradients.magnitude, 85.0))
-            val stats = PageScore(channels, gradients, threshold)
-            val contours = candidates(small).map(Geometry::orderQuad)
-            val clahe = Imgproc.createCLAHE(3.0, Size(8.0, 8.0))
-            val lines = try {
+            val stats = PageScore(channels, gradients, threshold, if (live) LIVE_STATS_MAX else 500.0)
+            // Camera frames are luma only (a/b flat) and must be fast: no contour pass, lines from closed and plain
+            // luma only, fewer candidates and smaller page statistics (lab: detect2 live profile).
+            val found = if (live) {
                 newMat { Imgproc.cvtColor(small, it, Imgproc.COLOR_BGR2GRAY) }.useMat { gray ->
-                    newMat { clahe.apply(channels[0], it) }.useMat { enhanced ->
-                        LineCandidates.find(channels + listOf(gray, enhanced), gradients, threshold)
-                    }
+                    LineCandidates.find(listOf(channels[0], gray), gradients, threshold, keep = LIVE_TOP_LINE)
                 }
-            } finally {
-                clahe.collectGarbage()
-                clahe.clear()
+            } else {
+                val clahe = Imgproc.createCLAHE(3.0, Size(8.0, 8.0))
+                try {
+                    newMat { Imgproc.cvtColor(small, it, Imgproc.COLOR_BGR2GRAY) }.useMat { gray ->
+                        newMat { clahe.apply(channels[0], it) }.useMat { enhanced ->
+                            LineCandidates.find(channels + listOf(gray, enhanced), gradients, threshold)
+                        }
+                    }
+                } finally {
+                    clahe.collectGarbage()
+                    clahe.clear()
+                }
             }
+            val contours = if (live) emptyList() else candidates(small).map(Geometry::orderQuad)
 
-            val scored = (contours + lines.quads).mapNotNull { stats.score(it, aspectPrior) }
+            val scored = (contours + found.quads).mapNotNull { stats.score(it, aspectPrior) }
                 .sortedByDescending { it.total }
             val winner = scored.firstOrNull() ?: return Detection(null, 0f)
             if (winner.total < MIN_SCORE) return Detection(null, winner.total.toFloat())
             val enclosing = stats.preferEnclosing(winner, scored)
-            val best = if (aspectPrior == null) stats.growToSpread(enclosing, scored, lines.merged) else enclosing
-            val half = splitSpread(best.quad.vectors(), lines.merged, width, height)?.orderedQuad()
+            val best = if (aspectPrior == null) stats.growToSpread(enclosing, scored, found.merged) else enclosing
+            val half = splitSpread(best.quad.vectors(), found.merged, width, height)?.orderedQuad()
             val quad = if (half == null) best.quad else {
                 val match = scored.maxBy { quadIou(it.quad, half) }
                 if (quadIou(match.quad, half) >= 0.85) match.quad else half

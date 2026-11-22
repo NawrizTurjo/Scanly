@@ -27,6 +27,8 @@ RIM_FAIL = 0.6
 BRIGHT = 0.15
 ASPECT = 0.30
 STATS_MAX = 500
+LIVE_TOP_LINE = 30
+LIVE_STATS_MAX = 240
 
 
 def _side_soft(q, grads, gthresh, shape):
@@ -55,7 +57,7 @@ def _side_soft(q, grads, gthresh, shape):
     return out
 
 
-def _context(chans, mag, gthresh):
+def _context(chans, mag, gthresh, stats_max=None):
     """Per-image maps for the page measures. Paper = neutral, locally even (lighting gradients pass, clutter and
     leftover text don't) and not on an edge, so page-toned regions are cut apart by their outlines."""
     L, A, B = chans
@@ -65,7 +67,7 @@ def _context(chans, mag, gthresh):
     edge = cv2.dilate((mag >= gthresh).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     paperish = (chroma < 24) & (np.abs(Lf - local) < 12) & ~edge
     # page statistics run on a half-size copy: ~120 candidates each fill a mask and label components
-    f = STATS_MAX / float(max(L.shape))
+    f = (stats_max or STATS_MAX) / float(max(L.shape))
     size = (int(round(L.shape[1] * f)), int(round(L.shape[0] * f)))
     Ls = cv2.resize(Lf, size, interpolation=cv2.INTER_AREA)
     ps = cv2.resize(paperish.astype(np.uint8), size, interpolation=cv2.INTER_NEAREST).astype(bool)
@@ -307,7 +309,7 @@ def _grow_to_spread(best, scored, lines, ctx, shape):
     return best
 
 
-def detect_quad(image, refine=True, debug=False, aspect_prior=None, work_max=WORK_MAX):
+def detect_quad(image, refine=True, debug=False, aspect_prior=None, work_max=WORK_MAX, live=False):
     small, s = D._resize_max(image, work_max)
     h, w = small.shape[:2]
     k = max(5, int(round(max(h, w) / 90.0)) | 1)
@@ -316,14 +318,19 @@ def detect_quad(image, refine=True, debug=False, aspect_prior=None, work_max=WOR
     mag = np.sqrt(grads[0] ** 2 + grads[1] ** 2).max(axis=0)
     gthresh = max(12.0, float(np.percentile(mag, 85)))
     gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    ctx = _context(chans, mag, gthresh)
+    ctx = _context(chans, mag, gthresh, LIVE_STATS_MAX if live else None)
 
-    cands = [order_quad(q) for q in D._candidates(small)[0]]
     lines = []
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(chans[0])
-    lc = LN.candidates(small, grads, gthresh, chans + [gray, clahe], lines_out=lines)
+    if live:
+        # Camera frames are luma only (a/b flat) and must be fast: lines from closed and plain luma only.
+        cands = []
+        lc = LN.candidates(small, grads, gthresh, [chans[0], gray], lines_out=lines)
+    else:
+        cands = [order_quad(q) for q in D._candidates(small)[0]]
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(chans[0])
+        lc = LN.candidates(small, grads, gthresh, chans + [gray, clahe], lines_out=lines)
     lc.sort(key=lambda t: -t[0])
-    cands += [q for _, q, _, _ in lc[:TOP_LINE]]
+    cands += [q for _, q, _, _ in lc[:LIVE_TOP_LINE if live else TOP_LINE]]
 
     area_img = float(h * w)
     scored = []
@@ -369,4 +376,4 @@ def detect_quad_live(gray):
     """Camera overlay: the same pipeline on the analysis frame's luma (Y plane) at 480 px, no refinement. With no
     chroma the a/b channels are flat, so colour terms drop out. Returns (quad in input px or None, confidence)."""
     bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    return detect_quad(bgr, refine=False, work_max=LIVE_MAX)
+    return detect_quad(bgr, refine=False, work_max=LIVE_MAX, live=True)

@@ -31,7 +31,12 @@ internal fun quadIou(a: FloatArray, b: FloatArray): Double = a.pointMat().useMat
     }
 }
 
-internal class PageScore(channels: List<Mat>, private val gradients: Gradients, private val threshold: Double) {
+internal class PageScore(
+    channels: List<Mat>,
+    private val gradients: Gradients,
+    private val threshold: Double,
+    statsMax: Double = 500.0,
+) {
     data class Candidate(
         val quad: FloatArray, val total: Double, val edge: Double, val area: Double, val support: List<Double?>,
     )
@@ -41,7 +46,7 @@ internal class PageScore(channels: List<Mat>, private val gradients: Gradients, 
     private val width = gradients.width
     private val height = gradients.height
     private val maxSide = maxOf(width, height)
-    private val scale = 500.0 / maxSide
+    private val scale = statsMax / maxSide
     private val statsWidth = Math.rint(width * scale).toInt().coerceAtLeast(1)
     private val statsHeight = Math.rint(height * scale).toInt().coerceAtLeast(1)
     private val size = Size(statsWidth.toDouble(), statsHeight.toDouble())

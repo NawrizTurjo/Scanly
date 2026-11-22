@@ -22,8 +22,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -194,44 +196,51 @@ fun CameraScreen(
     BackHandler(onBack = model::close)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (allowed) {
-            CameraPreview(
-                flash = flash,
-                liveQuadSource = liveQuadSource,
-                fpsCounter = fpsCounter,
-                onQuad = { sample ->
-                    val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                    if (sample != null || controller == null) liveQuad = sample
-                    model.onOverlay(sample?.quad.takeIf { resumed }, SystemClock.elapsedRealtime(), controller.takeIf { resumed })
-                },
-                onController = {
-                    controller = it
-                    if (it != null) previewFailed = false
-                },
-                onError = { previewFailed = true },
-            )
-        }
-        Box(Modifier.matchParentSize()) {
-            if (allowed && liveQuadSource != null) LiveQuadOverlay(liveQuad, Modifier.matchParentSize())
-            if (state.mode == ScanMode.ID_CARD || state.mode == ScanMode.BOOK) {
-                ScanModeGuide(state.mode, Modifier.matchParentSize())
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Show the whole 4:3 frame the camera saves, letterboxed, rather than cropping it to the tall screen:
+            // a cropped preview made people step back and capture far more desk than they had framed.
+            val frameRatio = if (maxWidth < maxHeight) 3f / 4f else 4f / 3f
+            Box(Modifier.align(Alignment.Center).aspectRatio(frameRatio)) {
+                if (allowed) {
+                    CameraPreview(
+                        flash = flash,
+                        liveQuadSource = liveQuadSource,
+                        fpsCounter = fpsCounter,
+                        onQuad = { sample ->
+                            val resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                            if (sample != null || controller == null) liveQuad = sample
+                            model.onOverlay(sample?.quad.takeIf { resumed }, SystemClock.elapsedRealtime(), controller.takeIf { resumed })
+                        },
+                        onController = {
+                            controller = it
+                            if (it != null) previewFailed = false
+                        },
+                        onError = { previewFailed = true },
+                    )
+                }
+                Box(Modifier.matchParentSize()) {
+                    if (allowed && liveQuadSource != null) LiveQuadOverlay(liveQuad, Modifier.matchParentSize())
+                    if (state.mode == ScanMode.ID_CARD || state.mode == ScanMode.BOOK) {
+                        ScanModeGuide(state.mode, Modifier.matchParentSize())
+                    }
+                    state.autoCaptureProgress?.let { progress ->
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.align(Alignment.Center).size(56.dp),
+                            strokeWidth = 4.dp,
+                        )
+                    }
+                    if (BuildConfig.DEBUG && fpsCounter != null) {
+                        AnalysisFpsReadout(
+                            fpsCounter,
+                            Modifier.align(Alignment.TopEnd)
+                                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                                .padding(top = 58.dp, end = 8.dp),
+                        )
+                    }
+                    if (shutterFlash) Box(Modifier.matchParentSize().background(Color.White))
+                }
             }
-            state.autoCaptureProgress?.let { progress ->
-                CircularProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.align(Alignment.Center).size(56.dp),
-                    strokeWidth = 4.dp,
-                )
-            }
-            if (BuildConfig.DEBUG && fpsCounter != null) {
-                AnalysisFpsReadout(
-                    fpsCounter,
-                    Modifier.align(Alignment.TopEnd)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
-                        .padding(top = 58.dp, end = 8.dp),
-                )
-            }
-            if (shutterFlash) Box(Modifier.matchParentSize().background(Color.White))
         }
         if (!allowed) {
             val settings = requested == true && !rationale
