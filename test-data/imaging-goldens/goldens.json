@@ -257,7 +257,7 @@
           1521.83
         ]
       ],
-      "confidence": 0.603,
+      "confidence": 0.618,
       "output_size_snapped": [
         911,
         1229
@@ -291,7 +291,7 @@
             609.07
           ]
         ],
-        "confidence": 0.531
+        "confidence": 0.543
       }
     },
     "glare_04": {

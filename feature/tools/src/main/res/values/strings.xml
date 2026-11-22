@@ -61,7 +61,7 @@
     <string name="tools_enhance_bw">Black &amp; white</string>
     <string name="tools_enhance_gray">Grayscale</string>
     <string name="tools_enhance_off">Off</string>
-    <string name="tools_enhance_hint">Pages are cropped automatically. To adjust crops, import the photos with Scan instead.</string>
+    <string name="tools_enhance_hint">Pages are cropped and cleaned automatically. To check each crop first, use Adjust pages.</string>
     <string name="tools_enhancing_progress">Enhancing %1$d of %2$d</string>
     <string name="tools_unreadable_image">Could not read image %1$d (%2$s).</string>
     <string name="tools_adjust_images">Adjust pages&#8230;</string>

@@ -31,6 +31,10 @@ internal fun quadIou(a: FloatArray, b: FloatArray): Double = a.pointMat().useMat
     }
 }
 
+// How much brighter than the interior reference paper may be: a lighting gradient across a page (window light) can lift one
+// side well above the 70th-percentile reference, and that side is still paper (lab: detect2.PAPER_UP).
+private const val PAPER_UP = 60.0
+
 internal class PageScore(
     channels: List<Mat>,
     private val gradients: Gradients,
@@ -109,7 +113,7 @@ internal class PageScore(
 
     private fun goodMap(ref: Double): ByteArray {
         val lo = (ref - 45).toFloat()
-        val hi = (ref + 30).toFloat()
+        val hi = (ref + PAPER_UP).toFloat()
         return ByteArray(luma.size) { if (paper[it] != 0.toByte() && luma[it] > lo && luma[it] < hi) 1 else 0 }
     }
 

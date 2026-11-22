@@ -52,9 +52,9 @@ class MainViewModel @Inject constructor(
     repository: SettingsRepository,
     private val documents: DocumentRepository,
     private val reader: ReaderRepository,
-    sessions: ScanSessionRepository,
-    files: FileStore,
-    processing: PageProcessing,
+    private val sessions: ScanSessionRepository,
+    private val files: FileStore,
+    private val processing: PageProcessing,
 ) : ViewModel() {
     private val storedSettings = MutableStateFlow<UserSettings?>(null)
     val settings = storedSettings.asStateFlow()
@@ -143,6 +143,21 @@ class MainViewModel @Inject constructor(
 
     internal fun receiveFileIntent(intent: Intent) {
         fileIntents.trySend(intent)
+    }
+
+    /** Tools → Images to PDF → "Adjust pages…": open the photos as a new scan so crops and filters can be fixed. */
+    internal fun importImagesAsScan(uris: List<Uri>) {
+        viewModelScope.launch {
+            val result = importSharedImages(
+                uris.filter { it.scheme == ContentResolver.SCHEME_CONTENT || it.scheme == ContentResolver.SCHEME_FILE },
+                context.contentResolver, files, documents, sessions, processing,
+            )
+            entryEvents.send(EntryEvent(
+                route = result.draftId?.let(::ReviewRoute),
+                message = R.string.share_import_error.takeIf { result.hadErrors },
+                previousScanSaved = result.previousScanSaved,
+            ))
+        }
     }
 
     internal fun openPdf(key: PdfKey) {

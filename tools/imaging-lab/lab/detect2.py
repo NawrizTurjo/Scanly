@@ -27,6 +27,12 @@ RIM_FAIL = 0.6
 BRIGHT = 0.15
 ASPECT = 0.30
 STATS_MAX = 500
+# Rim offsets for sides on the photo border. A page edge a few px inside the border (book gutter, desk sliver) must still pass.
+FRAME_RIM = (0.004, 0.008, 0.012)
+# How much brighter than the interior reference paper may be (lighting gradients across a page), and how far the rim
+# may differ from the deep interior.
+PAPER_UP = 60
+RIM_TOL = 25
 LIVE_TOP_LINE = 30
 LIVE_STATS_MAX = 240
 
@@ -87,7 +93,7 @@ def _page_stats(ctx, q, shape, frame_sides=()):
     if sel.sum() < 100:
         return 0.0, 0.0, 0.0, 0.0, 0.0
     ref = float(np.percentile(Lf[sel], 70))
-    good_map = paperish & (Lf > ref - 45) & (Lf < ref + 30)
+    good_map = paperish & (Lf > ref - 45) & (Lf < ref + PAPER_UP)
     page = float(good_map[sel].mean())
     diag = float(np.hypot(w, h))
     c = q.mean(axis=0)
@@ -105,12 +111,12 @@ def _page_stats(ctx, q, shape, frame_sides=()):
         xd = np.clip(np.round(deep[:, 0]).astype(int), 0, w - 1)
         yd = np.clip(np.round(deep[:, 1]).astype(int), 0, h - 1)
         hits = []
-        for off in ((0.004, 0.008, 0.012) if i in frame_sides else (0.015, 0.025, 0.035)):
+        for off in (FRAME_RIM if i in frame_sides else (0.015, 0.025, 0.035)):
             p = base + off * diag * n
             xi = np.clip(np.round(p[:, 0]).astype(int), 0, w - 1)
             yi = np.clip(np.round(p[:, 1]).astype(int), 0, h - 1)
             # page-like here, and the same paper as further inside (a side on the desk beyond the page fails)
-            hits.append(good_map[yi, xi] & (np.abs(Lf[yi, xi] - Lf[yd, xd]) < 25))
+            hits.append(good_map[yi, xi] & (np.abs(Lf[yi, xi] - Lf[yd, xd]) < RIM_TOL))
         rims.append(float(np.mean(hits)))
     # coverage: page-toned components that the quad overlaps, how much of them is inside the quad
     gm = cv2.morphologyEx(good_map.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -162,7 +168,7 @@ def _prefer_enclosing(best, scored, shape, ctx):
     mb = np.zeros((h, w), np.uint8)
     cv2.fillConvexPoly(mb, np.int32(np.round(order_quad(best.astype(np.float32)) * f)), 1)
     ref = float(np.percentile(ctx["L"][mb.astype(bool)], 70))
-    good = ctx["paperish"] & (ctx["L"] > ref - 45) & (ctx["L"] < ref + 30)
+    good = ctx["paperish"] & (ctx["L"] > ref - 45) & (ctx["L"] < ref + PAPER_UP)
     bq = order_quad(best.astype(np.float32))
     info_b = next(i for _, q, i in scored if q is best)
     area_b = cv2.contourArea(bq.reshape(-1, 1, 2))

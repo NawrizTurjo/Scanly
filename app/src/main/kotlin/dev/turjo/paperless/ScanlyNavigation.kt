@@ -115,6 +115,7 @@ internal fun ScanlyNavigation(
     preparingPdf: Boolean,
     onOpenFile: (java.io.File) -> Unit = {},
     onOpenPdfAtPage: (PdfKey, Int) -> Unit = { key, _ -> onOpenPdf(key) },
+    onAdjustImages: ((List<android.net.Uri>) -> Unit)? = null,
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val snackbar = remember { SnackbarHostState() }
@@ -205,7 +206,7 @@ internal fun ScanlyNavigation(
                         onImmersiveChanged = { readerImmersive = it },
                     )
                 }
-                entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile) }
+                entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages) }
                 entry<SettingsRoute> { SettingsScreen() }
                 entry<CameraRoute> { key ->
                     CameraScreen(
