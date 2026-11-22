@@ -1,6 +1,5 @@
 <resources>
     <string name="tools_title">Tools</string>
-    <string name="coming_soon">Coming soon</string>
     <string name="tool_merge">Merge</string>
     <string name="tool_split">Split</string>
     <string name="tool_page_edits">Page edits</string>
