@@ -26,8 +26,10 @@ Scanly turns phone photos of paper into clean, flat pages, keeps them in a local
 | **Scan** | Batch or single capture, live page outline, auto-capture, gallery import, share-to-scan, Quick Settings tile |
 | **Clean up** | Auto-crop, perspective fix, Document / Colour / B&W / Grayscale / Whiteboard filters, shadow and glare fixes, auto-deskew, coloured-ink removal |
 | **Special modes** | ID card (front and back on one A4 page), Book (a spread becomes two pages), Whiteboard, two-sided batches, auto-split at blank sheets |
-| **Library** | Folders, favourites, search by name, folder, date and text inside PDFs, recycle bin, app lock, plain-file backup and restore |
-| **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations |
+| **Library** | Folders, tags, favourites, search by name, folder, tag, date and text inside PDFs, swipe to share or delete (with Undo), recycle bin, app lock, plain-file backup and restore |
+| **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations, full-screen lock, page tones (Night, Sepia, Warm) |
+| **Export** | PDF, JPG or PNG for a whole document; Share or Save image for one enhanced page from the page viewer |
+| **Look** | Light, dark or system theme, AMOLED black, Material You colours or one of five accents, in-app Help, one-time tips |
 | **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs |
 
 ## Screenshots

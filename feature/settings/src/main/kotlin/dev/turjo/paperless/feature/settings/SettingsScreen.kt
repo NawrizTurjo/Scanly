@@ -186,7 +186,14 @@ fun SettingsScreen(
             AccentChoices(settings.accent, enabled = !settings.dynamicColor, onSelect = viewModel::setAccent)
             HorizontalDivider()
             ListItem(
-                supportingContent = { Text(stringResource(R.string.about_summary)) },
+                supportingContent = {
+                    val context = LocalContext.current
+                    val version = remember(context) {
+                        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+                            .getOrNull().orEmpty()
+                    }
+                    Text(stringResource(R.string.about_summary, version))
+                },
             ) { Text(stringResource(R.string.about)) }
             ListItem(modifier = Modifier.clickable { showLicences = true }) {
                 Text(stringResource(R.string.open_source_licences))

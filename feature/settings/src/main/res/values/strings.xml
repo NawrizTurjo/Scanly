@@ -6,7 +6,7 @@
     <string name="theme_dark">Dark</string>
     <string name="dynamic_color">Dynamic colour</string>
     <string name="about">About</string>
-    <string name="about_summary">Scanly 0.1.0 · offline, no tracking</string>
+    <string name="about_summary">Scanly %1$s · offline, no tracking</string>
     <string name="scanning">Scanning</string>
     <string name="security">Security</string>
     <string name="appearance">Appearance</string>
