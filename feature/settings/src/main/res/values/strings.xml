@@ -78,4 +78,6 @@
     <string name="help_library_body">Search for documents by name and use sorting to change their order. Organise your documents into folders and mark favourites for quick access. Switch between list and grid views.</string>
     <string name="help_privacy">Privacy</string>
     <string name="help_privacy_body">You can use Scanly fully offline, and the app has no internet permission. Turn on App lock in Settings to protect access with your device credentials. Use Backup and restore to keep a copy of your library in a folder you choose.</string>
+    <string name="help_show_tips">Show tips again</string>
+    <string name="help_tips_reset">Tips will show again.</string>
 </resources>

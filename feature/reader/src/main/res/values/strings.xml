@@ -1,7 +1,7 @@
 <resources>
     <string name="reader_lock_full_screen">Lock full screen</string>
     <string name="reader_unlock_full_screen">Unlock full screen</string>
-    <string name="reader_locked_hint">Locked. Long-press the lock to exit</string>
+    <string name="reader_locked_hint">Locked. Long-press anywhere to unlock.</string>
     <string name="reader_title">Reader</string>
     <string name="reader_pdf">PDF</string>
     <string name="no_pdfs">No PDFs open</string>
@@ -39,4 +39,6 @@
     <string name="reader_open_browser">Open in browser?</string>
     <string name="reader_open_link">Open</string>
     <string name="reader_cancel_link">Cancel</string>
+    <string name="reader_tip_lock">Screen locked. Long-press anywhere to unlock.</string>
+    <string name="reader_tip_tap">Tap the page to hide or show the bars.</string>
 </resources>

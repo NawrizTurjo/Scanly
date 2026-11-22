@@ -52,6 +52,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.pdf.ShareIntents
@@ -144,6 +145,13 @@ fun PageViewerScreen(
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     if (ids.isEmpty() && !state.close) EditorProgress()
+                    FirstRunTip(
+                        "viewer_save",
+                        stringResource(R.string.viewer_tip_save),
+                        visible = canAct && !confirmDelete && !state.close,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        alignment = Alignment.TopEnd,
+                    )
                     HorizontalPager(
                         state = pager,
                         modifier = Modifier.fillMaxSize(),
