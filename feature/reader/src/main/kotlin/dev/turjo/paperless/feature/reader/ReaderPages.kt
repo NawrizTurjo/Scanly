@@ -162,7 +162,9 @@ internal fun ReaderPages(
         if (onTagScroll == null) {
             ReaderPageTag(
                 displayPage + 1, displayPage + 1, document.pageCount, scrolling,
-                Modifier.align(Alignment.CenterEnd).windowInsetsPadding(overlayInsets),
+                Modifier.align(Alignment.CenterEnd).windowInsetsPadding(overlayInsets)
+                    .padding(top = pagePadding.calculateTopPadding(), bottom = pagePadding.calculateBottomPadding()),
+                onDragToPage = { page -> localJump = PageJump(page) },
             )
         }
         val chipPadding = Modifier.windowInsetsPadding(overlayInsets)
