@@ -77,8 +77,15 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
                 mutableState.update { it.copy(checking = true, error = null) }
                 val (installed, newer) = withContext(Dispatchers.IO) {
                     val installed = app.packageManager.getPackageInfo(app.packageName, 0).versionName.orEmpty()
-                    val latest = request(RELEASE_URL) { connection ->
-                        parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() })
+                    val latest = try {
+                        request(RELEASE_URL) { connection ->
+                            parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() })
+                        }
+                    } catch (limited: UpdateException) {
+                        // The API allows 60 anonymous requests an hour per IP, which a shared network (campus Wi-Fi,
+                        // carrier NAT) can use up. The website's /releases/latest redirect has no such limit.
+                        if (limited.messageResource != R.string.update_rate_limited) throw limited
+                        latestFromWebsite()
                     }
                     installed to latest.takeIf { isNewerVersion(it.version, installed) }
                 }
@@ -254,6 +261,27 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
 }
 
 private const val RELEASE_URL = "https://api.github.com/repos/NawrizTurjo/Scanly/releases/latest"
+private const val RELEASES_PAGE = "https://github.com/NawrizTurjo/Scanly/releases"
+
+/** Latest stable release without the API: the tag from the website redirect, the APK by its release file name. */
+private fun latestFromWebsite(): UpdateRelease {
+    val connection = URL("$RELEASES_PAGE/latest").openConnection() as HttpURLConnection
+    val location = try {
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 10_000
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("User-Agent", "Scanly-updater")
+        if (connection.responseCode !in 300..399) throw UpdateException(R.string.update_server_failed)
+        connection.getHeaderField("Location") ?: throw UpdateException(R.string.update_server_failed)
+    } finally {
+        connection.disconnect()
+    }
+    val version = tagFromReleaseLocation(location) ?: throw UpdateException(R.string.update_not_found)
+    val url = "$RELEASES_PAGE/download/v$version/Scanly-$version-arm64.apk"
+    val size = request(url) { it.contentLengthLong }
+    if (size <= 0) throw UpdateException(R.string.update_no_asset)
+    return UpdateRelease(version, "", url, size)
+}
 
 private inline fun <T> request(url: String, read: (HttpURLConnection) -> T): T {
     var destination = URL(url)

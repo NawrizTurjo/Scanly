@@ -25,6 +25,13 @@ internal fun parseUpdateRelease(json: String): UpdateRelease {
     throw UpdateException(R.string.update_no_asset)
 }
 
+/** "https://github.com/o/r/releases/tag/v1.2.3" -> "1.2.3"; null for anything else. */
+internal fun tagFromReleaseLocation(location: String): String? {
+    val tag = location.substringAfter("/releases/tag/", "").substringBefore('?').substringBefore('#')
+    val version = tag.removePrefix("v")
+    return version.takeIf { tag.startsWith("v") && versionParts(it) != null }
+}
+
 private fun versionParts(version: String): List<Int>? {
     val parts = version.removePrefix("v").substringBefore('+').split('.')
     if (parts.size != 3) return null

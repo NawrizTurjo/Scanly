@@ -1,10 +1,21 @@
 package dev.turjo.paperless.feature.settings
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateReleaseTest {
+    @Test
+    fun websiteRedirectGivesTheVersion() {
+        assertEquals("1.1.0", tagFromReleaseLocation("https://github.com/NawrizTurjo/Scanly/releases/tag/v1.1.0"))
+        assertEquals("2.0.10", tagFromReleaseLocation("/NawrizTurjo/Scanly/releases/tag/v2.0.10?x=1"))
+        assertNull(tagFromReleaseLocation("https://github.com/NawrizTurjo/Scanly/releases"))
+        assertNull(tagFromReleaseLocation("https://github.com/NawrizTurjo/Scanly/releases/tag/latest"))
+        assertNull(tagFromReleaseLocation("https://github.com/NawrizTurjo/Scanly/releases/tag/v1.1"))
+    }
+
     @Test
     fun comparesNumericVersions() {
         assertTrue(isNewerVersion("v1.10.0", "1.9.9"))
