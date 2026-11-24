@@ -50,6 +50,7 @@ import java.time.LocalDateTime
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
+    onWhatsNew: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showHelp by rememberSaveable { mutableStateOf(false) }
@@ -218,6 +219,9 @@ fun SettingsScreen(
                     Text(stringResource(R.string.about_summary, version))
                 },
             ) { Text(stringResource(R.string.about)) }
+            ListItem(modifier = Modifier.clickable(onClick = onWhatsNew)) {
+                Text(stringResource(R.string.whats_new_title))
+            }
             ListItem(modifier = Modifier.clickable { showLicences = true }) {
                 Text(stringResource(R.string.open_source_licences))
             }

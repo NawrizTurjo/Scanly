@@ -1,0 +1,28 @@
+<resources>
+    <string name="whats_new_version">Version %1$s</string>
+    <string name="whats_new_skip">Skip</string>
+    <string name="whats_new_next">Next</string>
+    <string name="whats_new_done">Done</string>
+    <string name="whats_new_progress">Page %1$d of %2$d</string>
+    <string name="whats_new_unavailable">There are no release notes for this version.</string>
+    <string name="whats_new_home_title">Make Home yours</string>
+    <string name="whats_new_home_body">Tap Edit to reorder your shortcuts. Open recent documents from Home or tap the big Scan button to start a new one.</string>
+    <string name="whats_new_scan_title">Capture pages faster</string>
+    <string name="whats_new_scan_body">Hold steady until the outline turns green, then take the shot.</string>
+    <string name="whats_new_clean_title">Keep shades and colours</string>
+    <string name="whats_new_clean_body">Shaded boxes and coloured labels keep their look in cleaned-up scans.</string>
+    <string name="whats_new_text_title">Find and copy scan text</string>
+    <string name="whats_new_text_body">Tap Text on a page to copy words. Search finds English and Bengali words inside scans.</string>
+    <string name="whats_new_sign_title">Sign PDFs and scans</string>
+    <string name="whats_new_sign_body">Choose Sign PDF on Home, or tap Sign in the page editor.</string>
+    <string name="whats_new_export_title">Order your export steps</string>
+    <string name="whats_new_export_body">Choose and reorder export steps before saving. Password protection always runs last.</string>
+    <string name="whats_new_id_title">Lay out ID cards</string>
+    <string name="whats_new_id_body">Edit each side and drag each card into position on the page. Add more than two sides when you need them.</string>
+    <string name="whats_new_reader_title">Jump through long PDFs</string>
+    <string name="whats_new_reader_body">Drag the page tag on the right edge of the Reader to jump between pages.</string>
+    <string name="whats_new_defaults_title">Set your scan defaults</string>
+    <string name="whats_new_defaults_body">Choose a default filter and straightening setting in Settings. In review, use Apply to all pages to make the same change across a scan.</string>
+    <string name="whats_new_updates_title">Get new versions</string>
+    <string name="whats_new_updates_body">Open Updates in Settings to install a new version of Scanly.</string>
+</resources>

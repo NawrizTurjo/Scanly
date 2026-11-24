@@ -163,6 +163,7 @@ internal fun ScanlyNavigation(
     onAdjustImages: ((List<Uri>) -> Unit)? = null,
     onPickPdf: (Uri, PdfStartTool?) -> Unit,
     onChooseScan: suspend (String) -> PageViewerRoute?,
+    canShowWhatsNew: Boolean,
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris ->
@@ -217,6 +218,11 @@ internal fun ScanlyNavigation(
     val currentTab = if (top is FilesEntryRoute) Tab.LIBRARY else Tab.entries.firstOrNull { it.route == top }
     var readerImmersive by remember { mutableStateOf(false) }
     val readerActive = top == ReaderRoute
+    val whatsNew = rememberWhatsNewTour(
+        homeVisible = top == HomeRoute && !preparingPdf && exportDocumentId == null,
+        settingsVisible = top == SettingsRoute,
+        canPrompt = canShowWhatsNew,
+    )
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -360,7 +366,7 @@ internal fun ScanlyNavigation(
                                 onClose = { backStack.removeAt(backStack.lastIndex) },
                             )
                         }
-                        entry<SettingsRoute> { SettingsScreen() }
+                        entry<SettingsRoute> { SettingsScreen(onWhatsNew = whatsNew) }
                         entry<CameraRoute> { key ->
                             CameraScreen(
                                 targetDocumentId = key.targetDocumentId,

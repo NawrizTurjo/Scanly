@@ -67,6 +67,8 @@ class MainViewModel @Inject constructor(
     private var coldStart = true
 
     private val fileIntents = Channel<Pair<Intent, PdfStartTool?>>(Channel.UNLIMITED)
+    private val pendingFileIntentCount = MutableStateFlow(0)
+    val pendingFileIntents = pendingFileIntentCount.asStateFlow()
     private val preparingPdfState = MutableStateFlow(false)
     val preparingPdf = preparingPdfState.asStateFlow()
     private var documentExport: Job? = null
@@ -86,33 +88,37 @@ class MainViewModel @Inject constructor(
         }
         viewModelScope.launch {
             for ((intent, startTool) in fileIntents) {
-                locked.first { !it }
-                val type = intent.type ?: withContext(Dispatchers.IO) {
-                    try {
-                        intent.resolveType(context.contentResolver)
-                    } catch (_: RuntimeException) {
-                        null
+                try {
+                    locked.first { !it }
+                    val type = intent.type ?: withContext(Dispatchers.IO) {
+                        try {
+                            intent.resolveType(context.contentResolver)
+                        } catch (_: RuntimeException) {
+                            null
+                        }
                     }
-                }
-                if (!acceptsFileIntent(intent.action, type)) continue
-                if (type == PDF_MIME_TYPE) {
-                    val uris = if (intent.action == Intent.ACTION_VIEW) emptyList() else sharedUris(intent)
-                    pdfEntryEvents(intent.action, type, intent.data, uris, Uri::getScheme) { uri ->
-                        val title = withContext(Dispatchers.IO) { pdfDisplayName(uri) }
-                        reader.registerExternal(uri, title) to title
-                    }.forEach { event ->
-                        entryEvents.send(if (event.pdfKey != null) event.copy(startTool = startTool) else event)
+                    if (!acceptsFileIntent(intent.action, type)) continue
+                    if (type == PDF_MIME_TYPE) {
+                        val uris = if (intent.action == Intent.ACTION_VIEW) emptyList() else sharedUris(intent)
+                        pdfEntryEvents(intent.action, type, intent.data, uris, Uri::getScheme) { uri ->
+                            val title = withContext(Dispatchers.IO) { pdfDisplayName(uri) }
+                            reader.registerExternal(uri, title) to title
+                        }.forEach { event ->
+                            entryEvents.send(if (event.pdfKey != null) event.copy(startTool = startTool) else event)
+                        }
+                    } else {
+                        val result = importSharedImages(
+                            sharedUris(intent).filter { it.scheme == ContentResolver.SCHEME_CONTENT },
+                            context.contentResolver, files, documents, sessions, processing,
+                        )
+                        entryEvents.send(EntryEvent(
+                            route = result.draftId?.let(::ReviewRoute),
+                            message = R.string.share_import_error.takeIf { result.hadErrors },
+                            previousScanSaved = result.previousScanSaved,
+                        ))
                     }
-                } else {
-                    val result = importSharedImages(
-                        sharedUris(intent).filter { it.scheme == ContentResolver.SCHEME_CONTENT },
-                        context.contentResolver, files, documents, sessions, processing,
-                    )
-                    entryEvents.send(EntryEvent(
-                        route = result.draftId?.let(::ReviewRoute),
-                        message = R.string.share_import_error.takeIf { result.hadErrors },
-                        previousScanSaved = result.previousScanSaved,
-                    ))
+                } finally {
+                    pendingFileIntentCount.value--
                 }
             }
         }
@@ -148,12 +154,17 @@ class MainViewModel @Inject constructor(
     }
 
     internal fun receiveFileIntent(intent: Intent) {
-        fileIntents.trySend(intent to null)
+        enqueueFileIntent(intent, null)
     }
 
     internal fun pickPdf(uri: Uri, startTool: PdfStartTool?) {
         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, PDF_MIME_TYPE)
-        fileIntents.trySend(intent to startTool)
+        enqueueFileIntent(intent, startTool)
+    }
+
+    private fun enqueueFileIntent(intent: Intent, startTool: PdfStartTool?) {
+        pendingFileIntentCount.value++
+        if (fileIntents.trySend(intent to startTool).isFailure) pendingFileIntentCount.value--
     }
 
     internal suspend fun extractTextFromScan(id: String): PageViewerRoute? {
