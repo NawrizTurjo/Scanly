@@ -115,7 +115,7 @@
     <string name="editor_id_reset">Reset to preset</string>
     <string name="editor_id_resize_front">Resize front card</string>
     <string name="editor_id_resize_back">Resize back card</string>
-    <string name="editor_id_missing">Both source pages are needed to change the ID layout</string>
+    <string name="editor_id_missing">No source pages are available</string>
     <string name="viewer_text">Text</string>
     <string name="viewer_copy_text">Copy all</string>
     <string name="viewer_no_text">No text found</string>
@@ -126,4 +126,8 @@
     <string name="editor_sign_edit">Tap a signature to select it. Drag to move or pinch to resize.</string>
     <string name="editor_sign_place">Tap the page to place the signature.</string>
     <string name="editor_sign_choose">Choose signature</string>
+    <string name="editor_id_reorder">Reorder</string>
+    <string name="editor_id_move_earlier">Move earlier</string>
+    <string name="editor_id_move_later">Move later</string>
+    <string name="editor_id_resize_side">Resize side %1$d</string>
 </resources>

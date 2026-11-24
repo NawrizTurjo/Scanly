@@ -164,7 +164,7 @@ class RoomRepositoriesTest {
     }
 
     @Test
-    fun renderingReorderedSideRefreshesCompositeAndDeletedSourceKeepsLastImage() = runBlocking {
+    fun renderingReorderedSideRefreshesCompositeEvenAfterTheOtherSideIsDeleted() = runBlocking {
         val id = draft()
         suspend fun addSide(mode: PageMode) = add(id).let {
             val side = it.copy(mode = mode, processedPath = it.originalPath, filter = PageFilter.AUTO)
@@ -221,8 +221,44 @@ class RoomRepositoriesTest {
         documents.updatePage(latestFront.copy(filter = PageFilter.GRAY))
         processing.enqueueRender(front.id)
         processing.awaitIdle(listOf(composite.id))
-        assertEquals(rendered.originalPath, documents.getPage(composite.id)?.originalPath)
-        assertTrue(File(rendered.originalPath).isFile)
+        val remaining = requireNotNull(documents.getPage(composite.id))
+        assertTrue(remaining.originalPath != rendered.originalPath)
+        assertTrue(File(remaining.originalPath).isFile)
+    }
+
+    @Test
+    fun recompositionSkipsDeletedMiddleSideAndKeepsTheOtherPlacements() = runBlocking {
+        val id = draft()
+        val sides = (0..2).map { index ->
+            val page = add(id)
+            page.copy(
+                mode = if (index == 0) PageMode.ID_FRONT else PageMode.ID_BACK,
+                processedPath = page.originalPath,
+            ).also { documents.updatePage(it) }
+        }
+        val processing = QueuedPageProcessing(documents, files, ThumbnailMaker(files), this, null)
+        val ids = sides.map { it.id }
+        assertTrue(processing.createIdComposite(ids))
+        val compositeId = idCompositeId(ids.last())
+        val layout = IdCardLayout(outline = true).withPlacements(
+            listOf(CardPlacement(0.1f, 0.1f, 0.3f), CardPlacement(0.1f, 0.4f, 0.3f), CardPlacement(0.1f, 0.7f, 0.3f)),
+        )
+        documents.deletePage(ids[1])
+        assertTrue(processing.updateIdLayout(compositeId, layout))
+        assertEquals(ids, documents.idComposite(compositeId)?.sourceIds)
+        val rendered = requireNotNull(documents.getPage(compositeId))
+        val bitmap = BitmapFactory.decodeFile(rendered.originalPath)
+        try {
+            assertTrue(Color.red(bitmap.getPixel(500, 450)) < 30)
+            assertEquals(Color.WHITE, bitmap.getPixel(500, 1500))
+            assertTrue(Color.red(bitmap.getPixel(500, 2550)) < 30)
+        } finally {
+            bitmap.recycle()
+        }
+        documents.deletePage(ids.first())
+        documents.deletePage(ids.last())
+        assertFalse(processing.updateIdLayout(compositeId, layout.resetPlacement()))
+        assertEquals(rendered.originalPath, documents.getPage(compositeId)?.originalPath)
     }
 
     @Test

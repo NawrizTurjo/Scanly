@@ -250,7 +250,7 @@ class BackupService internal constructor(
                 processed.required("${index + 1}.jpg").copyOut(processedFile)
                 page.copy(
                     id = id, originalPath = original.path, processedPath = processedFile.path,
-                    idFrontId = ids[page.idFrontId],
+                    idFrontId = page.idFrontId.remapIdSources(ids),
                 )
             }
             directory.required("${item.title}.pdf").copyOut(archive)

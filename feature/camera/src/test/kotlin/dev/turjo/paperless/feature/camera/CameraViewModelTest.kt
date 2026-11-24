@@ -53,6 +53,7 @@ class CameraViewModelTest {
     private lateinit var model: CameraViewModel
     private lateinit var temp: File
     private val pageModes = mutableListOf<PageMode>()
+    private val composites = mutableListOf<List<String>>()
     private val steps = mutableListOf<String>()
     private val processing = object : PageProcessing {
         override val busyPageIds = MutableStateFlow(emptySet<String>())
@@ -66,6 +67,12 @@ class CameraViewModelTest {
             assertFalse(temp.exists())
             steps += "enqueue"
         }
+        override suspend fun createIdComposite(sourceIds: List<String>): Boolean {
+            composites += sourceIds.toList()
+            steps += "compose"
+            return true
+        }
+
         override suspend fun awaitIdle(pageIds: Collection<String>) { steps += "idle" }
         override fun enqueueRender(pageId: String): Unit = unused()
         override suspend fun detectQuad(pageId: String) = unused()
@@ -182,9 +189,39 @@ class CameraViewModelTest {
 
         model.importImages(listOf("back", "extra")) { image, file -> file.writeText(image) }
         runCurrent()
+        assertTrue(model.state.value.chooseIdSide)
+        assertTrue(composites.isEmpty())
+        model.close()
+        runCurrent()
         assertFalse(model.state.value.idBack)
         assertEquals(listOf(PageMode.ID_FRONT, PageMode.ID_BACK), pageModes)
-        assertEquals(listOf("enqueue", "enqueue", "idle"), steps)
+        assertEquals(listOf(listOf("page-0", "page-1")), composites)
+        assertEquals(listOf("enqueue", "enqueue", "compose", "idle"), steps)
+        assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
+        model.setMode(ScanMode.DOCUMENT)
+    }
+
+    @Test fun addingAnotherIdSideCreatesOneOrderedCompositeOnDone() = runTest {
+        createModel()
+        runCurrent()
+        model.setMode(ScanMode.ID_CARD)
+        model.importImages(listOf("front", "back")) { image, file -> file.writeText(image) }
+        runCurrent()
+        assertTrue(model.state.value.chooseIdSide)
+        model.addIdSide()
+        assertFalse(model.state.value.chooseIdSide)
+        assertEquals(2, model.state.value.idSideIds.size)
+
+        model.capture { it.writeText("third") }
+        runCurrent()
+        assertEquals(CameraEvent.Captured, model.events.first())
+        assertTrue(model.state.value.chooseIdSide)
+        assertTrue(composites.isEmpty())
+
+        model.finishId()
+        runCurrent()
+        assertEquals(listOf(PageMode.ID_FRONT, PageMode.ID_BACK, PageMode.ID_BACK), pageModes)
+        assertEquals(listOf(listOf("page-0", "page-1", "page-2")), composites)
         assertEquals(CameraEvent.Review(session.draftDocumentId), model.events.first())
         model.setMode(ScanMode.DOCUMENT)
     }

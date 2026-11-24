@@ -58,11 +58,14 @@ internal enum class ScanMode(val pageMode: PageMode) {
     WHITEBOARD(PageMode.WHITEBOARD),
 }
 
+internal const val MAX_ID_SIDES = 6
+
 internal data class CameraState(
     val ready: Boolean = false,
     val singleMode: Boolean,
     val mode: ScanMode = ScanMode.DOCUMENT,
-    val idBack: Boolean = false,
+    val idSideIds: List<String> = emptyList(),
+    val chooseIdSide: Boolean = false,
     val pageIds: List<String> = emptyList(),
     val capturing: Boolean = false,
     val importing: Boolean = false,
@@ -78,7 +81,8 @@ internal data class CameraState(
     val autoCapture: Boolean = false,
     val autoCaptureProgress: Float? = null,
 ) {
-    val canEdit get() = ready && !capturing && !importing && !closing && !confirmDiscard && !confirmDuplexMismatch && pageToDelete == null
+    val idBack get() = idSideIds.isNotEmpty()
+    val canEdit get() = ready && !chooseIdSide && !capturing && !importing && !closing && !confirmDiscard && !confirmDuplexMismatch && pageToDelete == null
 }
 
 internal sealed interface CameraEvent {
@@ -200,7 +204,16 @@ internal class CameraViewModel internal constructor(
         session = active
         duplex = progress
         val pages = draft?.pages.orEmpty()
-        val idBack = pages.lastOrNull()?.mode == PageMode.ID_FRONT
+        val trailingBacks = pages.takeLastWhile { it.mode == PageMode.ID_BACK }
+        val front = pages.getOrNull(pages.lastIndex - trailingBacks.size)
+        val idSides = if (!progress.enabled && front?.mode == PageMode.ID_FRONT &&
+            documents.idCompositesFor(front).isEmpty()
+        ) {
+            listOf(front) + trailingBacks
+        } else emptyList()
+        idSides.filter { it.processedPath == null && it.id !in processing.busyPageIds.value }.forEach {
+            processing.enqueueNewPage(it.id, it.mode, PageFilter.DOCUMENT)
+        }
         val rememberedMode = lastSessionMode?.takeIf { it.first == active.id }?.second
         waitForDerivedPages = pages.any {
             it.mode == PageMode.BOOK_L || it.mode == PageMode.ID_FRONT || it.mode == PageMode.ID_BACK
@@ -212,11 +225,12 @@ internal class CameraViewModel internal constructor(
                 pageIds = pages.map { page -> page.id },
                 mode = when {
                     progress.enabled -> ScanMode.DOCUMENT
-                    idBack -> ScanMode.ID_CARD
+                    idSides.isNotEmpty() -> ScanMode.ID_CARD
                     else -> args.startMode?.let(::scanModeFor) ?: rememberedMode ?: ScanMode.DOCUMENT
                 },
                 singleMode = it.singleMode && !progress.enabled,
-                idBack = idBack && !progress.enabled,
+                idSideIds = idSides.map { page -> page.id },
+                chooseIdSide = idSides.size >= 2,
                 duplexPhase = progress.phase.takeIf { progress.enabled },
             ).withSideCounts()
         }
@@ -291,7 +305,11 @@ internal class CameraViewModel internal constructor(
         mutableState.update { it.copy(duplexPhase = progress.phase.takeIf { progress.enabled }).withSideCounts() }
     }
 
-    fun capture(controller: CaptureController) {
+    fun capture(controller: CaptureController) = capture(controller, finishId = false)
+
+    fun captureAndFinishId(controller: CaptureController) = capture(controller, finishId = true)
+
+    private fun capture(controller: CaptureController, finishId: Boolean) {
         if (!state.value.canEdit) return
         autoCapture.startCapture(latestQuad)
         // A quad the overlay held steady is where the page is; processing then skips the full search (~2 s/page).
@@ -305,7 +323,8 @@ internal class CameraViewModel internal constructor(
                         controller.capture(file)
                         eventChannel.trySend(CameraEvent.Captured)
                     }
-                    if (finished) reviewWhenReady()
+                    if (finishId && state.value.chooseIdSide) completeId()
+                    else if (finished) reviewWhenReady()
                 }
             } finally {
                 autoCapture.captureFinished(captured)
@@ -322,6 +341,7 @@ internal class CameraViewModel internal constructor(
                 for (image in images) {
                     var finished = false
                     reportErrors { finished = addPage { file -> copy(image, file) } }
+                    if (state.value.chooseIdSide) break
                     if (finished) {
                         reportErrors { reviewWhenReady() }
                         break
@@ -331,6 +351,34 @@ internal class CameraViewModel internal constructor(
                 mutableState.update { it.copy(importing = false) }
             }
         }
+    }
+
+    fun addIdSide() {
+        val current = state.value
+        if (current.chooseIdSide && !current.closing && !current.capturing && !current.importing &&
+            current.idSideIds.size < MAX_ID_SIDES
+        ) {
+            mutableState.update { it.copy(chooseIdSide = false) }
+        }
+    }
+
+    fun finishId() {
+        val current = state.value
+        if (!current.chooseIdSide || current.closing || current.capturing || current.importing) return
+        mutableState.update { it.copy(closing = true) }
+        viewModelScope.launch {
+            try {
+                reportErrors { completeId() }
+            } finally {
+                mutableState.update { it.copy(closing = false) }
+            }
+        }
+    }
+
+    private suspend fun completeId() {
+        check(processing.createIdComposite(state.value.idSideIds))
+        reviewWhenReady()
+        mutableState.update { it.copy(idSideIds = emptyList(), chooseIdSide = false) }
     }
 
     fun review() {
@@ -366,6 +414,10 @@ internal class CameraViewModel internal constructor(
 
     fun close() {
         val current = state.value
+        if (current.chooseIdSide) {
+            finishId()
+            return
+        }
         if (initializationFailed || (!current.closing && (current.pendingScan != null || !current.ready))) {
             eventChannel.trySend(CameraEvent.Close)
             return
@@ -495,13 +547,14 @@ internal class CameraViewModel internal constructor(
             current.duplexPhase?.let { side ->
                 updateDuplex(duplex.copy(sides = duplex.sides + (pageId to side)))
             }
+            if (current.mode == ScanMode.ID_CARD) {
+                mutableState.update {
+                    it.copy(idSideIds = current.idSideIds + pageId, chooseIdSide = mode == PageMode.ID_BACK)
+                }
+            }
         }
         if (mode == PageMode.BOOK_L || current.mode == ScanMode.ID_CARD) waitForDerivedPages = true
-        if (current.mode == ScanMode.ID_CARD) {
-            mutableState.update { it.copy(idBack = mode == PageMode.ID_FRONT) }
-            return mode == PageMode.ID_BACK
-        }
-        return current.singleMode
+        return current.singleMode && current.mode != ScanMode.ID_CARD
     }
 
     private suspend fun persistPage(mode: PageMode, hint: FloatArray?, write: suspend (File) -> Unit): String =
@@ -512,7 +565,11 @@ internal class CameraViewModel internal constructor(
             write(temp)
             val size = imageSize(temp)
             require(size.width > 0 && size.height > 0)
-            documents.addDraftPage(session.draftDocumentId, temp, size.width, size.height)
+            if (mode == PageMode.ID_FRONT || mode == PageMode.ID_BACK) {
+                documents.addDraftPage(session.draftDocumentId, temp, size.width, size.height, mode)
+            } else {
+                documents.addDraftPage(session.draftDocumentId, temp, size.width, size.height)
+            }
         } finally {
             temp.delete()
         }

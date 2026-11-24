@@ -61,6 +61,7 @@ interface PageProcessing {
      */
     fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) =
         enqueueNewPage(pageId, mode, filter)
+    suspend fun createIdComposite(sourceIds: List<String>): Boolean = false
     suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean = false
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
@@ -161,17 +162,23 @@ class QueuedPageProcessing internal constructor(
             ))
         }
         render(pageId)
-        if (mode == PageMode.ID_BACK) createIdComposite(pageId)
     }
 
-    private suspend fun createIdComposite(backId: String) {
-        if (documents.getPage(idCompositeId(backId)) != null) return
-        val back = documents.getPage(backId) ?: return
-        val document = documents.observeDocument(back.documentId).first() ?: return
-        val front = document.pages.getOrNull(back.index - 1)?.takeIf { it.mode == PageMode.ID_FRONT } ?: return
-        composeIdCard(front, back, IdCardLayout()) { output ->
-            documents.addIdComposite(front, back, output, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
-            true
+    override suspend fun createIdComposite(sourceIds: List<String>): Boolean {
+        require(sourceIds.size in 2..6)
+        awaitIdle(sourceIds)
+        return withContext(worker) {
+            slots.withPermit {
+                compositeLock.withLock {
+                    if (documents.getPage(idCompositeId(sourceIds.last())) != null) return@withLock true
+                    val sources = sourceIds.map { documents.getPage(it) ?: return@withLock false }
+                    val layout = IdCardLayout()
+                    composeIdCard(sources, layout, sources.indices.toList()) { output ->
+                        documents.addIdComposite(sources, output, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
+                        true
+                    }
+                }
+            }
         }
     }
 
@@ -192,21 +199,25 @@ class QueuedPageProcessing internal constructor(
     }
 
     private suspend fun recomposeIdCardLocked(composite: IdComposite): Boolean {
-        val front = composite.frontId?.let { documents.getPage(it) } ?: return false
-        val back = documents.getPage(composite.backId) ?: return false
         val page = documents.getPage(composite.pageId) ?: return false
-        if (front.documentId != page.documentId || back.documentId != page.documentId) return false
-        return composeIdCard(front, back, composite.layout) { documents.replaceIdComposite(composite, it) }
+        val sources = composite.layout.sourceOrder(composite.sourceIds.size).mapNotNull { index ->
+            val id = composite.sourceIds[index] ?: return@mapNotNull null
+            val source = documents.getPage(id)?.takeIf { it.documentId == page.documentId }
+            source?.let { index to it }
+        }
+        if (sources.isEmpty()) return false
+        return composeIdCard(sources.map { it.second }, composite.layout, sources.map { it.first }) {
+            documents.replaceIdComposite(composite, it)
+        }
     }
 
     private suspend fun composeIdCard(
-        front: Page, back: Page, layout: IdCardLayout, save: suspend (File) -> Boolean,
+        sources: List<Page>, layout: IdCardLayout, indices: List<Int>, save: suspend (File) -> Boolean,
     ): Boolean {
-        val frontFile = front.processedPath?.let(::File)?.takeIf(File::isFile) ?: return false
-        val backFile = back.processedPath?.let(::File)?.takeIf(File::isFile) ?: return false
+        val images = sources.map { it.processedPath?.let(::File)?.takeIf(File::isFile) ?: return false }
         val output = files.newTempFile(".jpg")
         try {
-            IdCardComposer.compose(frontFile, backFile, output, layout)
+            IdCardComposer.compose(images, output, layout, indices)
             return save(output)
         } finally {
             output.delete()
@@ -222,8 +233,7 @@ class QueuedPageProcessing internal constructor(
         val related = pageIds.toMutableSet()
         for (id in pageIds) {
             val composite = documents.idComposite(id) ?: continue
-            composite.frontId?.let(related::add)
-            related.add(composite.backId)
+            related.addAll(composite.sourceIds.filterNotNull())
         }
         busy.first { current -> related.none(current::contains) }
     }
@@ -321,11 +331,9 @@ class QueuedPageProcessing internal constructor(
     }
 
     private suspend fun refreshIdComposites(page: Page) {
-        if (page.mode.cardAspect() != null) {
-            documents.idCompositesFor(page).forEach { composite ->
-                compositeLock.withLock {
-                    documents.idComposite(composite.pageId)?.let { recomposeIdCardLocked(it) }
-                }
+        documents.idCompositesFor(page).forEach { composite ->
+            compositeLock.withLock {
+                documents.idComposite(composite.pageId)?.let { recomposeIdCardLocked(it) }
             }
         }
     }

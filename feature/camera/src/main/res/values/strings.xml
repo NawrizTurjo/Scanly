@@ -58,4 +58,9 @@
     <string name="camera_save_start_new">Save it and start new</string>
     <string name="camera_discard_previous">Discard it</string>
     <string name="camera_saved_to_library">Saved to Library as %1$s</string>
+    <string name="camera_id_side">Side %1$d</string>
+    <string name="camera_id_sides_captured">Sides captured: %1$d</string>
+    <string name="camera_id_add_side">Add another side</string>
+    <string name="camera_id_done">Done</string>
+    <string name="camera_id_capture_and_finish">Capture and finish</string>
 </resources>

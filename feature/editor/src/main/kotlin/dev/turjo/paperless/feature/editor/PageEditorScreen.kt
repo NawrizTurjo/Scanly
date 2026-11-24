@@ -81,14 +81,14 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                     IdLayoutPreview(
                         state, layout, enabled && state.canChangeIdLayout,
                         Modifier.fillMaxSize().padding(12.dp),
-                        vm::finishIdPlacement,
+                        vm::selectIdSource, vm::finishIdPlacement,
                     )
                     if (state.saving) {
                         LinearProgressIndicator(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
                     }
                 }
                 Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    IdLayoutPanel(layout, enabled && state.canChangeIdLayout, state.canChangeIdLayout, vm)
+                    IdLayoutPanel(state, layout, enabled && state.canChangeIdLayout, vm)
                 }
                 return@Column
             }
@@ -167,9 +167,9 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun IdLayoutPanel(
+    state: EditorState,
     layout: IdCardLayout,
     enabled: Boolean,
-    hasSources: Boolean,
     vm: PageEditorViewModel,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
@@ -197,16 +197,31 @@ private fun IdLayoutPanel(
         AdjustmentSwitch(R.string.editor_id_outline, layout.outline, enabled) { checked ->
             vm.changeIdLayout { it.copy(outline = checked) }
         }
+        val order = state.idSourceOrder()
+        if (state.idSourcePaths.size > 2) {
+            val selected = order.indexOf(state.idSelectedSource)
+            Text(stringResource(R.string.editor_id_reorder), style = MaterialTheme.typography.labelLarge)
+            FlowRow {
+                TextButton({ vm.moveIdSource(-1) }, enabled = enabled && selected > 0) {
+                    Text(stringResource(R.string.editor_id_move_earlier))
+                }
+                TextButton({ vm.moveIdSource(1) }, enabled = enabled && selected in 0 until order.lastIndex) {
+                    Text(stringResource(R.string.editor_id_move_later))
+                }
+            }
+        }
         FlowRow {
-            TextButton({ vm.changeIdLayout { it.swapCards() } }, enabled = enabled) {
-                Text(stringResource(R.string.editor_id_swap))
+            if (state.idSourcePaths.size == 2) {
+                TextButton({ vm.changeIdLayout { it.swapCards() } }, enabled = enabled && order.size == 2) {
+                    Text(stringResource(R.string.editor_id_swap))
+                }
             }
             TextButton({ vm.changeIdLayout { it.resetPlacement() } }, enabled = enabled && layout.isFree) {
                 Text(stringResource(R.string.editor_id_reset))
             }
         }
         Text(
-            stringResource(if (hasSources) R.string.editor_id_hint else R.string.editor_id_missing),
+            stringResource(if (state.canChangeIdLayout) R.string.editor_id_hint else R.string.editor_id_missing),
             style = MaterialTheme.typography.bodySmall,
         )
     }

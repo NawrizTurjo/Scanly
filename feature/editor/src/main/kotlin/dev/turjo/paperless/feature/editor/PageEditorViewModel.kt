@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
 internal data class EditorState(
     val page: Page? = null,
     val idLayout: IdCardLayout? = null,
-    val idSourcePaths: Pair<String, String>? = null,
+    val idSourcePaths: List<String?> = emptyList(),
+    val idSelectedSource: Int = 0,
     val canChangeIdLayout: Boolean = false,
     val edits: PageEdits? = null,
     val original: Bitmap? = null,
@@ -39,6 +40,9 @@ internal data class EditorState(
     /** Non-null while the user places a manual split line on the crop. */
     val split: SplitLine? = null,
 )
+
+internal fun EditorState.idSourceOrder(): List<Int> =
+    idLayout?.sourceOrder(idSourcePaths.size).orEmpty().filter { idSourcePaths[it] != null }
 
 @HiltViewModel(assistedFactory = PageEditorViewModel.Factory::class)
 internal class PageEditorViewModel @AssistedInject constructor(
@@ -64,18 +68,16 @@ internal class PageEditorViewModel @AssistedInject constructor(
                 val page = requireNotNull(documents.getPage(pageId))
                 if (page.isIdComposite) {
                     val composite = requireNotNull(documents.idComposite(pageId))
-                    val front = composite.frontId?.let { documents.getPage(it) }
-                    val back = documents.getPage(composite.backId)
-                    val frontPath = front?.processedPath
-                    val backPath = back?.processedPath
-                    val hasSources = front?.documentId == page.documentId && back?.documentId == page.documentId
+                    val sources = composite.sourceIds.map { id ->
+                        id?.let { documents.getPage(it) }?.takeIf { it.documentId == page.documentId }
+                    }
+                    val paths = sources.map { it?.processedPath }
+                    val selected = composite.layout.sourceOrder(paths.size).firstOrNull { paths[it] != null } ?: 0
                     mutable.update {
                         it.copy(
                             page = page, idLayout = composite.layout,
-                            canChangeIdLayout = hasSources,
-                            idSourcePaths = if (hasSources && frontPath != null && backPath != null) {
-                                frontPath to backPath
-                            } else null,
+                            canChangeIdLayout = sources.any { it != null },
+                            idSourcePaths = paths, idSelectedSource = selected,
                         )
                     }
                     return@launch
@@ -222,6 +224,18 @@ internal class PageEditorViewModel @AssistedInject constructor(
                 mutable.update { it.copy(saving = false) }
             }
         }
+    }
+
+    fun selectIdSource(index: Int) {
+        mutable.update { it.copy(idSelectedSource = index) }
+    }
+
+    fun moveIdSource(offset: Int) {
+        val current = state.value
+        val order = current.idSourceOrder()
+        val position = order.indexOf(current.idSelectedSource)
+        val target = order.getOrNull(position + offset) ?: return
+        changeIdLayout { it.moveCard(current.idSelectedSource, target, current.idSourcePaths.size) }
     }
 
     fun finishIdPlacement(layout: IdCardLayout) = changeIdLayout { layout }
