@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -39,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -99,6 +101,7 @@ internal fun ReaderPages(
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
+    onTagScroll: ((Boolean) -> Unit)? = null,
 ) {
     var showJump by remember { mutableStateOf(false) }
     var localJump by remember { mutableStateOf<PageJump?>(null) }
@@ -138,21 +141,29 @@ internal fun ReaderPages(
             external = link.uri?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
         }
     }
+    var scrolling by remember { mutableStateOf(false) }
+    val reportScroll: (Boolean) -> Unit = onTagScroll ?: { scrolling = it }
     val background = tone.readerBackground(MaterialTheme.colorScheme.surfaceContainer)
     Box(Modifier.fillMaxSize().background(background)) {
         key(tab.viewMode, crop, uniform) {
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
                     document, tab, tone, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
-                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged, pagePadding,
+                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged, pagePadding, reportScroll,
                 )
                 ReaderViewMode.SINGLE_PAGE -> SinglePages(
                     document, tab, tone, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
-                    onPageTap, onLockedTap, onSelectionChanged, pagePadding,
+                    onPageTap, onLockedTap, onSelectionChanged, pagePadding, reportScroll,
                 )
             }
         }
         val displayPage = tab.page.coerceIn(0, document.pageCount - 1)
+        if (onTagScroll == null) {
+            ReaderPageTag(
+                displayPage + 1, displayPage + 1, document.pageCount, scrolling,
+                Modifier.align(Alignment.CenterEnd).windowInsetsPadding(overlayInsets),
+            )
+        }
         val chipPadding = Modifier.windowInsetsPadding(overlayInsets)
             .padding(bottom = pagePadding.calculateBottomPadding())
             .padding(12.dp)
@@ -211,6 +222,7 @@ private fun ContinuousPages(
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
     pagePadding: PaddingValues,
+    onTagScroll: (Boolean) -> Unit,
 ) {
     val startingPage = remember { tab.page.coerceIn(0, document.pageCount - 1) }
     val startingOffset = remember { tab.scrollOffsetPx }
@@ -223,6 +235,7 @@ private fun ContinuousPages(
     }
 
     val list = rememberLazyListState(startingPage, startingOffset)
+    ReportTagScroll(list, onTagScroll)
     val reportPosition by rememberUpdatedState(onPosition)
     val reportZoom by rememberUpdatedState(onZoom)
     var zoom by remember { mutableFloatStateOf(tab.zoom.coerceIn(1f, 5f)) }
@@ -387,8 +400,10 @@ private fun SinglePages(
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
     pagePadding: PaddingValues,
+    onTagScroll: (Boolean) -> Unit,
 ) {
     val pager = rememberPagerState(tab.page.coerceIn(0, document.pageCount - 1)) { document.pageCount }
+    ReportTagScroll(pager, onTagScroll)
     val reportPosition by rememberUpdatedState(onPosition)
     val geometries = remember { mutableMapOf<Int, PageGeometry>() }
     LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { reportPosition(it, 0) } }
@@ -422,6 +437,18 @@ private fun SinglePages(
             }
         }
     }
+}
+
+@Composable
+private fun ReportTagScroll(
+    scrollable: ScrollableState,
+    onScroll: (Boolean) -> Unit,
+) {
+    val report by rememberUpdatedState(onScroll)
+    LaunchedEffect(scrollable) {
+        snapshotFlow { scrollable.isScrollInProgress }.collect { report(it) }
+    }
+    DisposableEffect(scrollable) { onDispose { report(false) } }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

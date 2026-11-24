@@ -57,6 +57,7 @@ fun SettingsScreen(
     var showLicences by rememberSaveable { mutableStateOf(false) }
     if (showLicences) OpenSourceLicences { showLicences = false }
 
+    val updates = activityUpdatesModel()
     Column(modifier.fillMaxSize()) {
         TopAppBar(title = { Text(stringResource(R.string.settings_title)) })
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -65,6 +66,10 @@ fun SettingsScreen(
             val pattern = editedPattern ?: settings.autoNamePattern
             val previewTime = remember { LocalDateTime.now() }
 
+            UpdatesCard(updates)
+            SectionHeading(R.string.updates)
+            UpdatesSection(updates)
+            HorizontalDivider()
             SectionHeading(R.string.scanning)
             OutlinedTextField(
                 value = pattern,

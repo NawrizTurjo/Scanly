@@ -1,5 +1,10 @@
 plugins { id("paperless.android.feature") }
 
+android {
+    defaultConfig.testInstrumentationRunner =
+        "dev.turjo.paperless.feature.settings.UpdateReleaseFixtureInstrumentation"
+}
+
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:data"))

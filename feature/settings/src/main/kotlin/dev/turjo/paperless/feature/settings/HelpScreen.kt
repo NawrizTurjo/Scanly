@@ -113,6 +113,7 @@ private fun HelpContent(onBack: () -> Unit) {
             }
             item { HelpSection(R.string.help_library, R.string.help_library_body) }
             item { HelpSection(R.string.help_privacy, R.string.help_privacy_body) }
+            item { HelpSection(R.string.updates, R.string.help_updates_body) }
             item {
                 TextButton(onClick = {
                     scope.launch {
