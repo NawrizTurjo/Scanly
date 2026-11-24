@@ -3,10 +3,12 @@ package dev.turjo.paperless
 import android.content.Intent
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.feature.reader.PdfStartTool
 import java.net.URI
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -65,14 +67,14 @@ class EntryRoutesTest {
     @Test
     fun consumptionOnlyRemovesTheMatchingPendingHead() {
         val first = PendingPdf(PdfKey("first"), "First")
-        val second = PendingPdf(PdfKey("second"), "Second")
+        val second = first.copy(startTool = PdfStartTool.SIGNATURE)
         val queued = listOf(first, second)
         assertEquals(queued, queued.consumePdf(null))
-        assertEquals(queued, queued.consumePdf(second.key))
-        val remaining = queued.consumePdf(first.key)
+        assertEquals(queued, queued.consumePdf(second))
+        val remaining = queued.consumePdf(first)
         assertEquals(listOf(second), remaining)
-        assertEquals(remaining, remaining.consumePdf(first.key))
-        assertEquals(emptyList<PendingPdf>(), remaining.consumePdf(second.key))
+        assertEquals(remaining, remaining.consumePdf(first))
+        assertEquals(emptyList<PendingPdf>(), remaining.consumePdf(second))
     }
 
     private class FakePdfRegistrar {
@@ -112,6 +114,10 @@ class EntryRoutesTest {
         assertEquals(CameraRoute(), homeShortcutRoute("scan"))
         assertEquals(CameraRoute(startMode = "id_card"), homeShortcutRoute("id_card"))
         assertEquals(CameraRoute(startMode = "book"), homeShortcutRoute("book"))
+        assertEquals(ChooseScanRoute, homeShortcutRoute("extract_text"))
+        assertNull(homeShortcutRoute("sign_pdf"))
+        assertTrue(homeShortcuts.any { it.id == "sign_pdf" })
+        assertTrue(homeShortcuts.any { it.id == "extract_text" })
     }
 
     @Test

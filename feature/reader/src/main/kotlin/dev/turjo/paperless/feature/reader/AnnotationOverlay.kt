@@ -63,10 +63,14 @@ internal fun AnnotationToolbar(
     stepHistory: (Boolean) -> Unit,
     done: () -> Unit,
 ) {
-    var picker by remember { mutableStateOf(false) }
-    if (picker) SignaturePicker({ picker = false }) { signature ->
-        update { it.copy(pendingSignature = signature) }
-        picker = false
+    if (layer.signaturePicker != null) {
+        SignaturePicker(
+            onDismiss = { update { it.copy(signaturePicker = null) } },
+            openPadWhenEmpty = layer.signaturePicker == SignaturePickerMode.DRAW_IF_EMPTY,
+            onPick = { signature ->
+                update { it.copy(pendingSignature = signature, signaturePicker = null) }
+            },
+        )
     }
     Surface(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -81,8 +85,13 @@ internal fun AnnotationToolbar(
                         FilterChip(
                             selected = layer.tool == tool,
                             onClick = {
-                                update { it.copy(tool = tool, pendingSignature = null) }
-                                if (tool == AnnotationTool.SIGNATURE) picker = true
+                                update {
+                                    it.copy(
+                                        tool = tool,
+                                        pendingSignature = null,
+                                        signaturePicker = SignaturePickerMode.PICK.takeIf { tool == AnnotationTool.SIGNATURE },
+                                    )
+                                }
                             },
                             label = {
                                 Text(if (tool == AnnotationTool.SIGNATURE) stringResource(R.string.signature_title) else tool.label)

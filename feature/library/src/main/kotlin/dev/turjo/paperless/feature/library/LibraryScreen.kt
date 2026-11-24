@@ -7,8 +7,10 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -59,9 +61,14 @@ fun LibraryScreen(
     onOpenDraft: (String) -> Unit = {},
     focusSearch: Boolean = false,
     selectDocumentId: String? = null,
+    onCancelPick: (() -> Unit)? = null,
 ) {
     val model: LibraryViewModel = hiltViewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
+    if (onCancelPick != null) {
+        ChooseScanScreen(state, model, onOpenDocument, onCancelPick, modifier)
+        return
+    }
     val unsavedScan by model.unsavedScan.collectAsStateWithLifecycle()
     val recent by model.continueReading.collectAsStateWithLifecycle()
     val filter by model.filter.collectAsStateWithLifecycle()
@@ -375,6 +382,55 @@ fun LibraryScreen(
         onSelect = { move = false; model.moveSelected(it) },
         onCreate = { move = false; model.moveSelectedToNewFolder(it) },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChooseScanScreen(
+    state: LibraryUiState,
+    model: LibraryViewModel,
+    onChoose: (String) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier,
+) {
+    val filter by model.filter.collectAsStateWithLifecycle()
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.choose_scan)) },
+                navigationIcon = { LibraryBackButton(onCancel) },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            OutlinedTextField(
+                value = filter.query,
+                onValueChange = { query -> model.updateFilter { it.copy(query = query) } },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                label = { Text(stringResource(R.string.library_search)) },
+                singleLine = true,
+            )
+            when {
+                state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+                state.filter == filter && state.documents.isEmpty() -> Text(
+                    stringResource(if (filter.query.isBlank()) R.string.no_documents else R.string.library_no_search_results),
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(state.documents, key = DocumentSummary::id) { document ->
+                    ListItem(
+                        headlineContent = { Text(document.title) },
+                        supportingContent = {
+                            Text(pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount))
+                        },
+                        modifier = Modifier.clickable { onChoose(document.id) },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

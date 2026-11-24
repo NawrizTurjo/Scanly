@@ -14,6 +14,8 @@ internal enum class AnnotationTool(val label: String, val type: AnnotationType? 
     NOTE("Text note", AnnotationType.NOTE), ERASER("Eraser"), SIGNATURE(""),
 }
 
+internal enum class SignaturePickerMode { PICK, DRAW_IF_EMPTY }
+
 internal data class AnnotationLayer(
     val saved: List<Annotation>,
     val marks: List<Annotation> = saved,
@@ -25,6 +27,7 @@ internal data class AnnotationLayer(
     val width: Float = 3f,
     val saving: Boolean = false,
     val pendingSignature: SavedSignature? = null,
+    val signaturePicker: SignaturePickerMode? = null,
 ) {
     val dirty get() = marks != saved
 
@@ -39,7 +42,10 @@ internal data class AnnotationLayer(
         copy(marks = it, redo = redo.dropLast(1), undo = undo + listOf(marks))
     } ?: this
 
-    fun discard() = copy(marks = saved, undo = emptyList(), redo = emptyList(), editing = false, pendingSignature = null)
+    fun discard() = copy(
+        marks = saved, undo = emptyList(), redo = emptyList(),
+        editing = false, pendingSignature = null, signaturePicker = null,
+    )
 }
 
 internal data class AnnotationPrompt(val tabId: String, val closing: Boolean)

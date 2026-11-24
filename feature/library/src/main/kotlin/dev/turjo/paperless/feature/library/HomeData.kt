@@ -15,7 +15,7 @@ internal const val ALL_TOOLS = "all_tools"
 internal const val SHORTCUTS_KEY = "shortcuts"
 internal val defaultShortcuts = listOf(
     "scan", "import_images", "tool:FROM_IMAGES", "open_pdf", "tool:MERGE",
-    "tool:COMPRESS", "id_card", "book", ALL_TOOLS,
+    "tool:COMPRESS", "id_card", "sign_pdf", ALL_TOOLS,
 )
 
 internal fun decodeShortcuts(saved: String?, catalog: Set<String>): List<String> =

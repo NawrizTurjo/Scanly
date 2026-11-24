@@ -25,6 +25,7 @@ import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.feature.library.recordHomeDocumentOpen
+import dev.turjo.paperless.feature.reader.PdfStartTool
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ internal data class EntryEvent(
     val message: Int? = null,
     val pdfKey: PdfKey? = null,
     val pdfTitle: String? = null,
+    val startTool: PdfStartTool? = null,
     val previousScanSaved: Boolean = false,
 )
 
@@ -64,7 +66,7 @@ class MainViewModel @Inject constructor(
     private var backgroundedAtMs: Long? = null
     private var coldStart = true
 
-    private val fileIntents = Channel<Intent>(Channel.UNLIMITED)
+    private val fileIntents = Channel<Pair<Intent, PdfStartTool?>>(Channel.UNLIMITED)
     private val preparingPdfState = MutableStateFlow(false)
     val preparingPdf = preparingPdfState.asStateFlow()
     private var documentExport: Job? = null
@@ -83,7 +85,7 @@ class MainViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            for (intent in fileIntents) {
+            for ((intent, startTool) in fileIntents) {
                 locked.first { !it }
                 val type = intent.type ?: withContext(Dispatchers.IO) {
                     try {
@@ -98,7 +100,9 @@ class MainViewModel @Inject constructor(
                     pdfEntryEvents(intent.action, type, intent.data, uris, Uri::getScheme) { uri ->
                         val title = withContext(Dispatchers.IO) { pdfDisplayName(uri) }
                         reader.registerExternal(uri, title) to title
-                    }.forEach { entryEvents.send(it) }
+                    }.forEach { event ->
+                        entryEvents.send(if (event.pdfKey != null) event.copy(startTool = startTool) else event)
+                    }
                 } else {
                     val result = importSharedImages(
                         sharedUris(intent).filter { it.scheme == ContentResolver.SCHEME_CONTENT },
@@ -144,7 +148,18 @@ class MainViewModel @Inject constructor(
     }
 
     internal fun receiveFileIntent(intent: Intent) {
-        fileIntents.trySend(intent)
+        fileIntents.trySend(intent to null)
+    }
+
+    internal fun pickPdf(uri: Uri, startTool: PdfStartTool?) {
+        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, PDF_MIME_TYPE)
+        fileIntents.trySend(intent to startTool)
+    }
+
+    internal suspend fun extractTextFromScan(id: String): PageViewerRoute? {
+        val scan = documents.observeDocument(id).first()
+        val page = scan?.takeIf { it.document.deletedAt == null }?.pages?.firstOrNull() ?: return null
+        return PageViewerRoute(id, page.id, startWithText = true)
     }
 
     /** Tools → Images to PDF → "Adjust pages…": open the photos as a new scan so crops and filters can be fixed. */

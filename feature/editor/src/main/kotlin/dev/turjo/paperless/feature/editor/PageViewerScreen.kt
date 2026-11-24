@@ -35,6 +35,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -72,6 +73,7 @@ fun PageViewerScreen(
     startPageId: String,
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
+    startWithText: Boolean = false,
 ) {
     val model = hiltViewModel<PageViewerViewModel, PageViewerViewModel.Factory> {
         it.create(documentId, startPageId)
@@ -81,6 +83,7 @@ fun PageViewerScreen(
         if (state.close) onBack()
     }
     BackHandler(enabled = state.changing) { }
+    var startTextPending by rememberSaveable { mutableStateOf(startWithText) }
     val ids = state.pages.map { it.page.id }
 
     ScanlyTheme(themeMode = ThemeMode.DARK, dynamicColor = false) {
@@ -105,7 +108,13 @@ fun PageViewerScreen(
             val canAct = current != null && !state.changing && !pager.isScrollInProgress
             var zoomed by remember(current?.page?.id) { mutableStateOf(false) }
             var confirmDelete by remember(current?.page?.id) { mutableStateOf(false) }
-            var showText by remember(current?.page?.id) { mutableStateOf(false) }
+            var showText by rememberSaveable(current?.page?.id) { mutableStateOf(false) }
+            LaunchedEffect(current?.page?.id, startTextPending) {
+                if (current != null && startTextPending) {
+                    showText = true
+                    startTextPending = false
+                }
+            }
             if (showText && current != null) {
                 PageTextSheet(current.page.id, model) { showText = false }
             }
