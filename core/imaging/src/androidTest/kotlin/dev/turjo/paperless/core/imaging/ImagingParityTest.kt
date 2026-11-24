@@ -247,6 +247,20 @@ class ImagingParityTest {
         return LumaFrame(bytes, width, height, stride, rotation)
     }
 
+    @Test
+    fun documentKeepsPrintedBlocksLikePython() {
+        OpenCv.ensureLoaded()
+        assets.image("blocks/printed_blocks.png").useMat { page ->
+            val start = SystemClock.elapsedRealtimeNanos()
+            Enhancer.document(page).useMat { actual ->
+                val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000.0
+                val difference = assets.image("blocks/printed_blocks_DOCUMENT.png").useMat { diff(actual, it) }
+                Log.i(TAG, "printed_blocks/DOCUMENT | ${elapsedMs.formatted()} ms | mean ${difference.mean.formatted()} | >32 share ${difference.share.formatted()}")
+                assertTrue("printed blocks: $difference", difference.mean <= 3.0 && difference.share <= 0.01)
+            }
+        }
+    }
+
     private fun AssetManager.image(path: String, mode: Int = Imgcodecs.IMREAD_COLOR): Mat {
         val bytes = open(path).use { it.readBytes() }
         return MatOfByte(*bytes).useMat {

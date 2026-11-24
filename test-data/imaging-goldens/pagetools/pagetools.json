@@ -20,7 +20,7 @@
     },
     "ink_print_01.png": {
       "tool": "ink_fraction",
-      "value": 0.041159
+      "value": 0.031975
     },
     "skew_print_02_-3.2.png": {
       "tool": "skew",
@@ -36,7 +36,7 @@
     },
     "ink_print_02.png": {
       "tool": "ink_fraction",
-      "value": 0.022129
+      "value": 0.017515
     },
     "skew_print_03_-3.2.png": {
       "tool": "skew",
@@ -52,7 +52,7 @@
     },
     "ink_print_03.png": {
       "tool": "ink_fraction",
-      "value": 0.044428
+      "value": 0.033106
     },
     "ink_blank.png": {
       "tool": "ink_fraction",

@@ -43,12 +43,14 @@ if [ -d tools/pdf-fixwidth/tests ] && [ -n "$PY" ] && "$PY" -c "import fitz" 2>/
   "$PY" tools/pdf-fixwidth/tests/test_fixwidth.py
 fi
 
-step "Manifest guard: no INTERNET permission (merged manifest, libraries included)"
+step "Network guard: INTERNET only for the updater (user decision 2026-11-25)"
 merged=$(find app/build/intermediates -name AndroidManifest.xml -path "*merged_manifest*" 2>/dev/null | head -1)
 if [ -z "$merged" ]; then echo "FAIL: merged manifest not found"; exit 1; fi
-if grep -n "android.permission.INTERNET" "$merged"; then
-  echo "FAIL: INTERNET permission in $merged"; exit 1
-fi
+grep -q "android.permission.INTERNET" "$merged" || { echo "FAIL: the updater needs INTERNET in $merged"; exit 1; }
+# Network code may live only in the updater; anything else that opens a connection fails the check.
+net=$(grep -rlE 'HttpURLConnection|openConnection\(|java\.net\.Socket|okhttp3|io\.ktor' --include=*.kt app core feature \
+  | grep -v "/build/" | grep -v "feature/settings/src/main/kotlin/dev/turjo/paperless/feature/settings/UpdatesViewModel.kt" || true)
+if [ -n "$net" ]; then echo "FAIL: network code outside the updater:"; echo "$net"; exit 1; fi
 echo "ok ($merged)"
 
 printf '\nCHECK PASSED\n'

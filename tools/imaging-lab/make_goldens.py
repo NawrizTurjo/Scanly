@@ -40,7 +40,7 @@ PICKS = [
 ]
 # id-cards are also checked with the ID-mode aspect prior (1.586)
 ASPECT_PICKS = {"id-cards_03": 1.586}
-FILTER_INPUTS = {"shadows_01", "low-light_02", "handwriting_04"}
+FILTER_INPUTS = {"shadows_01", "low-light_02", "handwriting_04", "id-cards_03"}
 WARP_LONG = 700  # keep goldens small; the Kotlin test warps to the same explicit size
 
 
@@ -82,6 +82,12 @@ def main():
                 if f == "ORIGINAL":
                     continue
                 cv2.imwrite(str(OUT / "filters" / f"{name}_{f}.png"), fn(warped))
+    # Printed fills (user report 2026-11-25): the Document filter's block path, at half size.
+    from run_enhance import printed_blocks_page  # noqa: E402
+    (OUT / "blocks").mkdir()
+    blocks = cv2.resize(printed_blocks_page(), (1240, 1754), interpolation=cv2.INTER_AREA)
+    cv2.imwrite(str(OUT / "blocks" / "printed_blocks.png"), blocks)
+    cv2.imwrite(str(OUT / "blocks" / "printed_blocks_DOCUMENT.png"), E.document(blocks))
     meta = {"version": 1, "generator": "tools/imaging-lab/make_goldens.py", "opencv": cv2.__version__,
             "tolerances": {"quad_px": 3.0, "live_quad_px": 1.5, "filter_mean_abs": 3.0, "filter_max_share_over_32": 0.01},
             "items": goldens}

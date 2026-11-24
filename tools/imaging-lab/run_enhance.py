@@ -85,12 +85,57 @@ def main():
     print(f"\nglare warning: {tp} true pos, {fn} missed, {fp} false alarms across all {len(rows)} pages")
     if fn or fp > 1:
         ok = False
+    if not printed_blocks_ok():
+        ok = False
     if args.sheet and tiles:
         OUT.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(OUT / "enhance_sheet.jpg"), np.vstack(tiles), [cv2.IMWRITE_JPEG_QUALITY, 85])
         print("sheet:", OUT / "enhance_sheet.jpg")
     print("ENHANCE", "PASS" if ok else "FAIL")
     sys.exit(0 if ok else 1)
+
+
+def printed_blocks_page():
+    """A4 page at 300 dpi with printed fills and a soft shadow (also a parity golden)."""
+    page = np.full((3508, 2480, 3), 238, np.uint8)
+    page[300:700, 200:2280] = 215                       # light grey header band
+    cv2.rectangle(page, (300, 900), (1100, 1500), (40, 40, 40), 14)
+    page[914:1486, 314:1086] = 190                      # grey fill inside a frame
+    page[1700:2000, 300:1300] = (40, 70, 20)            # dark green label
+    cv2.putText(page, "STUDENT", (360, 1900), cv2.FONT_HERSHEY_TRIPLEX, 4, (230, 230, 230), 8)
+    page[1700:2000, 1500:2200] = (50, 50, 170)          # red sticker
+    shade = np.zeros(page.shape[:2], np.float32)
+    cv2.circle(shade, (2480, 3508), 1100, 1, -1)
+    shade = cv2.GaussianBlur(shade, (0, 0), 120)
+    page = (page * (1 - 0.4 * shade[..., None])).astype(np.uint8)
+    return page
+
+
+def printed_blocks_ok():
+    """User report 2026-11-25: shaded boxes, a dark-green label and a red sticker came out white or black.
+    Document must keep printed fills near their shade relative to the paper while still flattening a soft shadow."""
+    page = printed_blocks_page()
+    out = E.document(page)
+    g = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB).astype(np.float32)
+    header = float(g[350:650, 400:2000].mean())
+    framed = float(g[1000:1400, 700:1050].mean())
+    green = float(g[1720:1760, 900:1280].mean())
+    red_chroma = float(np.hypot(lab[1750:1950, 1600:2100, 1] - 128, lab[1750:1950, 1600:2100, 2] - 128).mean())
+    shadow_paper = float(g[3200:3450, 2150:2400].mean())
+    checks = {
+        "grey header stays grey (205-245)": 205 <= header <= 245,
+        "framed fill stays grey (150-230)": 150 <= framed <= 230,
+        "green label not crushed or bleached (15-110)": 15 <= green <= 110,
+        "red sticker keeps colour (chroma > 30)": red_chroma > 30,
+        "soft shadow flattened (paper > 235)": shadow_paper > 235,
+    }
+    print(f"\nprinted blocks: header {header:.0f}, framed {framed:.0f}, green {green:.0f}, "
+          f"red chroma {red_chroma:.0f}, shadowed paper {shadow_paper:.0f}")
+    for name, good in checks.items():
+        if not good:
+            print("  FAIL", name)
+    return all(checks.values())
 
 
 if __name__ == "__main__":

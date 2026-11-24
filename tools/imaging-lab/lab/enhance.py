@@ -63,7 +63,7 @@ def _unsharp(img, sigma, amount):
     return cv2.addWeighted(img, 1 + amount, blur, -amount, 0)
 
 
-def document(img):
+def document_v1(img):
     """White page, dark readable strokes, colour ink kept (the default 'white page' look)."""
     gain = paper_gain(img)
     flat = divide_background(img)
@@ -154,4 +154,145 @@ def glare_fix(img, large_share=0.05):
     return img, bool(warning)
 
 
-FILTERS = {"ORIGINAL": lambda x: x, "AUTO": auto, "DOCUMENT": document, "BW": bw, "GRAY": grayscale, "WHITEBOARD": whiteboard}
+FILTERS = {"ORIGINAL": lambda x: x, "AUTO": auto, "DOCUMENT": document_v1, "BW": bw, "GRAY": grayscale, "WHITEBOARD": whiteboard}
+
+
+# ---- v2 (2026-11-25): keep printed fills, flatten only real shadows ----
+
+WORK_W = 512
+
+
+def _solid_components(mask, min_area):
+    """Keep components of at least min_area, with their holes filled (letters inside a coloured box)."""
+    out = np.zeros_like(mask)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    big = [c for c in contours if cv2.contourArea(c) >= min_area]
+    cv2.drawContours(out, big, -1, 1, -1)
+    return out
+
+
+def _printed_mask(closed_small):
+    """Printed blocks on the closed (text-free) page: coloured fills, or darker areas with step edges that don't
+    behave like a shadow. Returns a uint8 mask at the small scale. Shadows have soft edges and usually run off the
+    page; a printed fill is sharp, compact and often coloured."""
+    lab = cv2.cvtColor(closed_small, cv2.COLOR_BGR2LAB)
+    L = lab[:, :, 0].astype(np.float32)
+    chroma = np.hypot(lab[:, :, 1].astype(np.float32) - 128, lab[:, :, 2].astype(np.float32) - 128)
+    h, w = L.shape
+    k = _odd(w / 2.5)
+    env = cv2.dilate(L, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    env = cv2.GaussianBlur(env, (0, 0), w / 16.0)
+    coloured = (chroma > 22).astype(np.uint8)
+    dark = ((L < env * 0.94) & (chroma <= 22)).astype(np.uint8)
+    dark = cv2.morphologyEx(dark, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    out = _solid_components(cv2.morphologyEx(coloured, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)), (w * h) * 0.0005)
+    # Solid dark blocks (a dark-green label, a black box) are print: no shadow on paper is this deep with a sharp
+    # edge away from the page border.
+    deep = cv2.morphologyEx((L < env * 0.5).astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    nd, dl, ds, _ = cv2.connectedComponentsWithStats(deep, connectivity=8)
+    for i in range(1, nd):
+        x, y, bw_, bh, area = ds[i]
+        if area >= (w * h) * 0.0005 and x > 0 and y > 0 and x + bw_ < w and y + bh < h:
+            out |= _solid_components((dl == i).astype(np.uint8), 0)
+    gx = cv2.Sobel(L, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(L, cv2.CV_32F, 0, 1, ksize=3)
+    grad = np.hypot(gx, gy) / 8.0
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    for i in range(1, n):
+        x, y, bw_, bh, area = stats[i]
+        if area < (w * h) * 0.0005:
+            continue
+        x0, y0, x1, y1 = max(0, x - 2), max(0, y - 2), min(w, x + bw_ + 2), min(h, y + bh + 2)
+        comp = (labels[y0:y1, x0:x1] == i).astype(np.uint8)
+        cb = comp.astype(bool)
+        edge_band = cv2.morphologyEx(comp, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)).astype(bool)
+        contrast = float(np.mean(env[y0:y1, x0:x1][cb] - L[y0:y1, x0:x1][cb]))
+        edge = float(np.mean(grad[y0:y1, x0:x1][edge_band])) if np.any(edge_band) else 0.0
+        sharp = contrast > 1 and edge / contrast > 0.22
+        on_border = (x == 0) + (y == 0) + (x + bw_ == w) + (y + bh == h)
+        fill = area / float(bw_ * bh)
+        printed = sharp and on_border == 0 and (fill > 0.6 or area < w * h * 0.08)
+        if printed:
+            contours, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            solid = np.zeros_like(comp)
+            cv2.drawContours(solid, contours, -1, 1, -1)
+            out[y0:y1, x0:x1] |= solid
+    return cv2.dilate(out, np.ones((3, 3), np.uint8))
+
+
+def _fill_from_paper(bg, printed, sw):
+    """Replace the estimate under printed blocks with a weighted average of the paper around them (normalised
+    convolution). Smooth across lighting gradients, unlike inpainting, which streaks inside large blocks."""
+    valid = (1 - printed).astype(np.float32)
+    sigma = sw / 10.0
+    den = cv2.GaussianBlur(valid, (0, 0), sigma)
+    out = bg.astype(np.float32)
+    for c in range(3):
+        num = cv2.GaussianBlur(out[:, :, c] * valid, (0, 0), sigma)
+        fill = num / np.maximum(den, 1e-4)
+        out[:, :, c] = np.where(printed > 0, fill, out[:, :, c])
+    out = cv2.GaussianBlur(out, (0, 0), sw / 200.0)
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
+def background_v2(img):
+    """Per-channel paper estimate that skips printed fills: today's close+median estimate, with printed blocks cut out
+    and filled from the paper around them."""
+    h, w = img.shape[:2]
+    s = WORK_W / float(w) if w > WORK_W else 1.0
+    small = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    sw = small.shape[1]
+    k = _odd(sw / 60.0)
+    closed = cv2.morphologyEx(small, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    printed = _printed_mask(closed)
+    bg = cv2.medianBlur(closed, _odd(sw / 18.0))
+    if np.any(printed):
+        bg = _fill_from_paper(bg, printed, sw)
+    return cv2.resize(bg, (w, h), interpolation=cv2.INTER_LINEAR), printed
+
+
+def divide_background_v2(img, with_mask=False):
+    img = denoise_for_gain(img, paper_gain(img))
+    bg, printed = background_v2(img)
+    flat = np.clip(img.astype(np.float32) / np.maximum(bg.astype(np.float32), 1.0) * 255.0, 0, 255).astype(np.uint8)
+    return (flat, printed) if with_mask else flat
+
+
+def _block_weight(printed, shape):
+    """Full-size 0..1 weight of printed blocks, feathered so block edges don't show a seam."""
+    h, w = shape[:2]
+    m = cv2.resize(printed.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+    return cv2.GaussianBlur(m, (0, 0), max(1.0, w / 600.0))
+
+
+def _tone(img, lo_pct=0.5, hi_pct=50.0):
+    """Paper to white and the darkest ink to black, mid-tones nearly linear (fills keep their shade)."""
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    lo, hi = np.percentile(g, lo_pct), np.percentile(g, hi_pct)
+    if hi - lo < 10:
+        return img
+    x = np.clip((np.arange(256, dtype=np.float32) - lo) / (hi - lo), 0, 1)
+    y = np.where(x < 0.35, 0.35 * (x / 0.35) ** 1.6, x)  # deepen only the ink end
+    return cv2.LUT(img, (y * 255.0).astype(np.uint8))
+
+
+def document_v2(img):
+    gain = paper_gain(img)
+    flat, printed = divide_background_v2(img, with_mask=True)
+    out = _tone(flat)
+    hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+    paper = hsv[:, :, 2] > 215
+    hsv[:, :, 1][paper] = (hsv[:, :, 1][paper] * 0.3).astype(np.uint8)
+    out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    if np.any(printed):
+        # Printed blocks keep their shade and colour relative to the paper: the black-point stretch is for ink (a dark
+        # label is usually the darkest thing on the page and would go black) and the paper desaturation would bleach
+        # a bright sticker.
+        wgt = _block_weight(printed, img.shape)[..., None]
+        out = np.clip(out.astype(np.float32) * (1 - wgt) + flat.astype(np.float32) * wgt + 0.5, 0, 255).astype(np.uint8)
+    amount = 0.5 if gain < 1.5 else 0.2
+    return _unsharp(out, sigma=max(0.8, img.shape[1] / 1600.0), amount=amount)
+
+
+document = document_v2
+FILTERS["DOCUMENT"] = document_v2

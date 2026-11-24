@@ -41,21 +41,61 @@ object Enhancer {
 
     fun document(m: Mat): Mat {
         val gain = paperGain(m)
-        return divideBackground(m, gain).useMat { flat ->
-            stretchInPlace(flat, 0.5, 50.0, 1.25)
-            Imgproc.cvtColor(flat, flat, Imgproc.COLOR_BGR2HSV)
-            editRows(flat) { row ->
-                for (i in 0 until row.size step 3) {
-                    if (row[i + 2].unsigned() > 215) {
-                        row[i + 1] = (row[i + 1].unsigned() * 0.3).toInt().toByte()
+        var printed: Mat? = null
+        return dividePaper(m, gain) { printed = it }.useMat { flat ->
+            try {
+                val out = flat.clone()
+                out.useMat {
+                    toneInPlace(out)
+                    Imgproc.cvtColor(out, out, Imgproc.COLOR_BGR2HSV)
+                    editRows(out) { row ->
+                        for (i in 0 until row.size step 3) {
+                            if (row[i + 2].unsigned() > 215) {
+                                row[i + 1] = (row[i + 1].unsigned() * 0.3).toInt().toByte()
+                            }
+                        }
+                    }
+                    Imgproc.cvtColor(out, out, Imgproc.COLOR_HSV2BGR)
+                    printed?.let { blendBlocks(out, flat, it) }
+                    val amount = if (gain < 1.5) 0.5 else 0.2
+                    newMat { blur ->
+                        Imgproc.GaussianBlur(out, blur, Size(), maxOf(0.8, m.cols() / 1600.0))
+                        Core.addWeighted(out, 1 + amount, blur, -amount, 0.0, blur)
                     }
                 }
+            } finally {
+                printed?.release()
             }
-            Imgproc.cvtColor(flat, flat, Imgproc.COLOR_HSV2BGR)
-            val amount = if (gain < 1.5) 0.5 else 0.2
-            newMat { blur ->
-                Imgproc.GaussianBlur(flat, blur, Size(), maxOf(0.8, m.cols() / 1600.0))
-                Core.addWeighted(flat, 1 + amount, blur, -amount, 0.0, blur)
+        }
+    }
+
+    /**
+     * Printed blocks keep their shade and colour relative to the paper: the black-point stretch is for ink (a dark
+     * label is usually the darkest thing on the page and would go black) and the paper desaturation would bleach a
+     * bright sticker. [printed] is the small 0/1 mask; it is feathered to full size so block edges don't seam.
+     */
+    private fun blendBlocks(out: Mat, flat: Mat, printed: Mat) {
+        Mat().useMat { weight ->
+            printed.convertTo(weight, CvType.CV_32F)
+            Imgproc.resize(weight, weight, out.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+            Imgproc.GaussianBlur(weight, weight, Size(), maxOf(1.0, out.cols() / 600.0))
+            val w = FloatArray(out.cols())
+            val a = ByteArray(out.cols() * 3)
+            val b = ByteArray(out.cols() * 3)
+            for (y in 0 until out.rows()) {
+                weight.get(y, 0, w)
+                out.get(y, 0, a)
+                flat.get(y, 0, b)
+                for (x in 0 until out.cols()) {
+                    val t = w[x]
+                    if (t <= 0f) continue
+                    for (c in 0..2) {
+                        val i = x * 3 + c
+                        val v = a[i].unsigned() * (1f - t) + b[i].unsigned() * t + 0.5f
+                        a[i] = v.toInt().coerceIn(0, 255).toByte()
+                    }
+                }
+                out.put(y, 0, a)
             }
         }
     }
@@ -130,6 +170,51 @@ object Enhancer {
         } catch (failure: Throwable) {
             out.release()
             throw failure
+        }
+    }
+
+    /** Document filter division (lab `divide_background_v2`): one paper estimate that skips printed blocks. */
+    internal fun dividePaper(m: Mat, gain: Double = paperGain(m), printedOut: ((Mat?) -> Unit)? = null): Mat {
+        val source = if (gain < 1.5) m.clone() else newMat {
+            val d = maxOf(5, odd(m.cols() / 250.0))
+            Imgproc.bilateralFilter(m, it, d, 12.0 * gain, d.toDouble())
+            if (gain >= 2.2) Imgproc.medianBlur(it, it, 3)
+        }
+        return source.useMat { image ->
+            PaperBackground.estimate(image).use { estimate ->
+                val paper = estimate.paper
+                printedOut?.invoke(estimate.printed?.clone())
+                val out = Mat(image.rows(), image.cols(), image.type())
+                val ink = ByteArray(image.cols() * 3)
+                val level = ByteArray(image.cols() * 3)
+                for (y in 0 until image.rows()) {
+                    image.get(y, 0, ink)
+                    paper.get(y, 0, level)
+                    for (x in ink.indices) {
+                        val value = ink[x].unsigned().toFloat() / maxOf(level[x].unsigned(), 1) * 255f
+                        ink[x] = value.toInt().coerceAtMost(255).toByte()
+                    }
+                    out.put(y, 0, ink)
+                }
+                out
+            }
+        }
+    }
+
+    /** Paper to white, darkest ink to black, mid-tones nearly linear so printed fills keep their shade. */
+    private fun toneInPlace(m: Mat) {
+        val bins = newMat { Imgproc.cvtColor(m, it, Imgproc.COLOR_BGR2GRAY) }.useMat(::histogram)
+        val lo = Percentiles.ofHistogram(bins, 0.5)
+        val hi = Percentiles.ofHistogram(bins, 50.0)
+        if (hi - lo < 10) return
+        val values = ByteArray(256) {
+            val x = ((it - lo.toFloat()) / (hi - lo).toFloat()).coerceIn(0f, 1f)
+            val y = if (x < 0.35f) 0.35f * (x / 0.35f).pow(1.6f) else x
+            (y * 255f).toInt().toByte()
+        }
+        Mat(1, 256, CvType.CV_8UC1).useMat { lut ->
+            lut.put(0, 0, values)
+            Core.LUT(m, lut, m)
         }
     }
 
