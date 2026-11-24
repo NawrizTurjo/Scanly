@@ -98,12 +98,14 @@ class MainActivity : ComponentActivity() {
                         SideEffect { attemptedUnlock = false }
                         navigationState.SaveableStateProvider("navigation") {
                             val preparingPdf by model.preparingPdf.collectAsStateWithLifecycle()
+                            val pendingFileIntents by model.pendingFileIntents.collectAsStateWithLifecycle()
                             ScanlyNavigation(
                                 initialStack, model.entries, model::documentOpened,
                                 model::openDocumentInReader, model::openPdf, preparingPdf,
                                 model::openFileInReader, model::openPdfAtPage, model::importImagesAsScan,
                                 onPickPdf = model::pickPdf,
                                 onChooseScan = model::extractTextFromScan,
+                                canShowWhatsNew = resumed && pendingFileIntents == 0,
                             )
                         }
                     }
