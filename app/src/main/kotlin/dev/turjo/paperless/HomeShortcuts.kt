@@ -17,7 +17,8 @@ internal val homeShortcuts = listOf(
 ) + toolShortcuts.map { HomeShortcut(TOOL_PREFIX + it.id, it.title, it.icon) }
 
 internal fun homeShortcutRoute(id: String): Route? = when (id) {
-    "scan", "id_card", "book", "whiteboard" -> CameraRoute()
+    "scan" -> CameraRoute()
+    "id_card", "book", "whiteboard" -> CameraRoute(startMode = id)
     "all_tools" -> ToolsRoute
     else -> if (id.startsWith(TOOL_PREFIX)) ToolRoute(id.removePrefix(TOOL_PREFIX)) else null
 }

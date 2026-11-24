@@ -45,6 +45,8 @@ internal data class CameraArgs(
     val insertAt: Int?,
     val singleMode: Boolean,
     val resumeDraftId: String? = null,
+    /** "id_card", "book" or "whiteboard" to open in that mode (Home shortcuts); null keeps the last mode. */
+    val startMode: String? = null,
 )
 
 internal data class PendingScan(val session: ScanSession, val pageCount: Int)
@@ -211,7 +213,7 @@ internal class CameraViewModel internal constructor(
                 mode = when {
                     progress.enabled -> ScanMode.DOCUMENT
                     idBack -> ScanMode.ID_CARD
-                    else -> rememberedMode ?: ScanMode.DOCUMENT
+                    else -> args.startMode?.let(::scanModeFor) ?: rememberedMode ?: ScanMode.DOCUMENT
                 },
                 singleMode = it.singleMode && !progress.enabled,
                 idBack = idBack && !progress.enabled,
@@ -538,4 +540,12 @@ private fun readImageSize(file: File): PixelSize {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.path, bounds)
     return PixelSize(bounds.outWidth, bounds.outHeight)
+}
+
+internal fun scanModeFor(key: String): ScanMode? = when (key) {
+    "id_card" -> ScanMode.ID_CARD
+    "book" -> ScanMode.BOOK
+    "whiteboard" -> ScanMode.WHITEBOARD
+    "document" -> ScanMode.DOCUMENT
+    else -> null
 }

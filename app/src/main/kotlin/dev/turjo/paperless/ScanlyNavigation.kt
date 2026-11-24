@@ -97,6 +97,7 @@ import kotlinx.serialization.Serializable
     val insertAt: Int? = null,
     val single: Boolean = false,
     val resumeDraftId: String? = null,
+    val startMode: String? = null,
 ) : Route
 @Serializable data class ReviewRoute(val draftDocumentId: String) : Route
 @Serializable data class PageViewerRoute(val documentId: String, val startPageId: String) : Route
@@ -329,6 +330,7 @@ internal fun ScanlyNavigation(
                                 insertAt = key.insertAt,
                                 singleMode = key.single,
                                 resumeDraftId = key.resumeDraftId,
+                                startMode = key.startMode,
                                 onReview = { draftId -> backStack.showReview(draftId) },
                                 onClose = { backStack.removeAt(backStack.lastIndex) },
                             )

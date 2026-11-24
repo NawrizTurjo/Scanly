@@ -110,6 +110,8 @@ class EntryRoutesTest {
         assertEquals(ToolRoute("MERGE"), homeShortcutRoute("tool:MERGE"))
         assertEquals(ToolRoute("COMPRESS"), homeShortcutRoute("tool:COMPRESS"))
         assertEquals(CameraRoute(), homeShortcutRoute("scan"))
+        assertEquals(CameraRoute(startMode = "id_card"), homeShortcutRoute("id_card"))
+        assertEquals(CameraRoute(startMode = "book"), homeShortcutRoute("book"))
     }
 
     @Test

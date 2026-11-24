@@ -107,9 +107,10 @@ fun CameraScreen(
     onReview: (draftDocumentId: String) -> Unit,
     onClose: () -> Unit,
     resumeDraftId: String? = null,
+    startMode: String? = null,
 ) {
     val model = hiltViewModel<CameraViewModel, CameraViewModel.Factory> {
-        it.create(CameraArgs(targetDocumentId, insertAt, singleMode, resumeDraftId))
+        it.create(CameraArgs(targetDocumentId, insertAt, singleMode, resumeDraftId, startMode))
     }
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
