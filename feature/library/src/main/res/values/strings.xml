@@ -1,4 +1,6 @@
 <resources>
+    <string name="choose_scan">Choose a scan</string>
+    <string name="library_no_search_results">No matching scans</string>
     <string name="library_title">Files</string>
     <string name="scan">Scan</string>
     <string name="no_documents">No documents yet</string>

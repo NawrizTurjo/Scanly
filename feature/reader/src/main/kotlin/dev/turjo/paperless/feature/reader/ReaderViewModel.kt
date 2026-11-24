@@ -69,6 +69,7 @@ class ReaderViewModel @Inject constructor(
 ) : ViewModel() {
     private val state = MutableStateFlow(ReaderUiState())
     val uiState = state.asStateFlow()
+    private val pendingStartTools = mutableStateMapOf<String, PdfStartTool>()
     internal val annotationLayers = mutableStateMapOf<String, AnnotationLayer>()
     internal var annotationPrompt by mutableStateOf<AnnotationPrompt?>(null)
         private set
@@ -168,17 +169,24 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    suspend fun open(key: PdfKey, title: String? = null, page: Int? = null) {
+    suspend fun open(
+        key: PdfKey,
+        title: String? = null,
+        page: Int? = null,
+        startTool: PdfStartTool? = null,
+    ) {
         state.first { !it.restoring }
         if (page == null) recentLoaded.await()
         val current = state.value
         val existing = current.tabs.firstOrNull { it.pdfKey == key }
         if (existing != null) {
+            if (startTool != null) pendingStartTools[existing.tabId] = startTool
             switch(existing.tabId)
             return
         }
         val recent = current.recent.firstOrNull { it.pdfKey == key }
         val tab = TabState(UUID.randomUUID().toString(), key, title ?: recent?.title ?: "PDF", page ?: recent?.lastPage ?: 0)
+        if (startTool != null) pendingStartTools[tab.tabId] = startTool
         select(current.tabs + tab, tab.tabId)
     }
 
@@ -289,7 +297,25 @@ class ReaderViewModel @Inject constructor(
         layerObservers.remove(id)?.cancel()
         layerGestures.remove(id)?.cancel()
         annotationLayers.remove(id)
+        pendingStartTools.remove(id)
     }
+
+    internal fun startAnnotations(id: String) {
+        val current = state.value
+        if (current.activeTabId != id || current.document == null) return
+        val layer = annotationLayers[id]?.takeUnless { it.saving } ?: return
+        when (pendingStartTools.remove(id)) {
+            PdfStartTool.SIGNATURE -> annotationLayers[id] = layer.copy(
+                editing = true,
+                tool = AnnotationTool.SIGNATURE,
+                pendingSignature = null,
+                signaturePicker = SignaturePickerMode.DRAW_IF_EMPTY,
+            )
+            null -> Unit
+        }
+    }
+
+    internal fun pendingStartTool(id: String): PdfStartTool? = pendingStartTools[id]
 
     internal fun editAnnotations(id: String, update: (AnnotationLayer) -> AnnotationLayer) {
         val layer = annotationLayers[id] ?: return
@@ -335,7 +361,10 @@ class ReaderViewModel @Inject constructor(
             annotationLayers[id] = if (!success) layer else if (flatten) {
                 layer.discard()
             } else {
-                layer.copy(saved = layer.marks, editing = false, undo = emptyList(), redo = emptyList(), pendingSignature = null)
+                layer.copy(
+                    saved = layer.marks, editing = false, undo = emptyList(), redo = emptyList(),
+                    pendingSignature = null, signaturePicker = null,
+                )
             }
             if (success) {
                 annotationPrompt = null

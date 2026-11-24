@@ -73,6 +73,7 @@ import dev.turjo.paperless.feature.library.DocumentScreen
 import dev.turjo.paperless.feature.library.LibraryScreen
 import dev.turjo.paperless.feature.library.HomeScreen
 import dev.turjo.paperless.feature.tools.HomeToolOutputs
+import dev.turjo.paperless.feature.reader.PdfStartTool
 import dev.turjo.paperless.feature.reader.ReaderScreen
 import dev.turjo.paperless.feature.settings.SettingsScreen
 import dev.turjo.paperless.feature.tools.ToolsScreen
@@ -88,6 +89,7 @@ import kotlinx.serialization.Serializable
     val selectDocumentId: String? = null,
 ) : Route
 @Serializable data class ToolRoute(val toolId: String) : Route
+@Serializable data object ChooseScanRoute : Route
 @Serializable data object LibraryRoute : Route
 @Serializable data object ReaderRoute : Route
 @Serializable data object ToolsRoute : Route
@@ -100,18 +102,26 @@ import kotlinx.serialization.Serializable
     val startMode: String? = null,
 ) : Route
 @Serializable data class ReviewRoute(val draftDocumentId: String) : Route
-@Serializable data class PageViewerRoute(val documentId: String, val startPageId: String) : Route
+@Serializable data class PageViewerRoute(
+    val documentId: String,
+    val startPageId: String,
+    val startWithText: Boolean = false,
+) : Route
 @Serializable data class PageEditorRoute(val pageId: String) : Route
 @Serializable data class DocumentRoute(val documentId: String) : Route
 
-internal data class PendingPdf(val key: PdfKey, val title: String? = null)
+internal data class PendingPdf(val key: PdfKey, val title: String? = null, val startTool: PdfStartTool? = null)
 
-internal fun List<PendingPdf>.consumePdf(key: PdfKey?): List<PendingPdf> =
-    if (key != null && firstOrNull()?.key == key) drop(1) else this
+internal fun List<PendingPdf>.consumePdf(request: PendingPdf?): List<PendingPdf> =
+    if (request != null && firstOrNull() == request) drop(1) else this
 
 private val pendingPdfsSaver = listSaver<List<PendingPdf>, String>(
-    save = { requests -> requests.flatMap { listOf(it.key.value, it.title.orEmpty()) } },
-    restore = { saved -> saved.chunked(2).map { PendingPdf(PdfKey(it[0]), it[1].ifEmpty { null }) } },
+    save = { requests -> requests.flatMap { listOf(it.key.value, it.title.orEmpty(), it.startTool?.name.orEmpty()) } },
+    restore = { saved ->
+        saved.chunked(3).map { (key, title, tool) ->
+            PendingPdf(PdfKey(key), title.ifEmpty { null }, PdfStartTool.entries.firstOrNull { it.name == tool })
+        }
+    },
 )
 
 private val readerBottomBarHeight = 64.dp
@@ -151,14 +161,18 @@ internal fun ScanlyNavigation(
     onOpenFile: (java.io.File) -> Unit = {},
     onOpenPdfAtPage: (PdfKey, Int) -> Unit = { key, _ -> onOpenPdf(key) },
     onAdjustImages: ((List<Uri>) -> Unit)? = null,
-    onPickPdf: (Uri) -> Unit = {},
+    onPickPdf: (Uri, PdfStartTool?) -> Unit,
+    onChooseScan: suspend (String) -> PageViewerRoute?,
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris ->
         if (uris.isNotEmpty()) onAdjustImages?.invoke(uris)
     }
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(onPickPdf)
+        if (uri != null) onPickPdf(uri, null)
+    }
+    val signPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onPickPdf(uri, PdfStartTool.SIGNATURE)
     }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -166,8 +180,7 @@ internal fun ScanlyNavigation(
     var pendingPdfs by rememberSaveable(stateSaver = pendingPdfsSaver) {
         mutableStateOf(emptyList<PendingPdf>())
     }
-    val pendingPdfKey = pendingPdfs.firstOrNull()?.key
-    val pendingPdfTitle = pendingPdfs.firstOrNull()?.title
+    val pendingPdf = pendingPdfs.firstOrNull()
     LaunchedEffect(entries, resources) {
         entries.collect { event ->
             when (val route = event.route) {
@@ -184,7 +197,9 @@ internal fun ScanlyNavigation(
                 else -> backStack.replaceAll(LibraryRoute, route)
             }
             event.pdfKey?.let { key ->
-                if (pendingPdfs.none { it.key == key }) pendingPdfs += PendingPdf(key, event.pdfTitle)
+                if (pendingPdfs.none { it.key == key && it.startTool == event.startTool }) {
+                    pendingPdfs += PendingPdf(key, event.pdfTitle, event.startTool)
+                }
                 if (backStack.size != 1 || backStack.lastOrNull() != ReaderRoute) {
                     backStack.replaceAll(ReaderRoute)
                 }
@@ -270,6 +285,7 @@ internal fun ScanlyNavigation(
                                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                                         )
                                         "open_pdf" -> pdfPicker.launch(arrayOf(PDF_MIME_TYPE))
+                                        "sign_pdf" -> signPicker.launch(arrayOf(PDF_MIME_TYPE))
                                         else -> homeShortcutRoute(id)?.let(backStack::add)
                                     }
                                 },
@@ -292,6 +308,26 @@ internal fun ScanlyNavigation(
                                 selectDocumentId = key.selectDocumentId,
                             )
                         }
+                        entry<ChooseScanRoute> {
+                            val pickerScope = rememberCoroutineScope()
+                            LibraryScreen(
+                                onCancelPick = {
+                                    if (backStack.lastOrNull() == ChooseScanRoute) backStack.removeAt(backStack.lastIndex)
+                                },
+                                onOpenDocument = { id ->
+                                    pickerScope.launch {
+                                        val viewer = onChooseScan(id)
+                                        if (backStack.lastOrNull() != ChooseScanRoute) return@launch
+                                        if (viewer == null) {
+                                            snackbar.showSnackbar(resources.getString(R.string.scan_has_no_pages))
+                                        } else {
+                                            onDocumentOpened(id)
+                                            backStack[backStack.lastIndex] = viewer
+                                        }
+                                    }
+                                },
+                            )
+                        }
                         entry<LibraryRoute> {
                             LibraryScreen(
                                 onScan = { backStack.add(CameraRoute()) },
@@ -303,9 +339,10 @@ internal fun ScanlyNavigation(
                         }
                         entry<ReaderRoute> {
                             ReaderScreen(
-                                openRequest = pendingPdfKey,
-                                onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdfKey) },
-                                openRequestTitle = pendingPdfTitle,
+                                openRequest = pendingPdf?.key,
+                                onOpenRequestConsumed = { pendingPdfs = pendingPdfs.consumePdf(pendingPdf) },
+                                openRequestTitle = pendingPdf?.title,
+                                openRequestStartTool = pendingPdf?.startTool,
                                 active = readerActive,
                                 bottomBarHeight = readerBottomBarHeight,
                                 onImmersiveChanged = { readerImmersive = it },
@@ -352,6 +389,7 @@ internal fun ScanlyNavigation(
                             PageViewerScreen(
                                 documentId = key.documentId,
                                 startPageId = key.startPageId,
+                                startWithText = key.startWithText,
                                 onBack = { if (backStack.lastOrNull() == key) backStack.removeAt(backStack.lastIndex) },
                                 onEdit = { if (backStack.lastOrNull() == key) backStack.add(PageEditorRoute(it)) },
                             )

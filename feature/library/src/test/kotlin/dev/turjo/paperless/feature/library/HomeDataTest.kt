@@ -7,9 +7,9 @@ import org.junit.Test
 class HomeDataTest {
     private val expectedDefaults = listOf(
         "scan", "import_images", "tool:FROM_IMAGES", "open_pdf", "tool:MERGE",
-        "tool:COMPRESS", "id_card", "book", "all_tools",
+        "tool:COMPRESS", "id_card", "sign_pdf", "all_tools",
     )
-    private val catalog = (expectedDefaults + listOf("whiteboard", "tool:SPLIT")).toSet()
+    private val catalog = (expectedDefaults + listOf("whiteboard", "book", "extract_text", "tool:SPLIT")).toSet()
 
     @Test
     fun freshHomeShowsTheDefaultShortcutsInOrder() {

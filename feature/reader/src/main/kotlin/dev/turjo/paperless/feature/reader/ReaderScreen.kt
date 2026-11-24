@@ -106,6 +106,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class PdfStartTool { SIGNATURE }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
@@ -115,13 +117,14 @@ fun ReaderScreen(
     active: Boolean = true,
     onImmersiveChanged: (Boolean) -> Unit = {},
     bottomBarHeight: Dp = 0.dp,
+    openRequestStartTool: PdfStartTool? = null,
 ) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val consumed by rememberUpdatedState(onOpenRequestConsumed)
-    LaunchedEffect(openRequest) {
+    LaunchedEffect(openRequest, openRequestStartTool) {
         if (openRequest != null) {
-            viewModel.open(openRequest, title = openRequestTitle)
+            viewModel.open(openRequest, title = openRequestTitle, startTool = openRequestStartTool)
             consumed()
         }
     }
@@ -176,6 +179,11 @@ fun ReaderScreen(
     var splitRequested by rememberSaveable { mutableStateOf(false) }
     var rightId by rememberSaveable { mutableStateOf<String?>(null) }
     val annotationLayer = tab?.let { viewModel.annotationLayers[it.tabId] }
+    val startTool = tab?.let { viewModel.pendingStartTool(it.tabId) }
+    val annotationsReady = annotationLayer?.saving == false
+    LaunchedEffect(tab?.tabId, document, annotationsReady, startTool, active) {
+        if (active && tab != null && startTool != null) viewModel.startAnnotations(tab.tabId)
+    }
     val annotating = annotationLayer?.editing == true
     val canImmerse = active && tab != null && !annotating
     var chrome by remember(canImmerse) { mutableStateOf(ReaderChrome.VISIBLE) }

@@ -42,7 +42,11 @@ internal fun rememberSignatureStore(): SignatureStore {
 }
 
 @Composable
-fun SignaturePicker(onDismiss: () -> Unit, onPick: (SavedSignature) -> Unit) {
+fun SignaturePicker(
+    onDismiss: () -> Unit,
+    openPadWhenEmpty: Boolean = false,
+    onPick: (SavedSignature) -> Unit,
+) {
     val store = rememberSignatureStore()
     val scope = rememberCoroutineScope()
     var entries by remember { mutableStateOf<List<SavedSignature>?>(null) }
@@ -53,9 +57,14 @@ fun SignaturePicker(onDismiss: () -> Unit, onPick: (SavedSignature) -> Unit) {
     LaunchedEffect(store) {
         entries = readerResult { store.list() }
         error = entries == null
+        if (openPadWhenEmpty && entries?.isEmpty() == true) drawing = true
     }
     if (drawing) {
-        SignaturePad(onDismiss = { drawing = false }, onSave = { store.save(it) }, onSaved = onPick)
+        SignaturePad(
+            onDismiss = { if (openPadWhenEmpty && entries?.isEmpty() == true) onDismiss() else drawing = false },
+            onSave = { store.save(it) },
+            onSaved = onPick,
+        )
         return
     }
     AlertDialog(

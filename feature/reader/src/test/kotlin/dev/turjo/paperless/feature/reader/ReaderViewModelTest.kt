@@ -110,6 +110,35 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun signatureRequestWaitsForAnnotationsAndStartsOnlyOnceOnTheRequestedTab() = runTest(dispatcher) {
+        val vm = newViewModel()
+        vm.open(pdf(0))
+        val other = checkNotNull(vm.uiState.value.activeTabId)
+        vm.annotationLayers[other] = AnnotationLayer(emptyList())
+
+        vm.open(pdf(1), startTool = PdfStartTool.SIGNATURE)
+        runCurrent()
+        val target = checkNotNull(vm.uiState.value.activeTabId)
+        vm.startAnnotations(other)
+        vm.startAnnotations(target)
+        assertFalse(checkNotNull(vm.annotationLayers[other]).editing)
+        assertEquals(PdfStartTool.SIGNATURE, vm.pendingStartTool(target))
+
+        vm.annotationLayers[target] = AnnotationLayer(emptyList())
+        vm.startAnnotations(target)
+        val layer = checkNotNull(vm.annotationLayers[target])
+        assertTrue(layer.editing)
+        assertEquals(AnnotationTool.SIGNATURE, layer.tool)
+        assertEquals(SignaturePickerMode.DRAW_IF_EMPTY, layer.signaturePicker)
+        assertNull(vm.pendingStartTool(target))
+
+        vm.editAnnotations(target) { it.copy(signaturePicker = null) }
+        vm.open(pdf(1))
+        vm.startAnnotations(target)
+        assertNull(vm.annotationLayers[target]?.signaturePicker)
+    }
+
+    @Test
     fun incomingRecentKeyWaitsForInitialProgressBeforeOpening() = runTest(dispatcher) {
         repository.recent.value = null
         val vm = newViewModel()
