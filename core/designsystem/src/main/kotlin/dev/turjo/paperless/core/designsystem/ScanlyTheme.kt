@@ -2,7 +2,12 @@ package dev.turjo.paperless.core.designsystem
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -10,6 +15,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 
@@ -98,6 +106,20 @@ private fun ColorScheme.withAmoledBlack() = copy(
     surfaceBright = Color(0xFF292929),
 )
 
+private val scanlyShapes = Shapes(
+    medium = RoundedCornerShape(24.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+private val scanlyTypography = Typography().let {
+    Typography(
+        headlineMedium = it.headlineMedium.copy(fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.SemiBold),
+        titleLarge = it.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold),
+    )
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ScanlyTheme(
     themeMode: ThemeMode,
@@ -119,5 +141,11 @@ fun ScanlyTheme(
         dynamicColor -> dynamicLightColorScheme(context)
         else -> colorSchemeFor(dark, accent, amoledBlack)
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialExpressiveTheme(
+        colorScheme = colors,
+        motionScheme = MotionScheme.expressive(),
+        shapes = scanlyShapes,
+        typography = scanlyTypography,
+        content = content,
+    )
 }

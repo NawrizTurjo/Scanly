@@ -35,6 +35,14 @@ internal class ToolsHistoryStore(private val preferences: ToolsPreferences) {
         override fun write(key: String, value: String) = prefs.edit { putString(key, value) }
     })
 
+    companion object {
+        private var instance: ToolsHistoryStore? = null
+
+        @Synchronized
+        fun shared(context: Context): ToolsHistoryStore =
+            instance ?: ToolsHistoryStore(context.applicationContext).also { instance = it }
+    }
+
     private val mutableHistory = MutableStateFlow(ToolsHistory())
     val history = mutableHistory.asStateFlow()
     private var loaded = false

@@ -40,32 +40,12 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun ToolsLanding(model: ToolsModel, openPdf: (File) -> Unit) {
-    val context = LocalContext.current
     val history by model.history.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val searching = query.isNotBlank()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val missingFile = stringResource(R.string.tools_recent_missing)
-    val noImageViewer = stringResource(R.string.tools_recent_no_viewer)
-    val openRecent: (RecentOutput) -> Unit = { entry ->
-        scope.launch {
-            try {
-                val mime = File(entry.name).imageMime()
-                if (mime == null) openPdf(model.recentPdf(entry))
-                else context.startActivity(model.recentImageIntent(entry, mime))
-            } catch (_: FileNotFoundException) {
-                model.removeRecent(entry)
-                snackbar.showSnackbar(missingFile)
-            } catch (_: ActivityNotFoundException) {
-                snackbar.showSnackbar(noImageViewer)
-            } catch (error: IOException) {
-                snackbar.showSnackbar(error.toolMessage(context))
-            } catch (error: SecurityException) {
-                snackbar.showSnackbar(error.toolMessage(context))
-            }
-        }
-    }
+    val openRecent = rememberOpenRecentOutput(model, openPdf, snackbar)
     val results = if (searching) ToolCardInfo.entries.filter {
         it.matches(query, stringResource(it.title), stringResource(it.description))
     } else emptyList()
@@ -288,6 +268,57 @@ private fun MenuCard(
                     expanded = false
                     onAction()
                 })
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberOpenRecentOutput(
+    model: ToolsModel,
+    openPdf: (File) -> Unit,
+    snackbar: SnackbarHostState,
+): (RecentOutput) -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val missingFile = stringResource(R.string.tools_recent_missing)
+    val noImageViewer = stringResource(R.string.tools_recent_no_viewer)
+    return { entry ->
+        scope.launch {
+            try {
+                val mime = File(entry.name).imageMime()
+                if (mime == null) openPdf(model.recentPdf(entry))
+                else context.startActivity(model.recentImageIntent(entry, mime))
+            } catch (_: FileNotFoundException) {
+                model.removeRecent(entry)
+                snackbar.showSnackbar(missingFile)
+            } catch (_: ActivityNotFoundException) {
+                snackbar.showSnackbar(noImageViewer)
+            } catch (error: IOException) {
+                snackbar.showSnackbar(error.toolMessage(context))
+            } catch (error: SecurityException) {
+                snackbar.showSnackbar(error.toolMessage(context))
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeToolOutputs(onOpenPdf: (File) -> Unit, snackbar: SnackbarHostState) {
+    val model = toolsModel(key = "home-tool-outputs")
+    val history by model.history.collectAsStateWithLifecycle()
+    val open = rememberOpenRecentOutput(model, onOpenPdf, snackbar)
+    if (history.recent.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.tools_recent_outputs), style = MaterialTheme.typography.titleLarge)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(history.recent, key = { it.sourcePath }) { entry ->
+                SuggestionChip(
+                    onClick = { open(entry) },
+                    label = { Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    modifier = Modifier.widthIn(max = 192.dp).heightIn(min = 48.dp),
+                )
             }
         }
     }

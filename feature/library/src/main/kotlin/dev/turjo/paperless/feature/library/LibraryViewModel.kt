@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.library
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.Lazy
@@ -17,6 +18,7 @@ import dev.turjo.paperless.feature.export.ExportRunner
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -69,7 +72,7 @@ internal sealed interface LibraryNotice {
 internal class LibraryViewModel(
     private val documents: DocumentRepository,
     private val folders: FolderRepository,
-    reader: ReaderRepository,
+    private val reader: ReaderRepository,
     private val sessions: ScanSessionRepository,
     private val awaitIdle: suspend (Collection<String>) -> Unit,
     val thumbnailFile: (String) -> File,
@@ -112,6 +115,17 @@ internal class LibraryViewModel(
         }
     }.combine(filter) { scan, active -> scan.takeIf { active.query.isBlank() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    fun observeRecentDocuments(context: Context) = combine(
+        documents.observeLibrary(), observeHomeDocumentOpens(context), reader.observeRecent(),
+    ) { library, opened, pdfs ->
+        val readerOpens = pdfs.mapNotNull { recent ->
+            recent.pdfKey.value.takeIf { it.startsWith("doc:") }?.removePrefix("doc:")
+                ?.let { it to recent.lastOpenedAt }
+        }.toMap()
+        val activity = opened + readerOpens.mapValues { (id, time) -> maxOf(time, opened[id] ?: 0L) }
+        recentDocuments(library, activity)
+    }.flowOn(Dispatchers.Default)
+
     val continueReading = reader.observeRecent().map { recent ->
         recent.asSequence().filter { it.pageCount > 0 }.take(5).map {
             ContinueReadingItem(it.pdfKey, it.title, it.lastPage.coerceIn(0, it.pageCount - 1) + 1, it.pageCount)

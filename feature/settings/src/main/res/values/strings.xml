@@ -59,7 +59,7 @@
     <string name="help_reader">Reader</string>
     <string name="help_reader_body">Tap the page to hide or show the bars. You can lock full screen and press and hold to unlock it. Use tabs to switch between open PDFs, search for text and add annotations to pages.</string>
     <string name="help_tools">Tools</string>
-    <string name="help_tools_body">Open Tools and choose what you want to do with your PDFs or images. Check the options for the tool before you run it.</string>
+    <string name="help_tools_body">Open All tools on Home and choose what you want to do with your PDFs or images. Check the options for the tool before you run it.</string>
     <string name="help_tool_merge">Merge combines PDFs into one file.</string>
     <string name="help_tool_split">Split saves selected pages as separate PDFs.</string>
     <string name="help_tool_page_edits">Page edits lets you move, rotate, insert, duplicate, extract or delete pages.</string>

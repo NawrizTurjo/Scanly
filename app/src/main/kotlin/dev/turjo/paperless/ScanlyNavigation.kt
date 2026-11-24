@@ -1,5 +1,9 @@
 package dev.turjo.paperless
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,7 +16,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
-import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ShortNavigationBarDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -24,8 +29,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -66,6 +71,8 @@ import dev.turjo.paperless.feature.editor.ReviewScreen
 import dev.turjo.paperless.feature.export.ExportSheet
 import dev.turjo.paperless.feature.library.DocumentScreen
 import dev.turjo.paperless.feature.library.LibraryScreen
+import dev.turjo.paperless.feature.library.HomeScreen
+import dev.turjo.paperless.feature.tools.HomeToolOutputs
 import dev.turjo.paperless.feature.reader.ReaderScreen
 import dev.turjo.paperless.feature.settings.SettingsScreen
 import dev.turjo.paperless.feature.tools.ToolsScreen
@@ -75,6 +82,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable sealed interface Route : NavKey
 
+@Serializable data object HomeRoute : Route
+@Serializable data class FilesEntryRoute(
+    val focusSearch: Boolean = false,
+    val selectDocumentId: String? = null,
+) : Route
+@Serializable data class ToolRoute(val toolId: String) : Route
 @Serializable data object LibraryRoute : Route
 @Serializable data object ReaderRoute : Route
 @Serializable data object ToolsRoute : Route
@@ -100,12 +113,12 @@ private val pendingPdfsSaver = listSaver<List<PendingPdf>, String>(
     restore = { saved -> saved.chunked(2).map { PendingPdf(PdfKey(it[0]), it[1].ifEmpty { null }) } },
 )
 
-private val readerBottomBarHeight = 80.dp
+private val readerBottomBarHeight = 64.dp
 
 private enum class Tab(val route: Route, val label: Int, val icon: Int) {
+    HOME(HomeRoute, R.string.tab_home, R.drawable.ic_home),
     LIBRARY(LibraryRoute, R.string.tab_library, DesignR.drawable.ic_library),
     READER(ReaderRoute, R.string.tab_reader, DesignR.drawable.ic_reader),
-    TOOLS(ToolsRoute, R.string.tab_tools, DesignR.drawable.ic_tools),
     SETTINGS(SettingsRoute, R.string.tab_settings, DesignR.drawable.ic_settings),
 }
 
@@ -125,6 +138,7 @@ private fun NavBackStack<NavKey>.showReview(draftId: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ScanlyNavigation(
     initialStack: List<Route>,
@@ -135,9 +149,16 @@ internal fun ScanlyNavigation(
     preparingPdf: Boolean,
     onOpenFile: (java.io.File) -> Unit = {},
     onOpenPdfAtPage: (PdfKey, Int) -> Unit = { key, _ -> onOpenPdf(key) },
-    onAdjustImages: ((List<android.net.Uri>) -> Unit)? = null,
+    onAdjustImages: ((List<Uri>) -> Unit)? = null,
+    onPickPdf: (Uri) -> Unit = {},
 ) {
     val backStack = rememberNavBackStack(*initialStack.toTypedArray())
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris ->
+        if (uris.isNotEmpty()) onAdjustImages?.invoke(uris)
+    }
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(onPickPdf)
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val resources = LocalResources.current
@@ -150,9 +171,14 @@ internal fun ScanlyNavigation(
         entries.collect { event ->
             when (val route = event.route) {
                 is ReviewRoute -> {
-                    if (event.previousScanSaved) backStack.replaceAll(LibraryRoute, route)
-                    else backStack.showReview(route.draftDocumentId)
+                    if (event.previousScanSaved) {
+                        val root = if (backStack.lastOrNull() == HomeRoute) HomeRoute else LibraryRoute
+                        backStack.replaceAll(root, route)
+                    } else {
+                        backStack.showReview(route.draftDocumentId)
+                    }
                 }
+                ToolsRoute -> backStack.replaceAll(HomeRoute, ToolsRoute)
                 null -> Unit
                 else -> backStack.replaceAll(LibraryRoute, route)
             }
@@ -172,7 +198,7 @@ internal fun ScanlyNavigation(
     }
     var exportDocumentId by rememberSaveable { mutableStateOf<String?>(null) }
     val top = backStack.lastOrNull()
-    val currentTab = Tab.entries.firstOrNull { it.route == top }
+    val currentTab = if (top is FilesEntryRoute) Tab.LIBRARY else Tab.entries.firstOrNull { it.route == top }
     var readerImmersive by remember { mutableStateOf(false) }
     val readerActive = top == ReaderRoute
 
@@ -181,9 +207,9 @@ internal fun ScanlyNavigation(
         bottomBar = {
             if (currentTab != null) {
                 val tabBar: @Composable (WindowInsets) -> Unit = { insets ->
-                    NavigationBar(windowInsets = insets) {
+                    ShortNavigationBar(windowInsets = insets) {
                         for (tab in Tab.entries) {
-                            NavigationBarItem(
+                            ShortNavigationBarItem(
                                 selected = tab == currentTab,
                                 onClick = { if (tab != currentTab) backStack.replaceAll(tab.route) },
                                 icon = { Icon(painterResource(tab.icon), contentDescription = null) },
@@ -203,7 +229,7 @@ internal fun ScanlyNavigation(
                         tabBar(WindowInsets.systemBarsIgnoringVisibility.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                     }
                 } else {
-                    tabBar(NavigationBarDefaults.windowInsets)
+                    tabBar(ShortNavigationBarDefaults.windowInsets)
                 }
             }
         },
@@ -234,6 +260,37 @@ internal fun ScanlyNavigation(
                         pageMotionDecorator,
                     ),
                     entryProvider = entryProvider {
+                        entry<HomeRoute> {
+                            HomeScreen(
+                                shortcuts = homeShortcuts,
+                                onShortcut = { id ->
+                                    when (id) {
+                                        "import_images" -> imagePicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                        )
+                                        "open_pdf" -> pdfPicker.launch(arrayOf(PDF_MIME_TYPE))
+                                        else -> homeShortcutRoute(id)?.let(backStack::add)
+                                    }
+                                },
+                                onSearch = { backStack.add(FilesEntryRoute(focusSearch = true)) },
+                                onFiles = { backStack.add(LibraryRoute) },
+                                onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                                onSelectDocument = { backStack.add(FilesEntryRoute(selectDocumentId = it)) },
+                                onOpenDraft = { backStack.showReview(it) },
+                                recentToolOutputs = { host -> HomeToolOutputs(onOpenFile, host) },
+                            )
+                        }
+                        entry<FilesEntryRoute> { key ->
+                            LibraryScreen(
+                                onScan = { backStack.add(CameraRoute()) },
+                                onOpenDocument = { backStack.add(DocumentRoute(it)) },
+                                onOpenDraft = { backStack.showReview(it) },
+                                onOpenRecent = onOpenPdf,
+                                onOpenPdfAtPage = onOpenPdfAtPage,
+                                focusSearch = key.focusSearch,
+                                selectDocumentId = key.selectDocumentId,
+                            )
+                        }
                         entry<LibraryRoute> {
                             LibraryScreen(
                                 onScan = { backStack.add(CameraRoute()) },
@@ -253,7 +310,18 @@ internal fun ScanlyNavigation(
                                 onImmersiveChanged = { readerImmersive = it },
                             )
                         }
-                        entry<ToolsRoute> { ToolsScreen(onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages) }
+                        entry<ToolsRoute> {
+                            ToolsScreen(
+                                onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages,
+                                onClose = { backStack.removeAt(backStack.lastIndex) },
+                            )
+                        }
+                        entry<ToolRoute> { key ->
+                            ToolsScreen(
+                                onOpenPdf = onOpenFile, onAdjustImages = onAdjustImages, initialTool = key.toolId,
+                                onClose = { backStack.removeAt(backStack.lastIndex) },
+                            )
+                        }
                         entry<SettingsRoute> { SettingsScreen() }
                         entry<CameraRoute> { key ->
                             CameraScreen(
@@ -270,7 +338,10 @@ internal fun ScanlyNavigation(
                                 draftDocumentId = key.draftDocumentId,
                                 onViewPage = { backStack.add(PageViewerRoute(key.draftDocumentId, it)) },
                                 onAddMore = { backStack.add(CameraRoute(resumeDraftId = key.draftDocumentId)) },
-                                onSaved = { documentId -> backStack.replaceAll(LibraryRoute, DocumentRoute(documentId)) },
+                                onSaved = { documentId ->
+                                    val root = if (backStack.firstOrNull() == HomeRoute) HomeRoute else LibraryRoute
+                                    backStack.replaceAll(root, DocumentRoute(documentId))
+                                },
                                 onBack = { backStack.removeAt(backStack.lastIndex) },
                                 onExport = { exportDocumentId = it },
                             )
