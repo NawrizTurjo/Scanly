@@ -115,9 +115,6 @@ fun PageViewerScreen(
                     TopAppBar(
                         title = {
                             if (current != null) {
-                                IconButton(onClick = { showText = true }, enabled = canAct) {
-                                    Icon(painterResource(R.drawable.ic_recognized_text), stringResource(R.string.viewer_text))
-                                }
                                 Text(stringResource(R.string.viewer_page_position, pager.currentPage + 1, ids.size))
                             }
                         },
@@ -143,6 +140,9 @@ fun PageViewerScreen(
                         ) {
                             Button({ onEdit(current.page.id) }, Modifier.weight(1f), enabled = canAct) {
                                 Text(stringResource(R.string.viewer_edit))
+                            }
+                            TextButton({ showText = true }, enabled = canAct) {
+                                Text(stringResource(R.string.viewer_text))
                             }
                             if (!current.page.isIdComposite) {
                                 TextButton({ model.rotate(current.page.id) }, enabled = canAct) {
