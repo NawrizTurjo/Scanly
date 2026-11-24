@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
+import dev.turjo.paperless.core.data.ScanPageText
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
@@ -39,6 +40,7 @@ internal class PageViewerViewModel @AssistedInject constructor(
     private val documents: DocumentRepository,
     private val processing: PageProcessing,
     private val sink: PageImageSink,
+    private val scanText: ScanPageText,
 ) : ViewModel() {
     @AssistedFactory
     interface Factory {
@@ -47,6 +49,19 @@ internal class PageViewerViewModel @AssistedInject constructor(
 
     private val mutableState = MutableStateFlow(PageViewerState())
     val state = mutableState.asStateFlow()
+    val automaticText = scanText.automatic
+
+    fun observeText(pageId: String) = scanText.observe(pageId)
+
+    suspend fun recognizeText(pageId: String): Boolean {
+        processing.awaitIdle(listOf(pageId))
+        val page = documents.getPage(pageId) ?: return false
+        if (page.processedPath == null || page.processedHash != page.paramsHash()) {
+            processing.enqueueRender(pageId)
+            processing.awaitIdle(listOf(pageId))
+        }
+        return scanText.recognize(pageId) != null
+    }
 
     init {
         viewModelScope.launch {

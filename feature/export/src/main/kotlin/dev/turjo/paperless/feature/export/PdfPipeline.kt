@@ -19,7 +19,7 @@ internal data class PdfPipeline(
 }
 
 internal enum class StepKind {
-    SAME_WIDTH, GRAYSCALE, COMPRESS, PAGE_NUMBERS, LAYOUT, CLEAN_METADATA;
+    SAME_WIDTH, GRAYSCALE, COMPRESS, PAGE_NUMBERS, LAYOUT, CLEAN_METADATA, SEARCHABLE_TEXT;
 
     fun defaultStep(): PdfStep = when (this) {
         SAME_WIDTH -> PdfStep.SameWidth
@@ -28,6 +28,7 @@ internal enum class StepKind {
         PAGE_NUMBERS -> PdfStep.PageNumbers()
         LAYOUT -> PdfStep.Layout()
         CLEAN_METADATA -> PdfStep.CleanMetadata
+        SEARCHABLE_TEXT -> PdfStep.SearchableText
     }
 }
 
@@ -41,6 +42,7 @@ internal sealed class PdfStep(val kind: StepKind) {
     ) : PdfStep(StepKind.PAGE_NUMBERS)
     data class Layout(val layout: PrintLayout = PrintLayout.TWO) : PdfStep(StepKind.LAYOUT)
     data object CleanMetadata : PdfStep(StepKind.CLEAN_METADATA)
+    data object SearchableText : PdfStep(StepKind.SEARCHABLE_TEXT)
 }
 
 internal enum class PrintLayout(val layout: NUpLayout) {
@@ -69,6 +71,7 @@ internal class PdfPipelineOps(private val context: Context) : PipelineOps {
                 NUp.layout(input, layout, layout.perSide, Flip.LONG, options, output)
             }
             PdfStep.CleanMetadata -> PdfSanitize.sanitize(input, removeXmp = true, out = output)
+            PdfStep.SearchableText -> error("Searchable text requires scanned page images")
         }
     }
 

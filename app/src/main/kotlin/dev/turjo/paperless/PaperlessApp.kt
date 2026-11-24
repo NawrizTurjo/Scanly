@@ -1,8 +1,11 @@
 package dev.turjo.paperless
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import dagger.hilt.android.HiltAndroidApp
 import dev.turjo.paperless.core.data.ApplicationScope
+import dev.turjo.paperless.core.data.ScanTextRepository
+import dev.turjo.paperless.core.ocr.TesseractRecognizer
 import dev.turjo.paperless.core.data.enqueueOrphanSweep
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -12,9 +15,20 @@ import kotlinx.coroutines.launch
 @HiltAndroidApp
 class PaperlessApp : Application() {
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
+    @Inject lateinit var scanText: ScanTextRepository
+    @Inject lateinit var recognizer: TesseractRecognizer
 
     override fun onCreate() {
         super.onCreate()
+        scanText.start()
         applicationScope.launch(Dispatchers.IO) { enqueueOrphanSweep(this@PaperlessApp) }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            recognizer.stopForMemoryPressure()
+            applicationScope.launch { recognizer.release() }
+        }
     }
 }

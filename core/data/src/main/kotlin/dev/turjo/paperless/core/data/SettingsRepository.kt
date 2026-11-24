@@ -13,6 +13,7 @@ import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
+import dev.turjo.paperless.core.model.OcrLanguage
 import java.io.IOException
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,8 @@ interface SettingsRepository {
     suspend fun setLockAfterMinutes(minutes: Int)
     suspend fun setAutoCaptureDelayMs(delayMs: Int)
     suspend fun setAutoCaptureSensitivity(sensitivity: AutoCaptureSensitivity)
+    suspend fun setAutomaticOcr(enabled: Boolean)
+    suspend fun setOcrLanguage(language: OcrLanguage)
 }
 
 class DataStoreSettingsRepository @Inject constructor(
@@ -41,6 +44,8 @@ class DataStoreSettingsRepository @Inject constructor(
         }
         .map { preferences ->
             UserSettings(
+                automaticOcr = preferences[AUTOMATIC_OCR] ?: defaults.automaticOcr,
+                ocrLanguage = OcrLanguage.entries.find { it.name == preferences[OCR_LANGUAGE] } ?: defaults.ocrLanguage,
                 themeMode = ThemeMode.entries.find { it.name == preferences[THEME_MODE] }
                     ?: ThemeMode.SYSTEM,
                 dynamicColor = preferences[DYNAMIC_COLOR] ?: true,
@@ -93,7 +98,17 @@ class DataStoreSettingsRepository @Inject constructor(
         dataStore.edit { it[AUTO_CAPTURE_SENSITIVITY] = sensitivity.name }
     }
 
+    override suspend fun setAutomaticOcr(enabled: Boolean) {
+        dataStore.edit { it[AUTOMATIC_OCR] = enabled }
+    }
+
+    override suspend fun setOcrLanguage(language: OcrLanguage) {
+        dataStore.edit { it[OCR_LANGUAGE] = language.name }
+    }
+
     private companion object {
+        val AUTOMATIC_OCR = booleanPreferencesKey("automatic_ocr")
+        val OCR_LANGUAGE = stringPreferencesKey("ocr_language")
         val defaults = UserSettings()
         val AUTO_NAME_PATTERN = stringPreferencesKey("auto_name_pattern")
         val APP_LOCK = stringPreferencesKey("app_lock")

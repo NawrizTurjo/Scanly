@@ -28,6 +28,7 @@ internal data class ExportState(
     val running: Boolean = false,
     val failed: Boolean = false,
     val saved: SavedExport? = null,
+    val ocrProgress: Pair<Int, Int>? = null,
 )
 
 @HiltViewModel(assistedFactory = ExportViewModel.Factory::class)
@@ -80,7 +81,11 @@ internal class ExportViewModel @AssistedInject constructor(
     }
 
     fun addStep(kind: StepKind) = editSteps { steps ->
-        if (steps.any { it.kind == kind }) steps else steps + kind.defaultStep()
+        when {
+            steps.any { it.kind == kind } -> steps
+            kind == StepKind.SEARCHABLE_TEXT -> listOf(PdfStep.SearchableText) + steps
+            else -> steps + kind.defaultStep()
+        }
     }
 
     fun removeStep(kind: StepKind) = editSteps { steps -> steps.filterNot { it.kind == kind } }
@@ -92,7 +97,9 @@ internal class ExportViewModel @AssistedInject constructor(
     fun moveStep(kind: StepKind, offset: Int) = editSteps { steps ->
         val from = steps.indexOfFirst { it.kind == kind }
         val to = from + offset
-        if (from < 0 || to !in steps.indices || from == to) steps
+        if (from < 0 || to !in steps.indices || from == to ||
+            steps[from] == PdfStep.SearchableText || steps[to] == PdfStep.SearchableText
+        ) steps
         else steps.toMutableList().apply { add(to, removeAt(from)) }
     }
 
@@ -132,19 +139,22 @@ internal class ExportViewModel @AssistedInject constructor(
         if (!selection.canExport) return
         mutableState.update { it.copy(running = true, failed = false, saved = null) }
         operation = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val progress: (Int, Int) -> Unit = { done, total ->
+                mutableState.update { it.copy(ocrProgress = (done to total).takeIf { done < total }) }
+            }
             try {
                 if (share == null) {
-                    val saved = runner.save(document, selection, name)
+                    val saved = runner.save(document, selection, name, progress)
                     mutableState.update { it.copy(saved = saved) }
                 } else {
-                    runner.share(document, selection, name, share)
+                    runner.share(document, selection, name, progress, share)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 mutableState.update { it.copy(failed = true) }
             } finally {
-                mutableState.update { it.copy(running = false) }
+                mutableState.update { it.copy(running = false, ocrProgress = null) }
             }
         }
     }

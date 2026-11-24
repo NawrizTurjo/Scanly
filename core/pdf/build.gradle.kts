@@ -15,6 +15,7 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    api(project(":core:ocr"))
     api(project(":core:model"))
     androidTestImplementation(libs.test.junit)
     androidTestImplementation(libs.espresso.core)

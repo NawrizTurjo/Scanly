@@ -1,6 +1,7 @@
 package dev.turjo.paperless.core.pdf
 
 import java.io.File
+import dev.turjo.paperless.core.ocr.RecognizedWord
 
 enum class PageSizeOption { AUTO, A4, LETTER }
 
@@ -10,7 +11,12 @@ enum class QualityPreset(val maxLongSide: Int?, val jpegQuality: Int?) {
     SMALL(1400, 70),
 }
 
-data class ExportPage(val jpeg: File, val widthPx: Int, val heightPx: Int)
+data class ExportPage(
+    val jpeg: File,
+    val widthPx: Int,
+    val heightPx: Int,
+    val words: List<RecognizedWord> = emptyList(),
+)
 
 data class SizeF(val width: Float, val height: Float)
 

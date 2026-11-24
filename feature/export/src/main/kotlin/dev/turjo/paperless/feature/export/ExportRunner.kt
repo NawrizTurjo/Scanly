@@ -6,6 +6,8 @@ import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
+import dev.turjo.paperless.core.data.ScanPageText
+import dev.turjo.paperless.core.ocr.RecognizedText
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.paramsHash
@@ -49,11 +51,13 @@ class ExportRunner internal constructor(
     private val writeImages: suspend (List<ExportPage>, ExportOptions, File, String) -> List<File>,
     private val saveFile: suspend (File, String) -> Uri,
     private val pipelineOps: PipelineOps,
+    private val recognize: suspend (String, File, String) -> RecognizedText? = { _, _, _ -> error("OCR unavailable") },
 ) {
     @Inject
     constructor(
         documents: DocumentRepository,
         processing: PageProcessing,
+        scanText: ScanPageText,
         @ApplicationContext context: Context,
     ) : this(
         documents,
@@ -83,6 +87,7 @@ class ExportRunner internal constructor(
             if (mime == PDF_MIME) saver.savePdf(file, file.name) else saver.saveImage(file, file.name, mime)
         },
         PdfPipelineOps(context),
+        { id, image, hash -> scanText.recognize(id, image, hash) },
     )
 
     private data class EstimateKey(
@@ -95,17 +100,18 @@ class ExportRunner internal constructor(
     suspend fun quickShare(
         document: DocumentWithPages,
         launch: (List<File>, String) -> Unit,
-    ) = share(document, ExportOptions(pipeline = PdfPipeline(emptyList())), document.document.title, launch)
+    ) = share(document, ExportOptions(pipeline = PdfPipeline(emptyList())), document.document.title, launch = launch)
 
     internal suspend fun share(
         document: DocumentWithPages,
         options: ExportOptions,
         name: String,
+        onOcrProgress: (Int, Int) -> Unit = { _, _ -> },
         launch: (List<File>, String) -> Unit,
     ) {
         // Mark ownership only after the chooser successfully receives the file grants.
         var handedOff = false
-        export(document, options, name, { handedOff }) { files ->
+        export(document, options, name, { handedOff }, onOcrProgress) { files ->
             withContext(Dispatchers.Main.immediate) {
                 launch(files, options.format.shareMime)
                 handedOff = true
@@ -117,7 +123,8 @@ class ExportRunner internal constructor(
         document: DocumentWithPages,
         options: ExportOptions,
         name: String,
-    ): SavedExport = export(document, options, name) { files ->
+        onOcrProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): SavedExport = export(document, options, name, onOcrProgress = onOcrProgress) { files ->
         var first: SavedExport? = null
         for (file in files) {
             val mime = if (file.extension == "pdf") PDF_MIME else requireNotNull(options.format.imageMime)
@@ -132,6 +139,7 @@ class ExportRunner internal constructor(
         options: ExportOptions,
         name: String,
         retainFiles: () -> Boolean = { false },
+        onOcrProgress: (Int, Int) -> Unit,
         consume: suspend (List<File>) -> T,
     ): T = withContext(Dispatchers.IO) {
         val ids = document.pages.sortedBy(Page::index).map(Page::id)
@@ -139,25 +147,47 @@ class ExportRunner internal constructor(
         processing.awaitIdle(ids)
         for (id in ids) {
             val page = requireNotNull(documents.getPage(id))
-            if (page.processedHash != page.paramsHash()) processing.enqueueRender(id)
+            if (page.processedHash != page.paramsHash() || page.processedPath?.let { File(it).isFile } != true) {
+                processing.enqueueRender(id)
+            }
         }
         processing.awaitIdle(ids)
-        val pages = ids.map { id ->
-            val page = requireNotNull(documents.getPage(id))
-            val source = sourceFile(page)
-            val (width, height) = imageBounds(source)
-            require(width > 0 && height > 0) { "Invalid image dimensions for $id" }
-            ExportPage(source, width, height)
-        }
-
         val dir = Files.createTempDirectory(cacheDir().toPath(), "export-").toFile()
         try {
+            val searchable = options.format.pdf && PdfStep.SearchableText in options.pipeline.steps
+            val pages = ids.mapIndexed { index, id ->
+                ensureActive()
+                val page = requireNotNull(documents.getPage(id))
+                val original = sourceFile(page)
+                var source = original
+                val words = if (searchable) {
+                    onOcrProgress(index, ids.size)
+                    check(original.path == page.processedPath && page.processedHash == page.paramsHash()) {
+                        "Processed image unavailable for searchable export"
+                    }
+                    val hash = requireNotNull(page.processedHash)
+                    val modified = original.lastModified()
+                    source = original.copyTo(File(dir, "source-$index.jpg"))
+                    val result = checkNotNull(recognize(id, original, hash)) { "Could not recognise page $id" }
+                    val latest = documents.getPage(id)
+                    check(original.lastModified() == modified && latest?.processedHash == hash &&
+                        latest.processedPath == original.path
+                    ) { "Page changed during searchable export" }
+                    result.words
+                } else emptyList()
+                val (width, height) = imageBounds(source)
+                require(width > 0 && height > 0) { "Invalid image dimensions for $id" }
+                ExportPage(source, width, height, words)
+            }
+            if (searchable) onOcrProgress(ids.size, ids.size)
             val baseName = sanitizeExportName(name)
             val outputs = buildList {
                 if (options.format.pdf) {
                     val pdf = File(dir, "$baseName.pdf")
                     writePdf(pages, options, pdf, document.document.title)
-                    val result = applyPipeline(pdf, options.pipeline, dir, pipelineOps)
+                    // The text layer is written alongside the source images, before PDF-only transforms.
+                    val transforms = options.pipeline.copy(steps = options.pipeline.steps - PdfStep.SearchableText)
+                    val result = applyPipeline(pdf, transforms, dir, pipelineOps)
                     if (result != pdf) {
                         Files.move(result.toPath(), pdf.toPath(), REPLACE_EXISTING)
                     }
@@ -165,6 +195,7 @@ class ExportRunner internal constructor(
                 }
                 if (options.format.imageMime != null) addAll(writeImages(pages, options, dir, baseName))
             }
+            if (searchable) pages.forEach { it.jpeg.delete() }
             ensureActive()
             consume(outputs)
         } finally {

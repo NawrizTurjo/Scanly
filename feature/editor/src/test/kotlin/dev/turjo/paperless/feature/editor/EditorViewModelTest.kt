@@ -422,7 +422,11 @@ class EditorViewModelTest {
     }
 
     private fun viewer(pageId: String, documentId: String = "draft") =
-        PageViewerViewModel(documentId, pageId, documents, processing, sink).also(viewModels::add)
+        PageViewerViewModel(documentId, pageId, documents, processing, sink, object : dev.turjo.paperless.core.data.ScanPageText {
+            override val automatic = kotlinx.coroutines.flow.flowOf(true)
+            override fun observe(pageId: String) = kotlinx.coroutines.flow.flowOf(null)
+            override suspend fun recognize(pageId: String, image: File?, hash: String?) = null
+        }).also(viewModels::add)
 
     private fun review(savedState: SavedStateHandle = SavedStateHandle()) = ReviewViewModel(
         "draft", documents, sessions, processing, { id -> File("$id.webp") }, dispatcher, savedState,

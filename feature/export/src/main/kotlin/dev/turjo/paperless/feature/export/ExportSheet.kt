@@ -118,7 +118,13 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
             if (!state.loaded) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             } else if (state.running) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                val ocr = state.ocrProgress
+                if (ocr == null) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                } else {
+                    Text(stringResource(R.string.export_ocr_progress, ocr.first + 1, ocr.second))
+                    LinearProgressIndicator(progress = { ocr.first.toFloat() / ocr.second }, Modifier.fillMaxWidth())
+                }
                 TextButton(onClick = model::cancel) { Text(stringResource(R.string.export_cancel)) }
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -12,6 +12,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io") {
+            content { includeGroup("cz.adaptech.tesseract4android") }
+        }
     }
 }
 
@@ -23,6 +26,7 @@ include(
     ":core:data",
     ":core:imaging",
     ":core:pdf",
+    ":core:ocr",
     ":feature:library",
     ":feature:camera",
     ":feature:editor",

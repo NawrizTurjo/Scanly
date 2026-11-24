@@ -35,7 +35,7 @@ internal fun insideDocumentHits(query: String): List<ContentHit> {
     var hits by remember(query) { mutableStateOf(emptyList<ContentHit>()) }
     LaunchedEffect(query, model) {
         delay(150)
-        model.repository.observeCounts().collect { hits = model.repository.search(query) }
+        model.repository.observeSearch(query).collect { hits = it }
     }
     return hits
 }

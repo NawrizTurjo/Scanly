@@ -105,6 +105,7 @@ private fun HelpContent(onBack: () -> Unit) {
             item { HelpSection(R.string.help_saving, R.string.help_saving_body) }
             item { HelpSection(R.string.help_unsaved, R.string.help_unsaved_body) }
             item { HelpSection(R.string.help_images, R.string.help_images_body) }
+            item { HelpSection(R.string.text_recognition, R.string.help_ocr_body) }
             item { HelpSection(R.string.help_reader, R.string.help_reader_body) }
             item {
                 HelpSection(R.string.help_tools, R.string.help_tools_body) {

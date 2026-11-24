@@ -73,4 +73,4 @@ private fun decodeSteps(value: String): List<PdfStep> =
                 else -> kind.defaultStep()
             }
         }.getOrNull()
-    }.distinctBy(PdfStep::kind)
+    }.distinctBy(PdfStep::kind).sortedBy { it != PdfStep.SearchableText }

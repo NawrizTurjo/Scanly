@@ -18,6 +18,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -46,6 +48,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -102,12 +105,19 @@ fun PageViewerScreen(
             val canAct = current != null && !state.changing && !pager.isScrollInProgress
             var zoomed by remember(current?.page?.id) { mutableStateOf(false) }
             var confirmDelete by remember(current?.page?.id) { mutableStateOf(false) }
+            var showText by remember(current?.page?.id) { mutableStateOf(false) }
+            if (showText && current != null) {
+                PageTextSheet(current.page.id, model) { showText = false }
+            }
             Scaffold(
                 modifier = Modifier.background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
                 topBar = {
                     TopAppBar(
                         title = {
                             if (current != null) {
+                                IconButton(onClick = { showText = true }, enabled = canAct) {
+                                    Icon(painterResource(R.drawable.ic_recognized_text), stringResource(R.string.viewer_text))
+                                }
                                 Text(stringResource(R.string.viewer_page_position, pager.currentPage + 1, ids.size))
                             }
                         },

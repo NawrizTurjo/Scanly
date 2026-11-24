@@ -22,6 +22,7 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    api(project(":core:ocr"))
     androidTestImplementation(libs.test.junit)
     androidTestImplementation(libs.espresso.core)
     implementation(libs.room.runtime)
