@@ -70,7 +70,7 @@ internal class ToolsModel(
     private val context get() = getApplication<Application>()
     private val mutableState = MutableStateFlow(ToolsState())
     val state = mutableState.asStateFlow()
-    private val historyStore = ToolsHistoryStore(application)
+    private val historyStore = ToolsHistoryStore.shared(application)
     private val pinDispatcher = Dispatchers.IO.limitedParallelism(1)
     val history = historyStore.history
 

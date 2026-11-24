@@ -102,6 +102,9 @@ class MainActivity : ComponentActivity() {
                                 initialStack, model.entries, model::documentOpened,
                                 model::openDocumentInReader, model::openPdf, preparingPdf,
                                 model::openFileInReader, model::openPdfAtPage, model::importImagesAsScan,
+                                onPickPdf = { uri ->
+                                    model.receiveFileIntent(Intent(Intent.ACTION_VIEW).setDataAndType(uri, PDF_MIME_TYPE))
+                                },
                             )
                         }
                     }

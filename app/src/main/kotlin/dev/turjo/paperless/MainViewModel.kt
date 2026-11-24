@@ -24,6 +24,7 @@ import dev.turjo.paperless.core.designsystem.R as DesignR
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.feature.library.recordHomeDocumentOpen
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,7 @@ class MainViewModel @Inject constructor(
     private var documentExport: Job? = null
     private val entryEvents = Channel<EntryEvent>(Channel.UNLIMITED)
     internal val entries = entryEvents.receiveAsFlow()
+    private val homeHistoryDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val openedDocument = MutableStateFlow<Pair<String, Long>?>(null)
 
     init {
@@ -227,6 +229,8 @@ class MainViewModel @Inject constructor(
 
     internal fun documentOpened(id: String) {
         openedDocument.value = id to SystemClock.elapsedRealtimeNanos()
+        val openedAt = System.currentTimeMillis()
+        viewModelScope.launch(homeHistoryDispatcher) { recordHomeDocumentOpen(context, id, openedAt) }
     }
 
     internal fun onStart() {

@@ -92,10 +92,24 @@ class EntryRoutesTest {
     }
 
     @Test
-    fun missingAndInvalidRoutesOpenLibrary() {
+    fun missingAndInvalidRoutesOpenHome() {
         for (value in listOf(null, "camera", "document:", "document: ")) {
-            assertEquals(listOf(LibraryRoute), startBackStack(value))
+            assertEquals(listOf(HomeRoute), startBackStack(value))
         }
+    }
+
+    @Test
+    fun toolsEntryOpensToolsOverHome() {
+        assertEquals(listOf(HomeRoute, ToolsRoute), startBackStack(TOOLS_ENTRY))
+        assertEquals(ToolsRoute, homeShortcutRoute("all_tools"))
+    }
+
+    @Test
+    fun toolShortcutsOpenTheirPreselectedFlows() {
+        assertEquals(ToolRoute("FROM_IMAGES"), homeShortcutRoute("tool:FROM_IMAGES"))
+        assertEquals(ToolRoute("MERGE"), homeShortcutRoute("tool:MERGE"))
+        assertEquals(ToolRoute("COMPRESS"), homeShortcutRoute("tool:COMPRESS"))
+        assertEquals(CameraRoute(), homeShortcutRoute("scan"))
     }
 
     @Test

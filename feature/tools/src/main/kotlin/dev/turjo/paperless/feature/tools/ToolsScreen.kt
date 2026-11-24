@@ -43,18 +43,20 @@ private val pdf = arrayOf("application/pdf")
 fun ToolsScreen(
     onOpenPdf: (File) -> Unit = {},
     onAdjustImages: ((List<Uri>) -> Unit)? = null,
+    initialTool: String? = null,
+    onClose: (() -> Unit)? = null,
 ) {
-    val context = LocalContext.current
-    val model: ToolsModel = viewModel(factory = viewModelFactory {
-        initializer { ToolsModel(context.applicationContext as Application) }
-    })
+    val model = toolsModel(initialTool = initialTool)
     val state by model.state.collectAsStateWithLifecycle()
     val tool = state.tool
     BackHandler(tool != null, model::back)
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(stringResource(tool?.title ?: R.string.tools_title)) },
-            navigationIcon = { if (tool != null) TextButton(onClick = model::back) { Text(stringResource(R.string.tools_back)) } },
+            navigationIcon = {
+                val back = if (tool != null) model::back else onClose
+                if (back != null) TextButton(onClick = back) { Text(stringResource(R.string.tools_back)) }
+            },
         )
         if (tool == null) {
             ToolsLanding(model, onOpenPdf)
@@ -364,4 +366,16 @@ private fun PageEditActions(selected: List<Int>, count: Int, model: ToolsModel) 
             }) { Text(stringResource(R.string.tools_move_page)) }
         }
     }
+}
+
+@Composable
+internal fun toolsModel(key: String? = null, initialTool: String? = null): ToolsModel {
+    val application = LocalContext.current.applicationContext as Application
+    return viewModel(key = key, factory = viewModelFactory {
+        initializer {
+            ToolsModel(application).apply {
+                Tool.entries.firstOrNull { it.name == initialTool }?.let(::select)
+            }
+        }
+    })
 }

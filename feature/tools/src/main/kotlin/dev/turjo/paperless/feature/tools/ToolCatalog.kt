@@ -51,3 +51,7 @@ internal enum class ToolCardInfo(
         return query.trim().split(Regex("\\s+")).all { searchable.contains(it, ignoreCase = true) }
     }
 }
+
+data class ToolShortcut(val id: String, val title: Int, val icon: Int)
+
+val toolShortcuts: List<ToolShortcut> = ToolCardInfo.entries.map { ToolShortcut(it.name, it.title, it.icon) }

@@ -111,4 +111,5 @@
         <item quantity="one">%1$d of %2$d file</item>
         <item quantity="other">%1$d of %2$d files</item>
     </plurals>
+    <string name="tools_recent_outputs">Recent tool outputs</string>
 </resources>

@@ -44,6 +44,7 @@ internal suspend fun <T : Any> pdfEntryEvents(
 
 internal const val ROUTE_EXTRA = "dev.turjo.paperless.ROUTE"
 internal const val CAMERA_BATCH = "camera_batch"
+internal const val TOOLS_ENTRY = "tools"
 private const val DOCUMENT_PREFIX = "document:"
 
 internal fun entryIntent(context: Context, route: String) =
@@ -55,13 +56,18 @@ internal fun documentEntry(id: String) = "$DOCUMENT_PREFIX$id"
 
 internal fun startBackStack(value: String?): List<Route> {
     val destination = when {
+        value == TOOLS_ENTRY -> ToolsRoute
         value == CAMERA_BATCH -> CameraRoute()
         value == "camera_single" -> CameraRoute(single = true)
         value != null && value.startsWith(DOCUMENT_PREFIX) -> value.removePrefix(DOCUMENT_PREFIX)
             .takeIf { it.isNotBlank() }?.let(::DocumentRoute)
         else -> null
     }
-    return listOfNotNull(LibraryRoute, destination)
+    return when (destination) {
+        null -> listOf(HomeRoute)
+        ToolsRoute -> listOf(HomeRoute, ToolsRoute)
+        else -> listOf(LibraryRoute, destination)
+    }
 }
 
 internal fun shouldLock(

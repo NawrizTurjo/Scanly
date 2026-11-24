@@ -20,7 +20,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -40,6 +43,7 @@ import dev.turjo.paperless.core.model.DocumentSummary
 import dev.turjo.paperless.core.model.FolderSummary
 import dev.turjo.paperless.core.model.LibrarySort
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.core.model.TagSummary
 import dev.turjo.paperless.core.pdf.ShareIntents
 import java.io.File
 import dev.turjo.paperless.core.designsystem.R as DesignR
@@ -53,6 +57,8 @@ fun LibraryScreen(
     onOpenRecent: ((PdfKey) -> Unit)? = null,
     onOpenPdfAtPage: ((PdfKey, Int) -> Unit)? = null,
     onOpenDraft: (String) -> Unit = {},
+    focusSearch: Boolean = false,
+    selectDocumentId: String? = null,
 ) {
     val model: LibraryViewModel = hiltViewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -76,25 +82,11 @@ fun LibraryScreen(
     val currentFolder = folders.firstOrNull { it.folder.id == filter.folderId }?.folder
     val childFolders = folders.filter { it.folder.parentId == filter.folderId }
     val folderGrid = folderMode && filter.folderId == null
+    val canCreateFolder = folderGrid || (currentFolder != null && currentFolder.parentId == null)
     val selecting = selection.isNotEmpty()
     val visibleScan = unsavedScan.takeIf { filter.query.isBlank() && filter.tagId == null && !selecting && !bin }
     val snackbar = remember { SnackbarHostState() }
-    val moved = stringResource(R.string.library_moved_to_bin)
-    val undo = stringResource(R.string.library_undo)
-    val failure = stringResource(R.string.detail_error)
-    LaunchedEffect(model, snackbar, moved, undo, failure) {
-        model.notices.collect { notice ->
-            when (notice) {
-                is LibraryNotice.Deleted -> {
-                    val result = snackbar.showSnackbar(
-                        moved, undo, withDismissAction = true, duration = SnackbarDuration.Long,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) model.undoDelete(notice.ids)
-                }
-                LibraryNotice.Error -> snackbar.showSnackbar(failure)
-            }
-        }
-    }
+    LibraryNotices(model, snackbar)
 
     val back: () -> Unit = {
         when {
@@ -108,6 +100,23 @@ fun LibraryScreen(
     }
     LibraryBackHandler(selecting || bin || filter.folderId != null || folderMode, onBack = back)
 
+    val searchFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var searchRequested by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(focusSearch) {
+        if (focusSearch && !searchRequested) {
+            searchFocus.requestFocus()
+            keyboard?.show()
+            searchRequested = true
+        }
+    }
+    var selectionRequested by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(selectDocumentId, state) {
+        if (!selectionRequested && selectDocumentId != null && !state.isLoading) {
+            state.documents.firstOrNull { it.id == selectDocumentId }?.let(model::toggleSelection)
+            selectionRequested = true
+        }
+    }
     val appBarState = key(filter.folderId, folderMode, bin) { rememberTopAppBarState() }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(appBarState)
     Scaffold(
@@ -148,6 +157,7 @@ fun LibraryScreen(
                             Text(
                                 currentFolder?.name ?: stringResource(R.string.library_title),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.headlineMedium,
                             )
                         },
                         navigationIcon = {
@@ -190,7 +200,8 @@ fun LibraryScreen(
                             OutlinedTextField(
                                 value = filter.query,
                                 onValueChange = { query -> model.updateFilter { it.copy(query = query) } },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).focusRequester(searchFocus),
+                                shape = MaterialTheme.shapes.medium,
                                 label = { Text(stringResource(R.string.library_search)) },
                                 singleLine = true,
                             )
@@ -238,16 +249,13 @@ fun LibraryScreen(
         },
         floatingActionButton = {
             if (!bin && !selecting) {
-                if (folderGrid || (currentFolder != null && currentFolder.parentId == null)) {
-                    ExtendedFloatingActionButton(onClick = { create = true }) {
-                        Text(stringResource(R.string.library_new_folder))
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (canCreateFolder) {
+                        ExtendedFloatingActionButton(onClick = { create = true }) {
+                            Text(stringResource(R.string.library_new_folder))
+                        }
                     }
-                } else if (filter.folderId == null) {
-                    ExtendedFloatingActionButton(
-                        onClick = onScan,
-                        icon = { Icon(painterResource(DesignR.drawable.ic_scan), contentDescription = null) },
-                        text = { Text(stringResource(R.string.scan)) },
-                    )
+                    ScanButton(onScan)
                 }
             }
         },
@@ -279,7 +287,12 @@ fun LibraryScreen(
                 LazyVerticalGrid(
                     columns = if (!folderGrid && listLayout) GridCells.Fixed(1) else GridCells.Adaptive(160.dp),
                     modifier = content,
-                    contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 88.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 8.dp,
+                        end = 16.dp,
+                        bottom = if (canCreateFolder) 160.dp else 100.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -347,42 +360,15 @@ fun LibraryScreen(
     }
 
     if (manageTags) ManageTagsDialog(tags, { manageTags = false }, model::renameTag, model::deleteTag)
-    editTagsId?.let { id ->
-        val assigned = remember(model, id) { model.documentTags(id) }
-        EditTagsDialog(assigned, tags, onDismiss = { editTagsId = null }) { ids, name ->
-            model.setTags(id, ids, name)
-            editTagsId = null
-        }
-    }
-
-    if (discardSessionId != null && discardSessionId == visibleScan?.sessionId) {
-        AlertDialog(
-            onDismissRequest = { discardSessionId = null },
-            title = { Text(stringResource(R.string.library_discard_scan_title)) },
-            text = { Text(stringResource(R.string.library_discard_scan_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    discardSessionId?.let(model::discardScan)
-                    discardSessionId = null
-                }) { Text(stringResource(R.string.library_discard_scan)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { discardSessionId = null }) {
-                    Text(stringResource(R.string.detail_cancel))
-                }
-            },
-        )
-    }
+    LibraryDocumentDialogs(
+        model, folders, tags, visibleScan, editTagsId, moveDocumentId, discardSessionId,
+        onCloseTags = { editTagsId = null },
+        onCloseMove = { moveDocumentId = null },
+        onCloseDiscard = { discardSessionId = null },
+    )
     if (create) FolderNameDialog(onDismiss = { create = false }) { name ->
         model.createFolder(name, filter.folderId)
         create = false
-    }
-    moveDocumentId?.let { id ->
-        MoveToFolderDialog(
-            folders, onDismiss = { moveDocumentId = null },
-            onSelect = { moveDocumentId = null; model.moveDocuments(setOf(id), it) },
-            onCreate = { moveDocumentId = null; model.moveDocumentsToNewFolder(setOf(id), it) },
-        )
     }
     if (move && selecting) MoveToFolderDialog(
         folders, onDismiss = { move = false },
@@ -392,7 +378,7 @@ fun LibraryScreen(
 }
 
 @Composable
-private fun UnsavedScanCard(
+internal fun UnsavedScanCard(
     scan: UnsavedScan,
     thumbnailFile: (String) -> File,
     onContinue: () -> Unit,
@@ -511,7 +497,7 @@ private fun EmptyLibrary(modifier: Modifier) {
 }
 
 @Composable
-private fun DocumentCard(
+internal fun DocumentCard(
     document: DocumentSummary,
     listLayout: Boolean,
     selected: Boolean,
@@ -522,10 +508,11 @@ private fun DocumentCard(
     onTags: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    activityAt: Long = document.updatedAt,
 ) {
     val cover = remember(document.coverThumbPath) { document.coverThumbPath?.let(::File) }
     val relativeDate = DateUtils.getRelativeTimeSpanString(
-        document.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+        activityAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     )
     val count = pluralStringResource(R.plurals.page_count, document.pageCount, document.pageCount)
     val cardColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
@@ -604,5 +591,83 @@ private fun DocumentCard(
                 onClick = { menu = false; onSelect() },
             )
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun ScanButton(onScan: () -> Unit) {
+    MediumExtendedFloatingActionButton(
+        onClick = onScan,
+        icon = { Icon(painterResource(DesignR.drawable.ic_scan), contentDescription = null) },
+        text = { Text(stringResource(R.string.scan)) },
+    )
+}
+
+@Composable
+internal fun LibraryNotices(model: LibraryViewModel, snackbar: SnackbarHostState) {
+    val moved = stringResource(R.string.library_moved_to_bin)
+    val undo = stringResource(R.string.library_undo)
+    val failure = stringResource(R.string.detail_error)
+    LaunchedEffect(model, snackbar, moved, undo, failure) {
+        model.notices.collect { notice ->
+            when (notice) {
+                is LibraryNotice.Deleted -> {
+                    val result = snackbar.showSnackbar(
+                        moved, undo, withDismissAction = true, duration = SnackbarDuration.Long,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) model.undoDelete(notice.ids)
+                }
+                LibraryNotice.Error -> snackbar.showSnackbar(failure)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LibraryDocumentDialogs(
+    model: LibraryViewModel,
+    folders: List<FolderSummary>,
+    tags: List<TagSummary>,
+    unsavedScan: UnsavedScan?,
+    editTagsId: String?,
+    moveDocumentId: String?,
+    discardSessionId: String?,
+    onCloseTags: () -> Unit,
+    onCloseMove: () -> Unit,
+    onCloseDiscard: () -> Unit,
+) {
+    editTagsId?.let { id ->
+        val assigned = remember(model, id) { model.documentTags(id) }
+        EditTagsDialog(assigned, tags, onDismiss = onCloseTags) { ids, name ->
+            model.setTags(id, ids, name)
+            onCloseTags()
+        }
+    }
+
+    if (discardSessionId != null && discardSessionId == unsavedScan?.sessionId) {
+        AlertDialog(
+            onDismissRequest = onCloseDiscard,
+            title = { Text(stringResource(R.string.library_discard_scan_title)) },
+            text = { Text(stringResource(R.string.library_discard_scan_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    model.discardScan(discardSessionId)
+                    onCloseDiscard()
+                }) { Text(stringResource(R.string.library_discard_scan)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onCloseDiscard) {
+                    Text(stringResource(R.string.detail_cancel))
+                }
+            },
+        )
+    }
+    moveDocumentId?.let { id ->
+        MoveToFolderDialog(
+            folders, onDismiss = onCloseMove,
+            onSelect = { onCloseMove(); model.moveDocuments(setOf(id), it) },
+            onCreate = { onCloseMove(); model.moveDocumentsToNewFolder(setOf(id), it) },
+        )
     }
 }
