@@ -230,7 +230,7 @@ class BackupService internal constructor(
         val directory = tree.required(item.folderName).required(item.title)
         val originals = directory.required("orig")
         val processed = directory.required("proc")
-        val ids = item.pages.associate { it.id to UUID.randomUUID().toString() }
+        val ids = remapPageIds(item.pages)
         require(ids.size == item.pages.size) { "Duplicate page ID in backup" }
         val archive = restoredReaderPdfPath(context, document.id, document.updatedAt)
         var committed = false
@@ -241,7 +241,10 @@ class BackupService internal constructor(
                 val processedFile = files.processedFile(id)
                 originals.required("${index + 1}.jpg").copyOut(original)
                 processed.required("${index + 1}.jpg").copyOut(processedFile)
-                page.copy(id = id, originalPath = original.path, processedPath = processedFile.path)
+                page.copy(
+                    id = id, originalPath = original.path, processedPath = processedFile.path,
+                    idFrontId = ids[page.idFrontId],
+                )
             }
             directory.required("${item.title}.pdf").copyOut(archive)
             currentCoroutineContext().ensureActive()

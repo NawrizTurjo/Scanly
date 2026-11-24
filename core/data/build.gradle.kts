@@ -34,7 +34,7 @@ dependencies {
     testImplementation(libs.test.core)
     api(project(":core:model"))
     implementation(project(":core:pdf"))
-    implementation(project(":core:imaging"))
+    api(project(":core:imaging"))
     implementation(libs.datastore.preferences)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)

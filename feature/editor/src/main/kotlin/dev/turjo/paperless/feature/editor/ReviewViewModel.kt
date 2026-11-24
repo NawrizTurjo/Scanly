@@ -8,6 +8,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.PageProcessing
@@ -268,6 +269,7 @@ internal class ReviewViewModel(
 
     fun rotate(id: String, delta: Int) = change {
         processing.awaitIdle(listOf(id))
+        if (documents.getPage(id)?.isIdComposite != false) return@change
         documents.rotatePage(id, delta)
         processing.enqueueRender(id)
     }
@@ -283,6 +285,7 @@ internal class ReviewViewModel(
         for (id in ids) {
             processing.awaitIdle(listOf(id))
             val page = documents.getPage(id) ?: continue
+            if (page.isIdComposite) continue
             documents.updatePage(page.copy(filter = filter))
             processing.enqueueRender(id)
         }

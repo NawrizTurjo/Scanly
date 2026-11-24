@@ -87,6 +87,8 @@ internal fun PageEntity.backupJson() = JSONObject().apply {
     put("createdAt", createdAt)
     put("deskew", deskew)
     put("inkRemoval", inkRemoval?.name)
+    put("idLayout", idLayout)
+    put("idFrontId", idFrontId)
 }
 
 internal fun JSONObject.readPage(documentId: String) = PageEntity(
@@ -107,6 +109,8 @@ internal fun JSONObject.readPage(documentId: String) = PageEntity(
     createdAt = getLong("createdAt"),
     deskew = getBoolean("deskew"),
     inkRemoval = optionalString("inkRemoval")?.let(InkRemoval::valueOf),
+    idLayout = optionalString("idLayout"),
+    idFrontId = optionalString("idFrontId"),
     documentId = documentId,
     originalPath = "",
     processedPath = null,

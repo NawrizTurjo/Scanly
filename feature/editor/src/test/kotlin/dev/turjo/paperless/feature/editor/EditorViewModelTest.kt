@@ -5,6 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
+import dev.turjo.paperless.core.data.IdComposite
+import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.Document
@@ -144,6 +146,25 @@ class EditorViewModelTest {
         assertEquals(0.5f, vm.state.value.edits?.brightness)
         assertTrue(vm.state.value.dirty)
         assertFalse(vm.state.value.canRedo)
+        assertTrue(documents.updates.isEmpty())
+    }
+
+    @Test
+    fun idLayoutChangeRecomposesAndRefreshesThePreviewPage() = runTest(dispatcher) {
+        val id = "id-composite-second"
+        documents.addFakePage(page(id, 2))
+        val vm = PageEditorViewModel(id, documents, processing).also(viewModels::add)
+        runCurrent()
+        assertTrue(vm.state.value.canChangeIdLayout)
+
+        processing.onLayout = { documents.replacePage(page(id, 2).copy(originalPath = "recomposed.jpg")) }
+        vm.changeIdLayout { it.copy(gapMm = 15, outline = true) }
+        runCurrent()
+
+        val layout = IdCardLayout(gapMm = 15, outline = true)
+        assertEquals(listOf(id to layout), processing.layouts)
+        assertEquals(layout, vm.state.value.idLayout)
+        assertEquals("recomposed.jpg", vm.state.value.page?.originalPath)
         assertTrue(documents.updates.isEmpty())
     }
 
@@ -419,6 +440,10 @@ class EditorViewModelTest {
             DocumentWithPages(document("target", "Existing scan", false), listOf(page("existing", 0, "target"))),
         )
         val draft: DocumentWithPages get() = draftFlow.value
+
+        fun addFakePage(page: Page) {
+            draftFlow.value = draft.copy(pages = draft.pages + page)
+        }
         val target: DocumentWithPages get() = targetFlow.value
         val updates = mutableListOf<Page>()
         val commits = mutableListOf<Commit>()
@@ -496,6 +521,9 @@ class EditorViewModelTest {
         private fun keepDraftPages(pages: List<Page>) {
             draftFlow.value = draft.copy(pages = pages.mapIndexed { index, page -> page.copy(index = index) })
         }
+        override suspend fun idComposite(pageId: String): IdComposite? =
+            if (pageId == "id-composite-second") IdComposite(pageId, "first", "second", IdCardLayout()) else null
+
         override suspend fun rotatePage(pageId: String, delta: Int) {
             rotations += pageId to delta
         }
@@ -526,6 +554,15 @@ class EditorViewModelTest {
         val waits = mutableListOf<List<String>>()
         var blanks = emptySet<String>()
         var previewed: Page? = null
+
+        val layouts = mutableListOf<Pair<String, IdCardLayout>>()
+        var onLayout: () -> Unit = {}
+
+        override suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean {
+            layouts += pageId to layout
+            onLayout()
+            return true
+        }
 
         override suspend fun blankInfo(pageIds: List<String>) = pageIds.map { PageBlankInfo(it, it in blanks) }
 

@@ -28,7 +28,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 1)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         try {
@@ -45,7 +45,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v2-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 2)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             val document = requireNotNull(db.documentDao().document("d1"))
@@ -65,7 +65,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v3-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 3)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             db.annotationDao().upsert(listOf(AnnotationEntity("a1", "k", 0, "INK", "[]", 0, 2f, 1)))
@@ -84,7 +84,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v4-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 4)
         Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
             .build()
             .withDatabase { db ->
                 assertEquals("p1", db.documentDao().pages("d1").single().id)
@@ -92,6 +92,32 @@ class MigrationTest {
                 db.tagDao().insert(tag)
                 db.tagDao().insertLinks(listOf(DocumentTagEntity("d1", tag.id)))
                 assertEquals(listOf(tag), db.tagDao().observeDocumentTags("d1").first())
+            }
+    }
+
+    @Test
+    fun v5LinksLegacyCompositeToAdjacentSources() = runBlocking {
+        val file = context.getDatabasePath("migration-v5-test.db").apply { parentFile?.mkdirs(); delete() }
+        createDatabase(file, 5)
+        SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { sql ->
+            sql.execSQL("UPDATE pages SET mode = 'ID_FRONT' WHERE id = 'p1'")
+            for ((id, index, mode) in listOf(Triple("back", 1, "ID_BACK"), Triple("id-composite-back", 2, "NORMAL"))) {
+                sql.execSQL(
+                    "INSERT INTO pages (id, documentId, `index`, mode, originalPath, originalWidth, originalHeight, " +
+                        "rotation, filter, brightness, contrast, shadowFix, glareFix, glareWarning, createdAt) " +
+                        "VALUES (?, 'd1', ?, ?, '/o.jpg', 10, 20, 0, 'ORIGINAL', 0, 0, 0, 0, 0, 1)",
+                    arrayOf<Any>(id, index, mode),
+                )
+            }
+        }
+        Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
+            .addMigrations(MIGRATION_5_6)
+            .build()
+            .withDatabase { db ->
+                assertNull(db.documentDao().page("p1")?.idFrontId)
+                val composite = requireNotNull(db.documentDao().page("id-composite-back"))
+                assertEquals("p1", composite.idFrontId)
+                assertNull(composite.idLayout)
             }
     }
 

@@ -10,6 +10,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
+import dev.turjo.paperless.core.data.isIdComposite
+import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageFilter
 import kotlinx.coroutines.CancellationException
@@ -20,6 +22,8 @@ import kotlinx.coroutines.launch
 
 internal data class EditorState(
     val page: Page? = null,
+    val idLayout: IdCardLayout? = null,
+    val canChangeIdLayout: Boolean = false,
     val edits: PageEdits? = null,
     val original: Bitmap? = null,
     val size: PixelSize? = null,
@@ -57,6 +61,19 @@ internal class PageEditorViewModel @AssistedInject constructor(
             try {
                 processing.awaitIdle(listOf(pageId))
                 val page = requireNotNull(documents.getPage(pageId))
+                if (page.isIdComposite) {
+                    val composite = requireNotNull(documents.idComposite(pageId))
+                    val front = composite.frontId?.let { documents.getPage(it) }
+                    val back = documents.getPage(composite.backId)
+                    mutable.update {
+                        it.copy(
+                            page = page, idLayout = composite.layout,
+                            canChangeIdLayout = front?.documentId == page.documentId &&
+                                back?.documentId == page.documentId,
+                        )
+                    }
+                    return@launch
+                }
                 mutable.update { it.copy(page = page, edits = PageEdits(page)) }
                 val size = requireNotNull(processing.uprightSize(pageId))
                 val original = processing.originalBitmap(pageId, 2048)
@@ -201,8 +218,34 @@ internal class PageEditorViewModel @AssistedInject constructor(
         }
     }
 
+    fun changeIdLayout(transform: (IdCardLayout) -> IdCardLayout) {
+        val current = state.value
+        if (current.loading || current.saving || current.saved || !current.canChangeIdLayout) return
+        val layout = current.idLayout ?: return
+        val next = transform(layout)
+        if (next == layout) return
+        mutable.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            try {
+                check(processing.updateIdLayout(pageId, next))
+                val page = requireNotNull(documents.getPage(pageId))
+                mutable.update { it.copy(page = page, idLayout = next) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                message(R.string.editor_save_error)
+            } finally {
+                mutable.update { it.copy(saving = false) }
+            }
+        }
+    }
+
     fun done() {
         if (state.value.saving || state.value.saved || state.value.detecting) return
+        if (state.value.idLayout != null) {
+            mutable.update { it.copy(saved = true) }
+            return
+        }
         val edits = state.value.edits ?: return
         endGesture()
         mutable.update { it.copy(saving = true) }

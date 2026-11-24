@@ -52,6 +52,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
 import dev.turjo.paperless.core.designsystem.sharedPage
@@ -133,8 +134,10 @@ fun PageViewerScreen(
                             Button({ onEdit(current.page.id) }, Modifier.weight(1f), enabled = canAct) {
                                 Text(stringResource(R.string.viewer_edit))
                             }
-                            TextButton({ model.rotate(current.page.id) }, enabled = canAct) {
-                                Text(stringResource(R.string.viewer_rotate))
+                            if (!current.page.isIdComposite) {
+                                TextButton({ model.rotate(current.page.id) }, enabled = canAct) {
+                                    Text(stringResource(R.string.viewer_rotate))
+                                }
                             }
                             TextButton({ confirmDelete = true }, enabled = canAct) {
                                 Text(stringResource(R.string.editor_delete))
