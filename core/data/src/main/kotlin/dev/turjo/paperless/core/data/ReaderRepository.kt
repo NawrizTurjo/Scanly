@@ -57,9 +57,10 @@ class RoomReaderRepository internal constructor(
         database: PaperlessDatabase,
         @ApplicationContext context: Context,
         processing: PageProcessing,
+        files: FileStore,
     ) : this(
         database, context, { LibraryJobs.index(context) },
-        scanPdfWriter(database.documentDao(), processing, PdfExporter(context)),
+        scanPdfWriter(database.documentDao(), processing, PdfExporter(context), files),
     )
 
     private val dao = database.readerDao()
@@ -190,13 +191,13 @@ internal fun scanPdfWriter(
     documents: DocumentDao,
     processing: PageProcessing,
     exporter: PdfExporter,
+    files: FileStore,
 ): suspend (DocumentEntity, File) -> Long = { document, output ->
-    val initial = documents.pages(document.id).map(PageEntity::toModel)
-    val ids = initial.map { it.id }
+    val ids = documents.pages(document.id).map { it.id }
     require(ids.isNotEmpty()) { "Cannot open an empty scan" }
     processing.awaitIdle(ids)
     for (id in ids) {
-        val page = requireNotNull(documents.page(id)).toModel()
+        val page = files.pageWithSignatures(requireNotNull(documents.page(id)))
         if (page.processedHash != page.paramsHash() || page.processedPath?.let { File(it).isFile } != true) {
             processing.enqueueRender(id)
         }
@@ -207,7 +208,7 @@ internal fun scanPdfWriter(
     val pages = documents.pages(document.id)
     check(pages.map { it.id } == ids) { "Scan pages changed during PDF export" }
     val sources = pages.map { row ->
-        val page = row.toModel()
+        val page = files.pageWithSignatures(row)
         val source = page.processedPath?.let(::File)?.takeIf { it.isFile && page.processedHash == page.paramsHash() }
             ?: throw FileNotFoundException("Processed image unavailable for page ${page.id}")
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

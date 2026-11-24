@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import dev.turjo.paperless.core.data.AnnotationRepository
 import dev.turjo.paperless.core.model.Annotation
 import dev.turjo.paperless.core.model.AnnotationType
+import dev.turjo.paperless.core.model.SignaturePlacement
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -334,7 +335,7 @@ class ReaderViewModel @Inject constructor(
             annotationLayers[id] = if (!success) layer else if (flatten) {
                 layer.discard()
             } else {
-                layer.copy(saved = layer.marks, editing = false, undo = emptyList(), redo = emptyList())
+                layer.copy(saved = layer.marks, editing = false, undo = emptyList(), redo = emptyList(), pendingSignature = null)
             }
             if (success) {
                 annotationPrompt = null
@@ -389,6 +390,27 @@ class ReaderViewModel @Inject constructor(
                 rects.isNotEmpty() -> editAnnotations(id) { it.change(it.marks + mark.copy(points = emptyList(), rects = rects)) }
                 type == AnnotationType.HIGHLIGHT -> editAnnotations(id) { it.change(it.marks + mark) }
             }
+        }
+    }
+
+    internal fun changeSignature(
+        tabId: String,
+        page: Int,
+        id: String?,
+        placement: SignaturePlacement?,
+    ) {
+        val key = state.value.tabs.firstOrNull { it.tabId == tabId }?.pdfKey ?: return
+        editAnnotations(tabId) { layer ->
+            if (!layer.editing || layer.tool != AnnotationTool.SIGNATURE) return@editAnnotations layer
+            val marks = if (id == null && placement != null) {
+                layer.marks + Annotation(UUID.randomUUID().toString(), key, page, AnnotationType.SIGNATURE,
+                    color = 0, width = 0f, signature = placement)
+            } else {
+                layer.marks.mapNotNull { mark ->
+                    if (mark.id == id) placement?.let { mark.copy(signature = it) } else mark
+                }
+            }
+            layer.change(marks).copy(pendingSignature = null)
         }
     }
 

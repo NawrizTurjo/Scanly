@@ -118,4 +118,8 @@
     <string name="viewer_recognizing">Recognising text…</string>
     <string name="viewer_recognize_now">Recognise now</string>
     <string name="viewer_ocr_failed">Could not recognise text on this page.</string>
+    <string name="editor_sign">Sign</string>
+    <string name="editor_sign_edit">Tap a signature to select it. Drag to move or pinch to resize.</string>
+    <string name="editor_sign_place">Tap the page to place the signature.</string>
+    <string name="editor_sign_choose">Choose signature</string>
 </resources>

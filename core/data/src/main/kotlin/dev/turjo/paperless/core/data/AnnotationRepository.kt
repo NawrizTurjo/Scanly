@@ -45,6 +45,7 @@ internal object AnnotationPayload {
                 JSONArray(listOf(it.left.toDouble(), it.top.toDouble(), it.right.toDouble(), it.bottom.toDouble()))
             }))
             .put("note", note ?: JSONObject.NULL)
+            .put("signature", signature?.toJson())
         AnnotationEntity(id, pdfKey.value, page, type.name, json.toString(), color, width, createdAt)
     }
 
@@ -55,6 +56,7 @@ internal object AnnotationPayload {
         return Annotation(
             row.id, PdfKey(row.pdfKey), row.pageIndex, AnnotationType.valueOf(row.type), row.color, row.width,
             points, rects, if (json.isNull("note")) null else json.getString("note"),
+            json.optJSONObject("signature")?.toSignaturePlacement(),
         )
     }
 

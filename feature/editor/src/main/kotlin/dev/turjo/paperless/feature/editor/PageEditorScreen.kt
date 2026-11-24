@@ -32,10 +32,13 @@ import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
+import dev.turjo.paperless.core.data.SavedSignature
+import dev.turjo.paperless.feature.reader.SignatureOverlay
+import dev.turjo.paperless.feature.reader.SignaturePicker
 import kotlinx.coroutines.delay
 
 private enum class EditorTab(val label: Int) {
-    Crop(R.string.editor_crop), Filter(R.string.editor_filter), Rotate(R.string.editor_rotate),
+    Crop(R.string.editor_crop), Filter(R.string.editor_filter), Rotate(R.string.editor_rotate), Sign(R.string.editor_sign),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,6 +109,7 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
                 }
             } else {
                 when (tab) {
+                    EditorTab.Sign -> SignPanel(edits.applyTo(page), vm, enabled, Modifier.weight(1f).fillMaxWidth())
                     EditorTab.Crop -> CropPanel(page.id, state, vm, enabled, showTip = !discard)
                     EditorTab.Filter, EditorTab.Rotate -> {
                         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
@@ -457,5 +461,55 @@ private fun AdjustmentSwitch(label: Int, checked: Boolean, enabled: Boolean, cha
     ) {
         Text(stringResource(label))
         Switch(checked, change, enabled = enabled)
+    }
+}
+
+@Composable
+private fun SignPanel(page: Page, vm: PageEditorViewModel, enabled: Boolean, modifier: Modifier) {
+    val base = page.copy(signatures = emptyList())
+    val bitmap by produceState<Bitmap?>(null, base) {
+        value = vm.preview(base, 1600)
+    }
+    var picker by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<SavedSignature?>(null) }
+    Column(modifier) {
+        Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+            val preview = bitmap
+            if (preview == null) {
+                EditorProgress()
+            } else {
+                Box(Modifier.aspectRatio(preview.width.toFloat() / preview.height).clipToBounds()) {
+                    Image(preview.asImageBitmap(), stringResource(R.string.editor_preview), Modifier.fillMaxSize())
+                    SignatureOverlay(
+                        placements = page.signatures,
+                        pending = pending,
+                        onChange = if (enabled) {
+                            { index, placement ->
+                                vm.edit { edits ->
+                                    edits.copy(signatures = edits.signatures.toMutableList().apply {
+                                        if (index == null) placement?.let { add(it) }
+                                        else if (placement == null) removeAt(index)
+                                        else set(index, placement)
+                                    })
+                                }
+                                pending = null
+                            }
+                        } else null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        Text(
+            stringResource(if (pending == null) R.string.editor_sign_edit else R.string.editor_sign_place),
+            Modifier.padding(horizontal = 16.dp),
+        )
+        TextButton({ picker = true }, Modifier.padding(horizontal = 8.dp), enabled = enabled && bitmap != null) {
+            Text(stringResource(R.string.editor_sign_choose))
+        }
+    }
+    if (picker) SignaturePicker({ picker = false }) {
+        pending = it
+        picker = false
     }
 }

@@ -35,6 +35,16 @@ class PageParamsTest {
     }
 
     @Test
+    fun hashChangesWithSignatureImageAndBounds() {
+        val placement = SignaturePlacement("first", PageRect(0.25f, 0.5f, 0.5f, 0.625f))
+        val signed = page.copy(signatures = listOf(placement))
+        assertNotEquals(page.paramsHash(), signed.paramsHash())
+        assertNotEquals(signed.paramsHash(), signed.copy(signatures = listOf(placement.copy(signatureId = "second"))).paramsHash())
+        val moved = placement.copy(bounds = PageRect(0.5f, 0.5f, 0.75f, 0.625f))
+        assertNotEquals(signed.paramsHash(), signed.copy(signatures = listOf(moved)).paramsHash())
+    }
+
+    @Test
     fun hashIgnoresMetadataAndTreatsFullQuadAsUncropped() {
         val hash = page.paramsHash()
         val moved = page.copy(

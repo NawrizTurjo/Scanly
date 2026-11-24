@@ -19,6 +19,11 @@ class FileStore @Inject constructor(@ApplicationContext private val context: Con
         return File(context.filesDir, "pages/$pageId")
     }
 
+    internal fun signaturePlacements(pageId: String) = File(pageDir(pageId), "signatures.json")
+
+    internal fun pageWithSignatures(row: PageEntity) =
+        row.toModel().copy(signatures = signaturePlacements(row.id).readSignatures())
+
     fun originalFile(pageId: String) = File(pageDir(pageId), "orig.jpg")
     fun processedFile(pageId: String) = File(pageDir(pageId), "proc.jpg")
     fun thumbFile(pageId: String) = File(pageDir(pageId), "thumb.webp")
@@ -37,6 +42,8 @@ class FileStore @Inject constructor(@ApplicationContext private val context: Con
         val directory = restoredReaderPdfDir(context, documentId)
         if (!directory.deleteRecursively()) throw IOException("Could not delete restored PDF for $documentId")
     }
+
+    internal fun signatureImage(id: String) = placedSignatureFile(context, id)
 
     fun newTempFile(suffix: String): File {
         val directory = File(context.cacheDir, "tmp")

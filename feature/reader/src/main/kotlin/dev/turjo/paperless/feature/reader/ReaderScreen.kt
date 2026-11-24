@@ -308,6 +308,9 @@ fun ReaderScreen(
                                 onAnnotation = { page, tool, color, width, points, note ->
                                     viewModel.annotate(tab.tabId, document, page, tool, color, width, points, note)
                                 },
+                                onSignature = { page, id, placement ->
+                                    viewModel.changeSignature(tab.tabId, page, id, placement)
+                                },
                                 immersive = chrome.immersive,
                                 pagePadding = pagePadding,
                                 overlayInsets = systemBars.only(WindowInsetsSides.Horizontal),

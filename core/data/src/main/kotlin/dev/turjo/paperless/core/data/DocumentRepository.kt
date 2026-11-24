@@ -88,6 +88,7 @@ interface DocumentRepository {
     fun observeDocument(id: String): Flow<DocumentWithPages?>
     suspend fun getPage(id: String): Page?
     suspend fun updatePage(page: Page)
+    suspend fun updatePageEdits(page: Page) = updatePage(page)
     suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int? = null): Page
     suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int): Page =
         addPage(draftId, originalFile, width, height)
@@ -209,6 +210,8 @@ class RoomDocumentRepository @Inject constructor(
                     val original = File(page.originalPath).copyTo(files.originalFile(pageId))
                     val processed = page.processedPath?.let(::File)?.takeIf(File::isFile)
                         ?.copyTo(files.processedFile(pageId))
+                    val placements = files.signaturePlacements(page.id).readSignatures()
+                    if (placements.isNotEmpty()) files.signaturePlacements(pageId).writeSignatures(placements)
                     files.thumbFile(page.id).takeIf(File::isFile)?.copyTo(files.thumbFile(pageId))
                     dao.insertPage(page.copy(
                         id = pageId, documentId = copyId, originalPath = original.path,
@@ -266,19 +269,31 @@ class RoomDocumentRepository @Inject constructor(
     }
 
     override fun observeDocument(id: String) = dao.observeDocument(id).map { row ->
-        row?.let { DocumentWithPages(it.document.toModel(), it.pages.sortedBy(PageEntity::index).map(PageEntity::toModel)) }
+        row?.let {
+            DocumentWithPages(it.document.toModel(), it.pages.sortedBy(PageEntity::index).map(files::pageWithSignatures))
+        }
     }.flowOn(Dispatchers.IO)
 
     override suspend fun getPage(id: String): Page? =
-        withContext(Dispatchers.IO) { dao.page(id)?.toModel() }
+        withContext(Dispatchers.IO) { dao.page(id)?.let(files::pageWithSignatures) }
 
-    override suspend fun updatePage(page: Page) = transaction {
+    override suspend fun updatePage(page: Page) = updatePage(page, saveSignatures = false)
+
+    override suspend fun updatePageEdits(page: Page) = updatePage(page, saveSignatures = true)
+
+    private suspend fun updatePage(page: Page, saveSignatures: Boolean) = transaction {
         val existing = requireNotNull(dao.page(page.id)) { "Unknown page ${page.id}" }
         if (page.isIdComposite) return@transaction
         require(page.rotation in setOf(0, 90, 180, 270))
         require(page.brightness in -1f..1f && page.contrast in -1f..1f)
         dao.updatePage(page.copy(documentId = existing.documentId, index = existing.index).toEntity())
         touch(requireDocument(existing.documentId))
+        if (saveSignatures) savePageSignatures(page)
+    }
+
+    private fun savePageSignatures(page: Page) {
+        val sidecar = files.signaturePlacements(page.id)
+        if (sidecar.readSignatures() != page.signatures) sidecar.writeSignatures(page.signatures)
     }
 
     override suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int?): Page =
@@ -355,11 +370,15 @@ class RoomDocumentRepository @Inject constructor(
         }
 
     override suspend fun splitPage(left: Page, rightQuad: Quad): Page =
-        insertDerivedPage("split-${UUID.randomUUID()}") { id ->
+        insertDerivedPage(
+            "split-${UUID.randomUUID()}",
+            beforeCommit = { savePageSignatures(left) },
+        ) { id ->
             val current = requireNotNull(dao.page(left.id))
             val updated = left.copy(index = current.index, documentId = current.documentId)
             dao.updatePage(updated.toEntity())
-            updated.asDerivedPage(id, current.index + 1, File(updated.originalPath)).copy(quad = rightQuad)
+            updated.asDerivedPage(id, current.index + 1, File(updated.originalPath))
+                .copy(quad = rightQuad, signatures = emptyList())
         }
 
     override suspend fun addIdComposite(front: Page, back: Page, original: File, width: Int, height: Int): Page =
@@ -428,6 +447,7 @@ class RoomDocumentRepository @Inject constructor(
     private suspend fun insertDerivedPage(
         id: String,
         idFrontId: String? = null,
+        beforeCommit: () -> Unit = {},
         build: suspend (String) -> Page,
     ): Page =
         withContext(Dispatchers.IO + NonCancellable) {
@@ -449,6 +469,7 @@ class RoomDocumentRepository @Inject constructor(
                     dao.shiftForInsert(page.documentId, page.index)
                     dao.insertPage(stored.toEntity().copy(idFrontId = idFrontId, idLayout = idFrontId?.let { IdCardLayout().encode() }))
                     touch(document)
+                    beforeCommit()
                     stored
                 }
             } catch (error: Exception) {
