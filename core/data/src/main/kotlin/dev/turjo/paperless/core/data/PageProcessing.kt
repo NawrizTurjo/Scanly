@@ -8,10 +8,12 @@ import android.util.Log
 import dev.turjo.paperless.core.imaging.BookSplitter
 import dev.turjo.paperless.core.imaging.Geometry
 import dev.turjo.paperless.core.imaging.IdCardComposer
+import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.imaging.InkColour
 import dev.turjo.paperless.core.imaging.OpenCv
 import dev.turjo.paperless.core.imaging.PageTools
 import dev.turjo.paperless.core.imaging.ProcessParams
+import dev.turjo.paperless.core.imaging.ProcessResult
 import dev.turjo.paperless.core.imaging.detectOnFile
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageBlankInfo
@@ -49,6 +51,7 @@ interface PageProcessing {
     fun enqueueNewPage(pageId: String, filter: PageFilter = PageFilter.DOCUMENT)
     fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter = PageFilter.DOCUMENT) =
         enqueueNewPage(pageId, filter)
+    suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean = false
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
     suspend fun detectQuad(pageId: String): Quad?
@@ -69,12 +72,21 @@ interface PageProcessing {
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
-class QueuedPageProcessing @Inject constructor(
+class QueuedPageProcessing internal constructor(
     private val documents: DocumentRepository,
     private val files: FileStore,
     private val thumbnails: ThumbnailMaker,
-    @ApplicationScope private val scope: CoroutineScope,
+    private val scope: CoroutineScope,
+    private val renderPage: ((File, ProcessParams, File) -> ProcessResult)?,
 ) : PageProcessing {
+    @Inject
+    constructor(
+        documents: DocumentRepository,
+        files: FileStore,
+        thumbnails: ThumbnailMaker,
+        @ApplicationScope scope: CoroutineScope,
+    ) : this(documents, files, thumbnails, scope, null)
+
     private val worker = Dispatchers.Default.limitedParallelism(1)
     private val previewLock = Mutex()
     private val processingLock = Mutex()
@@ -116,26 +128,61 @@ class QueuedPageProcessing @Inject constructor(
         } else {
             val glareMode = mode.cardAspect() != null || mode == PageMode.WHITEBOARD
             documents.updatePage(prepared.copy(
-                filter = if (mode == PageMode.WHITEBOARD) PageFilter.WHITEBOARD else filter,
+                filter = when {
+                    mode == PageMode.WHITEBOARD -> PageFilter.WHITEBOARD
+                    mode.cardAspect() != null -> PageFilter.AUTO
+                    else -> filter
+                },
                 glareFix = glareMode || page.glareFix,
                 deskew = !glareMode && page.deskew,
             ))
         }
         render(pageId)
-        if (mode == PageMode.ID_BACK) composeIdCard(pageId)
+        if (mode == PageMode.ID_BACK) createIdComposite(pageId)
     }
 
-    private suspend fun composeIdCard(backId: String) {
+    private suspend fun createIdComposite(backId: String) {
+        if (documents.getPage(idCompositeId(backId)) != null) return
         val back = documents.getPage(backId) ?: return
-        val draft = documents.observeDocument(back.documentId).first() ?: return
-        if (!draft.document.isDraft) return
-        val front = draft.pages.getOrNull(back.index - 1)?.takeIf { it.mode == PageMode.ID_FRONT } ?: return
-        val frontFile = front.processedPath?.let(::File)?.takeIf(File::isFile) ?: return
-        val backFile = back.processedPath?.let(::File)?.takeIf(File::isFile) ?: return
+        val document = documents.observeDocument(back.documentId).first() ?: return
+        val front = document.pages.getOrNull(back.index - 1)?.takeIf { it.mode == PageMode.ID_FRONT } ?: return
+        composeIdCard(front, back, IdCardLayout()) { output ->
+            documents.addIdComposite(front, back, output, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
+            true
+        }
+    }
+
+    override suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean {
+        markPending(pageId)
+        try {
+            return withContext(worker) {
+                processingLock.withLock {
+                    val composite = documents.idComposite(pageId) ?: return@withLock false
+                    recomposeIdCard(composite.copy(layout = layout))
+                }
+            }
+        } finally {
+            markFinished(pageId)
+        }
+    }
+
+    private suspend fun recomposeIdCard(composite: IdComposite): Boolean {
+        val front = composite.frontId?.let { documents.getPage(it) } ?: return false
+        val back = documents.getPage(composite.backId) ?: return false
+        val page = documents.getPage(composite.pageId) ?: return false
+        if (front.documentId != page.documentId || back.documentId != page.documentId) return false
+        return composeIdCard(front, back, composite.layout) { documents.replaceIdComposite(composite, it) }
+    }
+
+    private suspend fun composeIdCard(
+        front: Page, back: Page, layout: IdCardLayout, save: suspend (File) -> Boolean,
+    ): Boolean {
+        val frontFile = front.processedPath?.let(::File)?.takeIf(File::isFile) ?: return false
+        val backFile = back.processedPath?.let(::File)?.takeIf(File::isFile) ?: return false
         val output = files.newTempFile(".jpg")
         try {
-            IdCardComposer.compose(frontFile, backFile, output)
-            documents.addIdComposite(back, output, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
+            IdCardComposer.compose(frontFile, backFile, output, layout)
+            return save(output)
         } finally {
             output.delete()
         }
@@ -147,7 +194,13 @@ class QueuedPageProcessing @Inject constructor(
     override fun enqueueRender(pageId: String) = submit(pageId) { render(pageId) }
 
     override suspend fun awaitIdle(pageIds: Collection<String>) {
-        busy.first { current -> pageIds.none(current::contains) }
+        val related = pageIds.toMutableSet()
+        for (id in pageIds) {
+            val composite = documents.idComposite(id) ?: continue
+            composite.frontId?.let(related::add)
+            related.add(composite.backId)
+        }
+        busy.first { current -> related.none(current::contains) }
     }
 
     override suspend fun detectQuad(pageId: String): Quad? = withContext(worker) {
@@ -189,41 +242,61 @@ class QueuedPageProcessing @Inject constructor(
         documents.getPage(pageId)?.let(::uprightSizeOf)
     }
 
-    private fun submit(pageId: String, block: suspend () -> Unit) {
+    private fun markPending(pageId: String) {
         synchronized(pending) {
             pending.merge(pageId, 1, Int::plus)
             busy.update { it + pageId }
         }
+    }
+
+    private fun markFinished(pageId: String) {
+        synchronized(pending) {
+            val left = pending.merge(pageId, -1, Int::plus) ?: 0
+            if (left <= 0) {
+                pending.remove(pageId)
+                busy.update { it - pageId }
+            }
+        }
+    }
+
+    private fun submit(pageId: String, block: suspend () -> Unit) {
+        markPending(pageId)
         scope.launch(worker) {
             try {
                 processingLock.withLock { block() }
             } catch (error: Exception) {
                 Log.e(TAG, "Processing failed for $pageId", error)
             } finally {
-                synchronized(pending) {
-                    val left = pending.merge(pageId, -1, Int::plus) ?: 0
-                    if (left <= 0) {
-                        pending.remove(pageId)
-                        busy.update { it - pageId }
-                    }
-                }
+                markFinished(pageId)
             }
         }
     }
 
     private suspend fun render(pageId: String) {
         val page = documents.getPage(pageId) ?: return
+        if (page.isIdComposite) return
         val hash = page.paramsHash()
         val processed = files.processedFile(pageId)
-        if (page.processedHash == hash && page.processedPath?.let { File(it).isFile } == true) return
-        val result = processor.process(File(page.originalPath), page.toParams(1f), processed)
+        if (page.processedHash == hash && page.processedPath?.let { File(it).isFile } == true) {
+            refreshIdComposites(page)
+            return
+        }
+        val original = File(page.originalPath)
+        val params = page.toParams(1f)
+        val result = renderPage?.invoke(original, params, processed) ?: processor.process(original, params, processed)
         thumbnails.make(processed, pageId)
         // Re-read: the user may have edited the page while it rendered; keep their params, record what we rendered.
         val latest = documents.getPage(pageId) ?: return
         documents.updatePage(
             latest.copy(processedPath = processed.path, processedHash = hash, glareWarning = result.glareWarning),
         )
-        if (latest.paramsHash() != hash) render(pageId)
+        if (latest.paramsHash() != hash) render(pageId) else refreshIdComposites(latest)
+    }
+
+    private suspend fun refreshIdComposites(page: Page) {
+        if (page.mode.cardAspect() != null) {
+            documents.idCompositesFor(page).forEach { recomposeIdCard(it) }
+        }
     }
 
     private fun Page.toParams(scale: Float) = ProcessParams(

@@ -73,6 +73,8 @@ data class PageEntity(
     val createdAt: Long,
     @ColumnInfo(defaultValue = "1") val deskew: Boolean = true,
     val inkRemoval: InkRemoval? = null,
+    val idLayout: String? = null,
+    val idFrontId: String? = null,
 )
 
 @Entity(
@@ -100,7 +102,7 @@ data class ScanSessionEntity(
         AnnotationEntity::class, PageTextEntity::class, IndexedPdfEntity::class,
         TagEntity::class, DocumentTagEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class PaperlessDatabase : RoomDatabase() {
@@ -145,5 +147,21 @@ val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE pages ADD COLUMN deskew INTEGER NOT NULL DEFAULT 1")
         db.execSQL("ALTER TABLE pages ADD COLUMN inkRemoval TEXT")
+    }
+}
+
+val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE pages ADD COLUMN idLayout TEXT")
+        db.execSQL("ALTER TABLE pages ADD COLUMN idFrontId TEXT")
+        db.execSQL("""
+            UPDATE pages SET idFrontId = (
+                SELECT front.id FROM pages AS back
+                JOIN pages AS front ON front.documentId = back.documentId
+                    AND front.`index` = back.`index` - 1 AND front.mode = 'ID_FRONT'
+                WHERE pages.id = 'id-composite-' || back.id AND back.mode = 'ID_BACK'
+                    AND pages.documentId = back.documentId AND pages.`index` = back.`index` + 1
+            ) WHERE id LIKE 'id-composite-%'
+        """.trimIndent())
     }
 }

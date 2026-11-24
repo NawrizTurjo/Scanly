@@ -25,8 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import java.io.File
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.sharedPage
+import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
 import kotlinx.coroutines.delay
@@ -43,7 +46,8 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableStateOf(EditorTab.Crop) }
     var discard by rememberSaveable { mutableStateOf(false) }
-    val enabled = state.original != null && !state.loading && !state.saving && !state.detecting && !state.saved
+    val layout = state.idLayout
+    val enabled = (state.original != null || layout != null) && !state.loading && !state.saving && !state.detecting && !state.saved
     val back = {
         if (state.dirty) discard = true else onBack()
     }
@@ -55,12 +59,14 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.editor_title)) },
+                title = { Text(stringResource(if (layout == null) R.string.editor_title else R.string.editor_id_layout)) },
                 navigationIcon = { SymbolButton("←", R.string.editor_back, !state.saving, back) },
                 actions = {
-                    SymbolButton("↶", R.string.editor_undo, enabled && state.canUndo, vm::undo)
-                    SymbolButton("↷", R.string.editor_redo, enabled && state.canRedo, vm::redo)
-                    TextButton(vm::done, enabled = enabled && state.edits != null) {
+                    if (layout == null) {
+                        SymbolButton("↶", R.string.editor_undo, enabled && state.canUndo, vm::undo)
+                        SymbolButton("↷", R.string.editor_redo, enabled && state.canRedo, vm::redo)
+                    }
+                    TextButton(vm::done, enabled = enabled && (state.edits != null || layout != null)) {
                         Text(stringResource(R.string.editor_done))
                     }
                 },
@@ -69,6 +75,19 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            if (layout != null) {
+                AsyncImage(
+                    model = state.page?.originalPath?.let(::File),
+                    contentDescription = stringResource(R.string.editor_id_layout),
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(12.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                if (state.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    IdLayoutPanel(layout, enabled && state.canChangeIdLayout, state.canChangeIdLayout, vm)
+                }
+                return@Column
+            }
             PrimaryTabRow(selectedTabIndex = tab.ordinal) {
                 EditorTab.entries.forEach { choice ->
                     Tab(
@@ -136,6 +155,63 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
         ) {
             discard = false
             onBack()
+        }
+    }
+}
+
+@Composable
+private fun IdLayoutPanel(
+    layout: IdCardLayout,
+    enabled: Boolean,
+    hasSources: Boolean,
+    vm: PageEditorViewModel,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
+        IdLayoutChoices(
+            R.string.editor_id_arrangement,
+            listOf(
+                IdCardLayout.Arrangement.STACKED to R.string.editor_id_stacked,
+                IdCardLayout.Arrangement.SIDE_BY_SIDE to R.string.editor_id_side_by_side,
+            ),
+            layout.arrangement, enabled,
+        ) { choice -> vm.changeIdLayout { it.copy(arrangement = choice) } }
+        IdLayoutChoices(
+            R.string.editor_id_size,
+            listOf(
+                IdCardLayout.Size.ACTUAL to R.string.editor_id_actual,
+                IdCardLayout.Size.LARGE to R.string.editor_id_large,
+            ),
+            layout.size, enabled,
+        ) { choice -> vm.changeIdLayout { it.copy(size = choice) } }
+        IdLayoutChoices(
+            R.string.editor_id_gap,
+            listOf(0 to R.string.editor_id_none, 6 to R.string.editor_id_small, 15 to R.string.editor_id_medium),
+            layout.gapMm, enabled,
+        ) { choice -> vm.changeIdLayout { it.copy(gapMm = choice) } }
+        AdjustmentSwitch(R.string.editor_id_outline, layout.outline, enabled) { checked ->
+            vm.changeIdLayout { it.copy(outline = checked) }
+        }
+        Text(
+            stringResource(if (hasSources) R.string.editor_id_hint else R.string.editor_id_missing),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun <T> IdLayoutChoices(
+    label: Int, choices: List<Pair<T, Int>>, selected: T, enabled: Boolean, choose: (T) -> Unit,
+) {
+    Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        choices.forEachIndexed { index, (value, text) ->
+            SegmentedButton(
+                selected = value == selected,
+                onClick = { choose(value) },
+                enabled = enabled,
+                shape = SegmentedButtonDefaults.itemShape(index, choices.size),
+                icon = {},
+            ) { Text(stringResource(text)) }
         }
     }
 }

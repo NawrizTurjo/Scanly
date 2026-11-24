@@ -3,6 +3,10 @@ package dev.turjo.paperless.core.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import dev.turjo.paperless.core.imaging.IdCardComposer
+import dev.turjo.paperless.core.imaging.IdCardLayout
+import dev.turjo.paperless.core.imaging.ProcessResult
 import android.media.ExifInterface
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -146,8 +150,8 @@ class RoomRepositoriesTest {
         documents.updatePage(back)
         val tail = add(id)
 
-        val composite = documents.addIdComposite(back, jpeg, 960, 480)
-        assertEquals(composite, documents.addIdComposite(back, jpeg, 960, 480))
+        val composite = documents.addIdComposite(front, back, jpeg, 960, 480)
+        assertEquals(composite, documents.addIdComposite(front, back, jpeg, 960, 480))
         assertOrder(id, front.id, back.id, composite.id, tail.id)
         assertEquals(PageMode.NORMAL, composite.mode)
         assertEquals(PageFilter.ORIGINAL, composite.filter)
@@ -156,6 +160,63 @@ class RoomRepositoriesTest {
         assertFalse(composite.glareFix)
         assertEquals(composite.originalPath, composite.processedPath)
         assertEquals(composite.paramsHash(), composite.processedHash)
+    }
+
+    @Test
+    fun renderingReorderedSideRefreshesCompositeAndDeletedSourceKeepsLastImage() = runBlocking {
+        val id = draft()
+        suspend fun addSide(mode: PageMode) = add(id).let {
+            val side = it.copy(mode = mode, processedPath = it.originalPath, filter = PageFilter.AUTO)
+            side.copy(processedHash = side.paramsHash()).also { page -> documents.updatePage(page) }
+        }
+        val front = addSide(PageMode.ID_FRONT)
+        val back = addSide(PageMode.ID_BACK)
+        val composite = documents.addIdComposite(front, back, jpeg, IdCardComposer.PAGE_WIDTH, IdCardComposer.PAGE_HEIGHT)
+        documents.reorderPages(id, listOf(back.id, composite.id, front.id))
+        documents.commitDraft(id, "ID card")
+        val processing = QueuedPageProcessing(documents, files, ThumbnailMaker(files), this) { original, _, output ->
+            original.copyTo(output, overwrite = true)
+            ProcessResult(60, 100, glareWarning = false)
+        }
+        val layout = IdCardLayout(arrangement = IdCardLayout.Arrangement.SIDE_BY_SIDE, gapMm = 15, outline = true)
+        assertTrue(processing.updateIdLayout(composite.id, layout))
+        val beforeRender = requireNotNull(documents.getPage(composite.id))
+        val portrait = Bitmap.createBitmap(60, 100, Bitmap.Config.ARGB_8888)
+        try {
+            for (y in 0 until portrait.height) {
+                for (x in 0 until portrait.width) {
+                    portrait.setPixel(x, y, if (y < 50) Color.RED else Color.BLUE)
+                }
+            }
+            File(front.originalPath).outputStream().use { assertTrue(portrait.compress(Bitmap.CompressFormat.JPEG, 100, it)) }
+        } finally {
+            portrait.recycle()
+        }
+        documents.updatePage(front.copy(rotation = 90))
+        processing.enqueueRender(front.id)
+        processing.awaitIdle(listOf(composite.id))
+        val rendered = requireNotNull(documents.getPage(composite.id))
+        assertEquals(beforeRender.index, rendered.index)
+        assertEquals(layout, documents.idComposite(composite.id)?.layout)
+        assertTrue(beforeRender.originalPath != rendered.originalPath)
+        assertEquals(rendered.originalPath, rendered.processedPath)
+        assertTrue(files.thumbFile(composite.id).isFile)
+        val result = BitmapFactory.decodeFile(rendered.originalPath)
+        try {
+            assertTrue(Color.blue(result.getPixel(350, 400)) > 220)
+            assertTrue(Color.red(result.getPixel(950, 400)) > 220)
+            assertEquals(Color.WHITE, result.getPixel(1240, 400))
+        } finally {
+            result.recycle()
+        }
+        assertEquals("300/1", ExifInterface(rendered.originalPath).getAttribute(ExifInterface.TAG_X_RESOLUTION))
+        documents.deletePage(back.id)
+        val latestFront = requireNotNull(documents.getPage(front.id))
+        documents.updatePage(latestFront.copy(filter = PageFilter.GRAY))
+        processing.enqueueRender(front.id)
+        processing.awaitIdle(listOf(composite.id))
+        assertEquals(rendered.originalPath, documents.getPage(composite.id)?.originalPath)
+        assertTrue(File(rendered.originalPath).isFile)
     }
 
     @Test

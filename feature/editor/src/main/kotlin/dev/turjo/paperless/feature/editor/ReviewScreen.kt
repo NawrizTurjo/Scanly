@@ -30,6 +30,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.defaultTitle
 import dev.turjo.paperless.core.designsystem.sharedPage
 import sh.calvin.reorderable.ReorderableItem
@@ -106,7 +107,7 @@ fun ReviewScreen(
             BottomAppBar(
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
-                TextButton({ filters = true }, enabled = canAct && state.pages.isNotEmpty()) {
+                TextButton({ filters = true }, enabled = canAct && state.pages.any { !it.page.isIdComposite }) {
                     Text(stringResource(R.string.review_filter_all))
                 }
                 TextButton(onAddMore, enabled = canAct) { Text(stringResource(R.string.review_add_more)) }
@@ -211,7 +212,7 @@ fun ReviewScreen(
         )
     }
     val dropped = state.groups.flatMap { it.dropped }.toSet()
-    val keptPages = state.pages.filterNot { it.page.id in dropped }
+    val keptPages = state.pages.filterNot { it.page.id in dropped || it.page.isIdComposite }
     val firstPage = keptPages.firstOrNull()?.page
     if (filters && firstPage != null) {
         ModalBottomSheet(onDismissRequest = { filters = false }) {
@@ -394,14 +395,16 @@ private fun ReviewTile(
             Box {
                 SymbolButton("⋮", R.string.review_page_options, enabled) { menu = true }
                 DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.editor_rotate_left)) }, onClick = {
-                        menu = false
-                        rotate(-90)
-                    })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.editor_rotate_right)) }, onClick = {
-                        menu = false
-                        rotate(90)
-                    })
+                    if (!item.page.isIdComposite) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.editor_rotate_left)) }, onClick = {
+                            menu = false
+                            rotate(-90)
+                        })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.editor_rotate_right)) }, onClick = {
+                            menu = false
+                            rotate(90)
+                        })
+                    }
                     if (split != null) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.review_split_here)) }, onClick = {
                             menu = false

@@ -6,6 +6,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.model.Page
@@ -75,6 +76,7 @@ internal class PageViewerViewModel @AssistedInject constructor(
     }
 
     fun rotate(pageId: String) = change(pageId) {
+        if (documents.getPage(pageId)?.isIdComposite != false) return@change
         documents.rotatePage(pageId, 90)
         processing.enqueueRender(pageId)
     }
