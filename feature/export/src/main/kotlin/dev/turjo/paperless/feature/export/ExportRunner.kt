@@ -10,8 +10,6 @@ import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.paramsHash
 import dev.turjo.paperless.core.pdf.*
-import dev.turjo.paperless.core.pdf.tools.PageWidthNormalizer
-import dev.turjo.paperless.core.pdf.tools.WidthTarget
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
@@ -19,8 +17,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 internal enum class ExportFormat(val pdf: Boolean, val imageMime: String?) {
@@ -35,21 +31,9 @@ internal data class ExportOptions(
     val format: ExportFormat = ExportFormat.PDF,
     val size: PageSizeOption = PageSizeOption.A4,
     val quality: QualityPreset = QualityPreset.MEDIUM,
-    /** EX-5: with Auto page size each page takes its photo's shape; scale them to one width (GoodNotes zoom fix). */
-    val sameWidth: Boolean = true,
-    val extras: PdfExtras = PdfExtras(),
+    val pipeline: PdfPipeline = PdfPipeline(),
 ) {
-    val canExport get() = !format.pdf || extras.password != ""
-}
-
-@Singleton
-internal class ExportPreferences @Inject constructor() {
-    private val selection = MutableStateFlow(ExportOptions())
-    val options = selection.asStateFlow()
-
-    fun select(options: ExportOptions) {
-        selection.value = options.copy(extras = options.extras.copy(password = null))
-    }
+    val canExport get() = !format.pdf || pipeline.password != ""
 }
 
 internal data class SavedExport(val uri: Uri, val mime: String, val format: ExportFormat)
@@ -64,7 +48,7 @@ class ExportRunner internal constructor(
     private val writePdf: suspend (List<ExportPage>, ExportOptions, File, String) -> Unit,
     private val writeImages: suspend (List<ExportPage>, ExportOptions, File, String) -> List<File>,
     private val saveFile: suspend (File, String) -> Uri,
-    private val extraOps: ExtraOps,
+    private val pipelineOps: PipelineOps,
 ) {
     @Inject
     constructor(
@@ -82,21 +66,8 @@ class ExportRunner internal constructor(
         },
         JpegRecompressor::recompress,
         { pages, options, output, title ->
-            if (options.sameWidth && options.size == PageSizeOption.AUTO) {
-                val raw = File(output.parentFile, output.name + ".raw")
-                try {
-                    raw.outputStream().use {
-                        PdfExporter(context).export(pages, options.size, options.quality, it, title)
-                    }
-                    PdfBox.ensureInit(context)
-                    PageWidthNormalizer.normalize(raw, WidthTarget.Common, output)
-                } finally {
-                    raw.delete()
-                }
-            } else {
-                output.outputStream().use {
-                    PdfExporter(context).export(pages, options.size, options.quality, it, title)
-                }
+            output.outputStream().use {
+                PdfExporter(context).export(pages, options.size, options.quality, it, title)
             }
         },
         { pages, options, dir, name ->
@@ -111,7 +82,7 @@ class ExportRunner internal constructor(
             val saver = MediaStoreSaver(context)
             if (mime == PDF_MIME) saver.savePdf(file, file.name) else saver.saveImage(file, file.name, mime)
         },
-        PdfExtraOps(context),
+        PdfPipelineOps(context),
     )
 
     private data class EstimateKey(
@@ -124,7 +95,7 @@ class ExportRunner internal constructor(
     suspend fun quickShare(
         document: DocumentWithPages,
         launch: (List<File>, String) -> Unit,
-    ) = share(document, ExportOptions(), document.document.title, launch)
+    ) = share(document, ExportOptions(pipeline = PdfPipeline(emptyList())), document.document.title, launch)
 
     internal suspend fun share(
         document: DocumentWithPages,
@@ -186,7 +157,7 @@ class ExportRunner internal constructor(
                 if (options.format.pdf) {
                     val pdf = File(dir, "$baseName.pdf")
                     writePdf(pages, options, pdf, document.document.title)
-                    val result = applyExtras(pdf, options.extras, dir, extraOps)
+                    val result = applyPipeline(pdf, options.pipeline, dir, pipelineOps)
                     if (result != pdf) {
                         Files.move(result.toPath(), pdf.toPath(), REPLACE_EXISTING)
                     }

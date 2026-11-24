@@ -8,7 +8,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -97,13 +96,8 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
             Text(stringResource(R.string.export_quality))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QualityPreset.entries.forEach { quality ->
-                    val label = when (quality) {
-                        QualityPreset.HIGH -> R.string.export_high
-                        QualityPreset.MEDIUM -> R.string.export_medium
-                        QualityPreset.SMALL -> R.string.export_small
-                    }
                     FilterChip(options.quality == quality, { model.select(options.copy(quality = quality)) },
-                        label = { Text(stringResource(label)) }, enabled = enabled)
+                        label = { Text(stringResource(quality.exportLabel)) }, enabled = enabled)
                 }
             }
             estimate?.let {
@@ -118,25 +112,8 @@ fun ExportSheet(documentId: String, onDismiss: () -> Unit) {
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (options.format.pdf && options.size == PageSizeOption.AUTO) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.export_same_width))
-                        Text(
-                            stringResource(R.string.export_same_width_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = options.sameWidth,
-                        onCheckedChange = { model.select(options.copy(sameWidth = it)) },
-                        enabled = enabled,
-                    )
-                }
-            }
             if (options.format.pdf) {
-                PdfExtrasSection(options, enabled) { model.select(options.copy(extras = it)) }
+                PdfPipelineSection(options.pipeline, enabled, model)
             }
             if (!state.loaded) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())

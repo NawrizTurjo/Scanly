@@ -57,54 +57,91 @@ class ExportRunnerTest {
     fun waitsForRendersAndUsesProcessedThenOriginalInPageOrder() = runTest {
         val first = repository.pages.getValue("one")
         repository.pages["one"] = first.copy(processedPath = null)
-        runner().quickShare(document) { files, mime ->
+        val ops = RecordingPipelineOps()
+        runner(pipelineOps = ops).quickShare(document) { files, mime ->
             assertEquals(listOf("Receipt.pdf"), files.map(File::getName))
             assertEquals(PDF_MIME, mime)
             assertTrue(files.single().isFile)
         }
+        assertTrue(ops.calls.isEmpty())
         assertEquals(listOf(processed, original), pdfSources)
         assertEquals(listOf("idle:one,two", "render:one", "render:two", "idle:one,two"), processing.calls)
     }
 
     @Test
-    fun bothSharesPdfAndNumberedJpegs() = runTest {
-        runner().share(document, ExportOptions(format = ExportFormat.BOTH), "A/B") { files, mime ->
+    fun bothSharesNormalizedA4PdfAndNumberedJpegs() = runTest {
+        val ops = RecordingPipelineOps()
+        runner(pipelineOps = ops).share(document, ExportOptions(format = ExportFormat.BOTH), "A/B") { files, mime ->
             assertEquals(listOf("A_B.pdf", "A_B_1.jpg", "A_B_2.jpg"), files.map(File::getName))
             assertEquals("*/*", mime)
+            assertEquals("pdf SAME_WIDTH", files.first().readText())
+            assertEquals(listOf(PdfStep.SameWidth), ops.steps)
         }
     }
 
     @Test
-    fun extrasApplyOnlyToPdfOutputs() = runTest {
+    fun pipelineAppliesOnlyToPdfOutputs() = runTest {
         for (format in ExportFormat.entries) {
-            val ops = RecordingExtraOps()
-            val options = ExportOptions(format = format, extras = PdfExtras(grayscale = true))
-            runner(extraOps = ops).share(document, options, "Receipt") { files, _ ->
+            val ops = RecordingPipelineOps()
+            val options = ExportOptions(format = format, pipeline = PdfPipeline(listOf(PdfStep.Grayscale)))
+            runner(pipelineOps = ops).share(document, options, "Receipt") { files, _ ->
                 assertEquals(format.pdf, files.any { it.extension == "pdf" })
                 files.forEach {
-                    assertEquals(if (it.extension == "pdf") "pdf grayscale" else "jpg", it.readText())
+                    assertEquals(if (it.extension == "pdf") "pdf GRAYSCALE" else "jpg", it.readText())
                 }
                 assertEquals(files.toSet(), requireNotNull(files.first().parentFile).listFiles().orEmpty().toSet())
             }
-            assertEquals(if (format.pdf) listOf("grayscale") else emptyList<String>(), ops.calls)
+            assertEquals(if (format.pdf) listOf("GRAYSCALE") else emptyList<String>(), ops.calls)
         }
     }
 
     @Test
-    fun dismissClearsPasswordAndKeepsOtherExtras() {
+    fun dismissClearsPasswordAndKeepsSteps() {
         val preferences = ExportPreferences()
         val model = ExportViewModel("doc", repository, runner(), preferences)
         try {
-            val extras = PdfExtras(grayscale = true, password = "")
-            model.select(ExportOptions(extras = extras))
+            val pipeline = PdfPipeline(listOf(PdfStep.Grayscale), password = "")
+            model.select(ExportOptions(pipeline = pipeline))
             assertFalse(model.options.value.canExport)
-            model.select(ExportOptions(extras = extras.copy(password = "secret")))
-            assertEquals("secret", model.options.value.extras.password)
-            assertNull(preferences.options.value.extras.password)
+            model.select(ExportOptions(pipeline = pipeline.copy(password = "secret")))
+            assertEquals("secret", model.options.value.pipeline.password)
+            assertNull(preferences.options.value.pipeline.password)
 
             model.dismiss()
-            assertEquals(PdfExtras(grayscale = true), model.options.value.extras)
+            assertEquals(PdfPipeline(listOf(PdfStep.Grayscale)), model.options.value.pipeline)
             assertTrue(model.options.value.canExport)
+        } finally {
+            model.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun editsStepsAndMovesThemByOneOrMoreRows() {
+        val model = ExportViewModel("doc", repository, runner(), ExportPreferences())
+        try {
+            fun order() = model.options.value.pipeline.steps.map(PdfStep::kind)
+            val width = StepKind.SAME_WIDTH
+            val gray = StepKind.GRAYSCALE
+            val compress = StepKind.COMPRESS
+            val layout = StepKind.LAYOUT
+            model.addStep(gray)
+            model.addStep(gray)
+            model.addStep(compress)
+            model.addStep(layout)
+            assertEquals(listOf(width, gray, compress, layout), order())
+
+            model.moveStep(gray, -1)
+            model.moveStep(gray, -1)
+            assertEquals(listOf(gray, width, compress, layout), order())
+            model.moveStep(gray, 1)
+            assertEquals(listOf(width, gray, compress, layout), order())
+            model.moveStep(layout, -3)
+            assertEquals(listOf(layout, width, gray, compress), order())
+
+            model.updateStep(PdfStep.Compress(QualityPreset.SMALL))
+            assertEquals(PdfStep.Compress(QualityPreset.SMALL), model.options.value.pipeline.steps.last())
+            model.removeStep(width)
+            assertEquals(listOf(layout, gray, compress), order())
         } finally {
             model.viewModelScope.cancel()
         }
@@ -147,7 +184,7 @@ class ExportRunnerTest {
     }
 
     private fun runner(
-        extraOps: ExtraOps = RecordingExtraOps(),
+        pipelineOps: PipelineOps = RecordingPipelineOps(),
         writePdf: suspend (List<ExportPage>, ExportOptions, File, String) -> Unit =
             { sources, _, file, _ ->
                 pdfSources = sources.map(ExportPage::jpeg)
@@ -161,7 +198,7 @@ class ExportRunnerTest {
             sources.mapIndexed { index, _ -> File(folder, "${name}_${index + 1}.jpg").apply { writeText("jpg") } }
         },
         { _, _ -> error("Unexpected MediaStore call") },
-        extraOps,
+        pipelineOps,
     )
 
     private inner class FakeProcessing : PageProcessing {

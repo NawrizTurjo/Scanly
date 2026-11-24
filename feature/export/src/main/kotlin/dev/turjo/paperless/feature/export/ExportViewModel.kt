@@ -46,7 +46,7 @@ internal class ExportViewModel @AssistedInject constructor(
     val state = mutableState.asStateFlow()
     private val password = MutableStateFlow<String?>(null)
     val options = combine(preferences.options, password) { options, password ->
-        options.copy(extras = options.extras.copy(password = password))
+        options.copy(pipeline = options.pipeline.copy(password = password))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, preferences.options.value)
     private var operation: Job? = null
 
@@ -74,9 +74,36 @@ internal class ExportViewModel @AssistedInject constructor(
 
     fun select(value: ExportOptions) {
         if (mutableState.value.running) return
-        password.value = value.extras.password
+        password.value = value.pipeline.password
         preferences.select(value)
         mutableState.update { it.copy(saved = null) }
+    }
+
+    fun addStep(kind: StepKind) = editSteps { steps ->
+        if (steps.any { it.kind == kind }) steps else steps + kind.defaultStep()
+    }
+
+    fun removeStep(kind: StepKind) = editSteps { steps -> steps.filterNot { it.kind == kind } }
+
+    fun updateStep(step: PdfStep) = editSteps { steps ->
+        steps.map { if (it.kind == step.kind) step else it }
+    }
+
+    fun moveStep(kind: StepKind, offset: Int) = editSteps { steps ->
+        val from = steps.indexOfFirst { it.kind == kind }
+        val to = from + offset
+        if (from < 0 || to !in steps.indices || from == to) steps
+        else steps.toMutableList().apply { add(to, removeAt(from)) }
+    }
+
+    private fun editSteps(change: (List<PdfStep>) -> List<PdfStep>) {
+        val current = preferences.options.value
+        select(current.copy(pipeline = PdfPipeline(change(current.pipeline.steps), password.value)))
+    }
+
+    fun setPassword(value: String?) {
+        val current = preferences.options.value
+        select(current.copy(pipeline = current.pipeline.copy(password = value)))
     }
 
     fun clearError() = mutableState.update { it.copy(failed = false) }
@@ -101,7 +128,7 @@ internal class ExportViewModel @AssistedInject constructor(
         if (mutableState.value.running) return
         val document = mutableState.value.document ?: return
         val defaults = preferences.options.value
-        val selection = defaults.copy(extras = defaults.extras.copy(password = password.value))
+        val selection = defaults.copy(pipeline = defaults.pipeline.copy(password = password.value))
         if (!selection.canExport) return
         mutableState.update { it.copy(running = true, failed = false, saved = null) }
         operation = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
