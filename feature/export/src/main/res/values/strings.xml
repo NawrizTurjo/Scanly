@@ -37,12 +37,10 @@
     <string name="export_bottom_right">Bottom right</string>
     <string name="export_top_right">Top right</string>
     <string name="export_print_layout">Print layout</string>
-    <string name="export_layout_off">Off</string>
     <string name="export_layout_two">2 per sheet</string>
     <string name="export_layout_four">4 per sheet</string>
     <string name="export_layout_booklet">Booklet</string>
     <string name="export_layout_cut">Cut &amp; stack</string>
-    <string name="export_layout_off_hint">Keep one PDF page per sheet.</string>
     <string name="export_layout_two_hint">Place two pages side by side on each sheet.</string>
     <string name="export_layout_four_hint">Place four pages in a grid on each sheet.</string>
     <string name="export_layout_booklet_hint">Fold the printed stack in half to make a booklet.</string>
@@ -51,11 +49,17 @@
     <string name="export_password_hint">You’ll need this to open the PDF. It can’t be recovered.</string>
     <string name="export_hide_password">Hide</string>
     <string name="export_show_password">Show</string>
-    <string name="export_apply_order">Applied in this order: %1$s</string>
-    <string name="export_order_width">same width</string>
-    <string name="export_order_gray">grayscale</string>
-    <string name="export_order_numbers">page numbers</string>
-    <string name="export_order_layout">layout</string>
-    <string name="export_order_password">password</string>
-    <string name="export_order_separator">", "</string>
+    <string name="export_compress">Compress</string>
+    <string name="export_clean_metadata">Clean metadata</string>
+    <string name="export_grayscale_hint">Convert images to shades of gray</string>
+    <string name="export_clean_metadata_hint">Remove XMP, embedded files, and scripts</string>
+    <string name="export_number_summary">%1$s · %2$s</string>
+    <string name="export_add_step">Add step</string>
+    <string name="export_move_up">Move up</string>
+    <string name="export_move_down">Move down</string>
+    <string name="export_drag_step">Drag %1$s to reorder</string>
+    <string name="export_remove_step">Remove %1$s</string>
+    <string name="export_pipeline_order">Runs top to bottom, then password</string>
+    <string name="export_top_left">Top left</string>
+    <string name="export_top_center">Top center</string>
 </resources>
