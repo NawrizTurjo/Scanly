@@ -10,8 +10,8 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.1-5C3EE8?logo=opencv&logoColor=white)
-![Offline](https://img.shields.io/badge/network-none-555)
-![Version](https://img.shields.io/badge/version-1.0.0-2E7D32)
+![Offline](https://img.shields.io/badge/network-updates%20only-555)
+![Version](https://img.shields.io/badge/version-1.1.0-2E7D32)
 
 <img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
 
@@ -19,17 +19,19 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 
 ## What it does
 
-Scanly turns phone photos of paper into clean, flat pages, keeps them in a local library, and exports PDFs or images. A built-in reader and fourteen PDF tools cover the rest of your paperwork.
+Scanly turns phone photos of paper into clean, flat pages, keeps them in a local library, and exports PDFs or images. A home screen puts scanning and the common tools one tap away; a built-in reader and fourteen PDF tools cover the rest of your paperwork.
 
 | | |
 |---|---|
-| **Scan** | Batch or single capture, live page outline, auto-capture, gallery import, share-to-scan, Quick Settings tile |
-| **Clean up** | Auto-crop, perspective fix, Document / Colour / B&W / Grayscale / Whiteboard filters, shadow and glare fixes, auto-deskew, coloured-ink removal |
-| **Special modes** | ID card (front and back on one A4 page), Book (a spread becomes two pages), Split in two by hand along a slanted fold, Whiteboard, two-sided batches, auto-split at blank sheets |
-| **Library** | Folders, tags, favourites, search by name, folder, tag, date and text inside PDFs, swipe to share or delete (with Undo), recycle bin, app lock, plain-file backup and restore |
-| **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations, full-screen lock, page tones (Night, Sepia, Warm) |
-| **Export** | PDF, JPG or PNG for a whole document, with grayscale, page numbers, a print layout and a password applied on the way out; Share or Save image for one enhanced page |
-| **Look** | Light, dark or system theme, AMOLED black, Material You colours or one of five accents, in-app Help, one-time tips |
+| **Home** | Editable shortcut tiles (Scan, Import, Images → PDF, Open PDF, Merge, Compress, ID card, Sign PDF, Extract text and more), recent documents, one big Scan button |
+| **Scan** | Batch or single capture, live page outline, auto-capture, gallery import, share-to-scan, Quick Settings tile; a steady outline at the shutter skips the slow page search |
+| **Clean up** | Auto-crop, perspective fix, Document / Colour / B&W / Grayscale / Whiteboard filters (Document keeps shaded boxes and coloured labels as printed), shadow and glare fixes, auto-deskew, coloured-ink removal |
+| **Special modes** | ID card (front and back on one A4 page, editable sides, stacked or side by side, true size), Book (a spread becomes two pages), Split in two by hand along a slanted fold, Whiteboard, two-sided batches, auto-split at blank sheets |
+| **Text** | Offline text recognition in English and Bengali (Tesseract): copy text from a page, search your library by the words on scanned pages, export searchable PDFs |
+| **Library** | Folders, tags, favourites, search by name, folder, tag, date and text inside PDFs and scans, swipe to share or delete (with Undo), recycle bin, app lock, plain-file backup and restore |
+| **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations, signatures (draw once, place anywhere, also on scanned pages), a page tag while scrolling, full-screen lock, page tones (Night, Sepia, Warm) |
+| **Export** | PDF, JPG or PNG for a whole document; stack steps in any order on the way out (same width, grayscale, compress, page numbers, print layout, clean metadata, searchable text), then an optional password; Share or Save image for one enhanced page |
+| **Look** | Material 3 Expressive; light, dark or system theme, AMOLED black, Material You colours or one of five accents, in-app Help, one-time tips |
 | **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs; grouped, searchable, pinnable, with recent outputs |
 
 ## Screenshots
@@ -66,11 +68,11 @@ With an open notebook, Scanly crops the whole spread when both pages are in the 
 
 Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
 
-Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library.
+Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library. From 1.1.0, Settings → Updates checks for a new version and installs it for you.
 
 ## Privacy
 
-- The app has no `INTERNET` permission, so it cannot send anything anywhere.
+- The only network request is the update check: Scanly asks GitHub whether a newer release exists and downloads it when you tap install. Turn the automatic check off in Settings → Updates. Nothing about you or your documents is sent.
 - No analytics, ads, accounts or AI services.
 - Exports carry no watermark or branding. PDF metadata holds only the title and producer.
 - Photos stay as you took them. Edits write a processed copy, so you can re-crop or change a filter later.
@@ -82,7 +84,7 @@ You need JDK 21, the Android SDK (platform 37.1) and NDK 30.0.16248370.
 ```bash
 ./gradlew assembleDebug             # debug APK, arm64 + x86_64
 ./gradlew testDebugUnitTest lint    # unit tests and lint
-bash tools/check.sh                 # full gate: build, tests, lint, imaging regressions, no-INTERNET check
+bash tools/check.sh                 # full gate: build, tests, lint, imaging regressions, network guard
 ```
 
 Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 46 MB.

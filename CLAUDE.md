@@ -6,7 +6,7 @@ Read this file at the start of every session, then read `tracker.md` to see wher
 A personal, offline-only native Android app for one phone. It combines a CamScanner-style scanner, a local document library, and a lightweight PDF toolkit with a multi-tab reader. The full scope is in `docs/01-PRD.md`. The original brainstorms are in `docs/00-chatgpt-brainstorm-transcript.md` and `docs/00b-chatgpt-pdf-tools-transcript.md`; the PRD wins wherever the two differ.
 
 ## Hard constraints (never break these)
-- Fully offline. No `INTERNET` permission in the app manifest. No backend, accounts, analytics, ads, or AI/LLM APIs.
+- Offline-first. The only network use is the built-in updater (user decision, 2026-11-25): it asks GitHub's releases API for a newer stable version and downloads the APK, and the user can switch the automatic check off. No other network code anywhere (`tools/check.sh` fails on any outside `UpdatesViewModel`). No backend, accounts, analytics, ads, or AI/LLM APIs.
 - No watermark or branding of any kind on exported images or PDFs.
 - Free, permissively licensed dependencies only (Apache-2.0, MIT, BSD). **No AGPL/GPL** (iText, MuPDF) and **no commercial SDKs** (Scanbot, Dynamsoft, Nutrient/PSPDFKit, Apryse). Every new dependency gets a row in `docs/03-dependencies-licensing.md` before it's added.
 - Originals are immutable. Enhancement and cropping write processed copies plus parameters, so any page can be reprocessed later.
