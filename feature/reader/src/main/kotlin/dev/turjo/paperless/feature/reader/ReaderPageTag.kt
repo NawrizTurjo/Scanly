@@ -72,7 +72,7 @@ internal fun ReaderPageTag(
         if (scrolling || dragging || label != previous) visible = true
         previous = label
         if (!scrolling && !dragging && visible) {
-            delay(1_500)
+            delay(3_000)
             visible = false
         }
     }
