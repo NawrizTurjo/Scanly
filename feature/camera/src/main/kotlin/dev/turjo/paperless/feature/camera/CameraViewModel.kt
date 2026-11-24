@@ -17,6 +17,7 @@ import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.DocumentWithPages
+import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.interleaveDuplex

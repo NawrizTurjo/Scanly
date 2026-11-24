@@ -265,7 +265,7 @@ class RoomRepositoriesTest {
                 processedPath = page.originalPath,
             ).also { documents.updatePage(it) }
         }
-        val processing = QueuedPageProcessing(documents, files, ThumbnailMaker(files), this, null)
+        val processing = QueuedPageProcessing(documents, files, ThumbnailMaker(files), this)
         val ids = sides.map { it.id }
         assertTrue(processing.createIdComposite(ids))
         val compositeId = idCompositeId(ids.last())
