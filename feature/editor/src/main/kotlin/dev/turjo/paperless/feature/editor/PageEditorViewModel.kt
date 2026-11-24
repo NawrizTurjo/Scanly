@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 internal data class EditorState(
     val page: Page? = null,
     val idLayout: IdCardLayout? = null,
+    val idSourcePaths: Pair<String, String>? = null,
     val canChangeIdLayout: Boolean = false,
     val edits: PageEdits? = null,
     val original: Bitmap? = null,
@@ -65,11 +66,16 @@ internal class PageEditorViewModel @AssistedInject constructor(
                     val composite = requireNotNull(documents.idComposite(pageId))
                     val front = composite.frontId?.let { documents.getPage(it) }
                     val back = documents.getPage(composite.backId)
+                    val frontPath = front?.processedPath
+                    val backPath = back?.processedPath
+                    val hasSources = front?.documentId == page.documentId && back?.documentId == page.documentId
                     mutable.update {
                         it.copy(
                             page = page, idLayout = composite.layout,
-                            canChangeIdLayout = front?.documentId == page.documentId &&
-                                back?.documentId == page.documentId,
+                            canChangeIdLayout = hasSources,
+                            idSourcePaths = if (hasSources && frontPath != null && backPath != null) {
+                                frontPath to backPath
+                            } else null,
                         )
                     }
                     return@launch
@@ -218,13 +224,18 @@ internal class PageEditorViewModel @AssistedInject constructor(
         }
     }
 
+    fun finishIdPlacement(layout: IdCardLayout) = changeIdLayout { layout }
+
+    fun changeIdPreset(transform: (IdCardLayout) -> IdCardLayout) =
+        changeIdLayout { transform(it.resetPlacement()) }
+
     fun changeIdLayout(transform: (IdCardLayout) -> IdCardLayout) {
         val current = state.value
         if (current.loading || current.saving || current.saved || !current.canChangeIdLayout) return
         val layout = current.idLayout ?: return
         val next = transform(layout)
         if (next == layout) return
-        mutable.update { it.copy(saving = true) }
+        mutable.update { it.copy(saving = true, idLayout = next) }
         viewModelScope.launch {
             try {
                 check(processing.updateIdLayout(pageId, next))
@@ -233,7 +244,7 @@ internal class PageEditorViewModel @AssistedInject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                message(R.string.editor_save_error)
+                mutable.update { it.copy(idLayout = layout, message = R.string.editor_save_error) }
             } finally {
                 mutable.update { it.copy(saving = false) }
             }

@@ -25,8 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
-import java.io.File
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.imaging.IdCardLayout
@@ -79,13 +77,16 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             if (layout != null) {
-                AsyncImage(
-                    model = state.page?.originalPath?.let(::File),
-                    contentDescription = stringResource(R.string.editor_id_layout),
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(12.dp),
-                    contentScale = ContentScale.Fit,
-                )
-                if (state.saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    IdLayoutPreview(
+                        state, layout, enabled && state.canChangeIdLayout,
+                        Modifier.fillMaxSize().padding(12.dp),
+                        vm::finishIdPlacement,
+                    )
+                    if (state.saving) {
+                        LinearProgressIndicator(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+                    }
+                }
                 Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     IdLayoutPanel(layout, enabled && state.canChangeIdLayout, state.canChangeIdLayout, vm)
                 }
@@ -163,6 +164,7 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun IdLayoutPanel(
     layout: IdCardLayout,
@@ -177,23 +179,31 @@ private fun IdLayoutPanel(
                 IdCardLayout.Arrangement.STACKED to R.string.editor_id_stacked,
                 IdCardLayout.Arrangement.SIDE_BY_SIDE to R.string.editor_id_side_by_side,
             ),
-            layout.arrangement, enabled,
-        ) { choice -> vm.changeIdLayout { it.copy(arrangement = choice) } }
+            layout.arrangement.takeUnless { layout.isFree }, enabled,
+        ) { choice -> vm.changeIdPreset { it.copy(arrangement = choice) } }
         IdLayoutChoices(
             R.string.editor_id_size,
             listOf(
                 IdCardLayout.Size.ACTUAL to R.string.editor_id_actual,
                 IdCardLayout.Size.LARGE to R.string.editor_id_large,
             ),
-            layout.size, enabled,
-        ) { choice -> vm.changeIdLayout { it.copy(size = choice) } }
+            layout.size.takeUnless { layout.isFree }, enabled,
+        ) { choice -> vm.changeIdPreset { it.copy(size = choice) } }
         IdLayoutChoices(
             R.string.editor_id_gap,
             listOf(0 to R.string.editor_id_none, 6 to R.string.editor_id_small, 15 to R.string.editor_id_medium),
-            layout.gapMm, enabled,
-        ) { choice -> vm.changeIdLayout { it.copy(gapMm = choice) } }
+            layout.gapMm.takeUnless { layout.isFree }, enabled,
+        ) { choice -> vm.changeIdPreset { it.copy(gapMm = choice) } }
         AdjustmentSwitch(R.string.editor_id_outline, layout.outline, enabled) { checked ->
             vm.changeIdLayout { it.copy(outline = checked) }
+        }
+        FlowRow {
+            TextButton({ vm.changeIdLayout { it.swapCards() } }, enabled = enabled) {
+                Text(stringResource(R.string.editor_id_swap))
+            }
+            TextButton({ vm.changeIdLayout { it.resetPlacement() } }, enabled = enabled && layout.isFree) {
+                Text(stringResource(R.string.editor_id_reset))
+            }
         }
         Text(
             stringResource(if (hasSources) R.string.editor_id_hint else R.string.editor_id_missing),
@@ -204,7 +214,7 @@ private fun IdLayoutPanel(
 
 @Composable
 private fun <T> IdLayoutChoices(
-    label: Int, choices: List<Pair<T, Int>>, selected: T, enabled: Boolean, choose: (T) -> Unit,
+    label: Int, choices: List<Pair<T, Int>>, selected: T?, enabled: Boolean, choose: (T) -> Unit,
 ) {
     Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {

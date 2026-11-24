@@ -37,4 +37,40 @@ class IdCardLayoutTest {
             }
         }
     }
+
+    @Test
+    fun freePlacementClampsWidthAndPositionAndPreservesLandscapeAspect() {
+        val placement = CardPlacement(-0.2f, 1.5f, 1.2f)
+        val layout = IdCardLayout(front = placement, back = CardPlacement(0.5f, -1f, 0.1f))
+        val aspect = IdCardComposer.cardAspect(100, 200)
+        assertEquals(2f, aspect, 0f)
+        assertEquals(aspect, IdCardComposer.cardAspect(200, 100), 0f)
+        val (front, back) = IdCardComposer.cardRects(layout, aspect, 1f)
+        assertEquals(CardRect(0, 2268, 2480, 1240), front)
+        assertEquals(CardRect(1240, 0, 620, 620), back)
+        assertEquals(front to back, front.placement().let {
+            IdCardComposer.cardRects(layout.copy(front = it), aspect, 1f)
+        })
+    }
+
+    @Test
+    fun cardShapedSourcesUseThePhysicalCardRatio() {
+        val aspect = IdCardComposer.cardAspect(638, 1011)
+        assertEquals(85.6f / 53.98f, aspect, 0f)
+    }
+
+    @Test
+    fun swapAndResetRespectPresetOrder() {
+        val preset = IdCardLayout(outline = true)
+        val (front, back) = IdCardComposer.cardRects(preset)
+        assertEquals(back to front, IdCardComposer.cardRects(preset.swapCards()))
+        val partial = preset.copy(front = back.placement())
+        assertEquals(front to back, IdCardComposer.cardRects(partial))
+        val free = partial.copy(back = front.placement())
+        val swapped = free.swapCards()
+        assertEquals(free.back, swapped.front)
+        assertEquals(free.front, swapped.back)
+        assertEquals(preset, swapped.resetPlacement())
+        assertEquals(preset.swapCards(), free.copy(reversed = true).resetPlacement())
+    }
 }

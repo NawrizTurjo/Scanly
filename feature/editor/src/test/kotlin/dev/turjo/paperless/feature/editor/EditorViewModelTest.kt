@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.IdComposite
+import dev.turjo.paperless.core.imaging.CardPlacement
 import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.ScanSessionRepository
@@ -166,6 +167,30 @@ class EditorViewModelTest {
         assertEquals(layout, vm.state.value.idLayout)
         assertEquals("recomposed.jpg", vm.state.value.page?.originalPath)
         assertTrue(documents.updates.isEmpty())
+    }
+
+    @Test
+    fun finishingPlacementSavesAndChoosingTheSamePresetClearsIt() = runTest(dispatcher) {
+        val id = "id-composite-second"
+        documents.addFakePage(page(id, 2))
+        val vm = PageEditorViewModel(id, documents, processing).also(viewModels::add)
+        runCurrent()
+        val preset = requireNotNull(vm.state.value.idLayout)
+        val free = preset.copy(
+            front = CardPlacement(0.2f, 0.2f, 0.4f),
+            back = CardPlacement(0.3f, 0.6f, 0.5f),
+        )
+
+        vm.finishIdPlacement(free)
+        assertEquals(free, vm.state.value.idLayout)
+        assertTrue(vm.state.value.saving)
+        runCurrent()
+        vm.changeIdPreset { it.copy(arrangement = preset.arrangement) }
+        runCurrent()
+
+        assertEquals(listOf(id to free, id to preset), processing.layouts)
+        assertEquals(preset, vm.state.value.idLayout)
+        assertFalse(vm.state.value.saving)
     }
 
     @Test
