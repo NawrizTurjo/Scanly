@@ -180,17 +180,15 @@ class QueuedPageProcessing internal constructor(
         try {
             return withContext(worker) {
                 slots.withPermit {
-                    val composite = documents.idComposite(pageId) ?: return@withPermit false
-                    recomposeIdCard(composite.copy(layout = layout))
+                    compositeLock.withLock {
+                        val composite = documents.idComposite(pageId) ?: return@withLock false
+                        recomposeIdCardLocked(composite.copy(layout = layout))
+                    }
                 }
             }
         } finally {
             markFinished(pageId)
         }
-    }
-
-    private suspend fun recomposeIdCard(composite: IdComposite): Boolean = compositeLock.withLock {
-        recomposeIdCardLocked(composite)
     }
 
     private suspend fun recomposeIdCardLocked(composite: IdComposite): Boolean {
@@ -324,7 +322,11 @@ class QueuedPageProcessing internal constructor(
 
     private suspend fun refreshIdComposites(page: Page) {
         if (page.mode.cardAspect() != null) {
-            documents.idCompositesFor(page).forEach { recomposeIdCard(it) }
+            documents.idCompositesFor(page).forEach { composite ->
+                compositeLock.withLock {
+                    documents.idComposite(composite.pageId)?.let { recomposeIdCardLocked(it) }
+                }
+            }
         }
     }
 

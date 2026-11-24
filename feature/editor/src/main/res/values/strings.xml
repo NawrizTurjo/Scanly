@@ -110,7 +110,11 @@
     <string name="editor_id_small">Small</string>
     <string name="editor_id_medium">Medium</string>
     <string name="editor_id_outline">Cut outline</string>
-    <string name="editor_id_hint">Edit the front or back page to change crop or filter</string>
+    <string name="editor_id_hint">Drag a card to move it. Drag the corner to resize.</string>
+    <string name="editor_id_swap">Swap front and back</string>
+    <string name="editor_id_reset">Reset to preset</string>
+    <string name="editor_id_resize_front">Resize front card</string>
+    <string name="editor_id_resize_back">Resize back card</string>
     <string name="editor_id_missing">Both source pages are needed to change the ID layout</string>
     <string name="viewer_text">Text</string>
     <string name="viewer_copy_text">Copy all</string>

@@ -11,6 +11,7 @@ import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.paramsHash
+import dev.turjo.paperless.core.imaging.CardPlacement
 import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.model.Tag
 import dev.turjo.paperless.core.model.TagSummary
@@ -58,13 +59,31 @@ internal fun remapPageIds(pages: List<PageEntity>): Map<String, String> {
 
 private fun PageEntity.toIdComposite() = IdComposite(
     id, idFrontId, id.removePrefix(ID_COMPOSITE_PREFIX),
-    idLayout?.split(",")?.let { (arrangement, size, gap, outline) ->
-        IdCardLayout(IdCardLayout.Arrangement.valueOf(arrangement), IdCardLayout.Size.valueOf(size),
-            gap.toInt(), outline.toBooleanStrict())
-    } ?: IdCardLayout(),
+    idLayout?.let(::parseIdCardLayout) ?: IdCardLayout(),
 )
 
-private fun IdCardLayout.encode() = "${arrangement.name},${size.name},$gapMm,$outline"
+internal fun parseIdCardLayout(encoded: String): IdCardLayout {
+    val fields = encoded.split(',')
+    val (arrangement, size, gap, outline) = fields
+    fun placement(start: Int): CardPlacement? {
+        val left = fields.getOrNull(start)?.toFloatOrNull() ?: return null
+        val top = fields.getOrNull(start + 1)?.toFloatOrNull() ?: return null
+        val width = fields.getOrNull(start + 2)?.toFloatOrNull() ?: return null
+        return CardPlacement(left, top, width)
+    }
+    return IdCardLayout(
+        IdCardLayout.Arrangement.valueOf(arrangement), IdCardLayout.Size.valueOf(size),
+        gap.toInt(), outline.toBooleanStrict(), placement(5), placement(8),
+        reversed = fields.getOrNull(4)?.toBooleanStrict() ?: false,
+    )
+}
+
+internal fun IdCardLayout.encode(): String {
+    val preset = "${arrangement.name},${size.name},$gapMm,$outline"
+    if (!reversed && front == null && back == null) return preset
+    fun CardPlacement?.fields() = if (this == null) ",," else "$left,$top,$width"
+    return "$preset,$reversed,${front.fields()},${back.fields()}"
+}
 
 interface DocumentRepository {
     fun observeLibrary(): Flow<List<DocumentSummary>> = observeLibrary(LibraryFilter())

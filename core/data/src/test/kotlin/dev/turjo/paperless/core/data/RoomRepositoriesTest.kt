@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import dev.turjo.paperless.core.imaging.IdCardComposer
+import dev.turjo.paperless.core.imaging.CardPlacement
 import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.imaging.ProcessResult
 import android.media.ExifInterface
@@ -178,7 +179,11 @@ class RoomRepositoriesTest {
             original.copyTo(output, overwrite = true)
             ProcessResult(60, 100, glareWarning = false)
         }
-        val layout = IdCardLayout(arrangement = IdCardLayout.Arrangement.SIDE_BY_SIDE, gapMm = 15, outline = true)
+        val layout = IdCardLayout(
+            outline = true,
+            front = CardPlacement(0.06f, 0.04f, 0.4f),
+            back = CardPlacement(0.55f, 0.4f, 0.3f),
+        )
         assertTrue(processing.updateIdLayout(composite.id, layout))
         val beforeRender = requireNotNull(documents.getPage(composite.id))
         val portrait = Bitmap.createBitmap(60, 100, Bitmap.Config.ARGB_8888)
@@ -206,6 +211,7 @@ class RoomRepositoriesTest {
             assertTrue(Color.blue(result.getPixel(350, 400)) > 220)
             assertTrue(Color.red(result.getPixel(950, 400)) > 220)
             assertEquals(Color.WHITE, result.getPixel(1240, 400))
+            assertEquals(Color.BLACK, result.getPixel(1600, 1600))
         } finally {
             result.recycle()
         }
