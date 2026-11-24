@@ -19,16 +19,52 @@ data class IdCardLayout(
     val front: CardPlacement? = null,
     val back: CardPlacement? = null,
     val reversed: Boolean = false,
+    val extraPlacements: List<CardPlacement?> = emptyList(),
+    val order: List<Int> = emptyList(),
 ) {
     enum class Arrangement { STACKED, SIDE_BY_SIDE }
     enum class Size { ACTUAL, LARGE }
 
-    val isFree: Boolean get() = front != null && back != null
+    val isFree: Boolean get() = front != null && back != null || extraPlacements.isNotEmpty()
 
-    fun resetPlacement() = copy(front = null, back = null)
+    fun resetPlacement() = copy(front = null, back = null, extraPlacements = emptyList())
 
     fun swapCards() = if (isFree) copy(front = back, back = front)
     else copy(reversed = !reversed)
+
+    fun sourceOrder(count: Int): List<Int> =
+        order.takeIf { it.size == count && it.sorted() == (0 until count).toList() }
+            ?: (0 until count).toList()
+
+    fun placements(count: Int): List<CardPlacement?> =
+        List(count) { (listOf(front, back) + extraPlacements).getOrNull(it) }
+
+    fun withPlacements(placements: List<CardPlacement?>) = copy(
+        front = placements.getOrNull(0),
+        back = placements.getOrNull(1),
+        extraPlacements = placements.drop(2),
+    )
+
+    fun moveCard(source: Int, target: Int, count: Int): IdCardLayout {
+        val order = sourceOrder(count).toMutableList()
+        val position = order.indexOf(source)
+        val destination = order.indexOf(target)
+        order[position] = target
+        order[destination] = source
+        val next = copy(order = order)
+        if (!isFree) return next
+        val placements = placements(count).toMutableList()
+        val original = placements[source]
+        placements[source] = placements[target]
+        placements[target] = original
+        return next.withPlacements(placements)
+    }
+
+    internal fun placementFor(source: Int): CardPlacement? = when (source) {
+        0 -> front
+        1 -> back
+        else -> extraPlacements.getOrNull(source - 2)
+    }
 
     init {
         require(gapMm in setOf(0, 6, 15))
@@ -61,17 +97,23 @@ object IdCardComposer {
     const val MIN_FREE_WIDTH = 0.25f
     private const val MARGIN = 118
 
-    /** Blocking. Front and back are already processed and upright. */
+    /** Blocking. Sources are already processed and upright. */
     fun compose(front: File, back: File, output: File, layout: IdCardLayout = IdCardLayout()) {
+        compose(listOf(front, back), output, layout)
+    }
+
+    fun compose(
+        sources: List<File>,
+        output: File,
+        layout: IdCardLayout,
+        sourceIndices: List<Int> = sources.indices.toList(),
+    ) {
         val page = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(page)
             canvas.drawColor(Color.WHITE)
-            val (frontRect, backRect) = cardRects(
-                layout, sourceAspect(front), sourceAspect(back),
-            )
-            drawFile(canvas, front, frontRect, layout.outline)
-            drawFile(canvas, back, backRect, layout.outline)
+            val rects = cardRects(layout, sources.map(::sourceAspect), sourceIndices)
+            sources.zip(rects).forEach { (source, rect) -> drawFile(canvas, source, rect, layout.outline) }
             output.outputStream().use { check(page.compress(Bitmap.CompressFormat.JPEG, 92, it)) }
             ExifInterface(output.path).apply {
                 setAttribute(ExifInterface.TAG_X_RESOLUTION, "300/1")
@@ -91,26 +133,52 @@ object IdCardComposer {
         frontAspect: Float = CARD_ASPECT,
         backAspect: Float = CARD_ASPECT,
     ): Pair<CardRect, CardRect> {
-        val front = layout.front
-        val back = layout.back
-        if (front != null && back != null) {
-            return placementRect(front, frontAspect) to placementRect(back, backAspect)
-        }
+        val rects = cardRects(layout, listOf(frontAspect, backAspect))
+        return rects[0] to rects[1]
+    }
+
+    // Aspects and indices are in display order. Indices keep free placements attached to surviving sources.
+    fun cardRects(
+        layout: IdCardLayout,
+        aspects: List<Float>,
+        sourceIndices: List<Int> = aspects.indices.toList(),
+    ): List<CardRect> {
+        val count = aspects.size
+        require(count in 1..6 && sourceIndices.size == count)
         val gap = gapPixels(layout.gapMm)
         val stacked = layout.arrangement == IdCardLayout.Arrangement.STACKED
-        val pairWidth = if (layout.size == IdCardLayout.Size.LARGE) PAGE_WIDTH * 4 / 5 else PAGE_WIDTH - 2 * MARGIN
-        val fitWidth = if (stacked) pairWidth else (pairWidth - gap) / 2
-        val width = if (layout.size == IdCardLayout.Size.LARGE) fitWidth else minOf(CARD_WIDTH, fitWidth)
+        val large = layout.size == IdCardLayout.Size.LARGE
+        val availableWidth = if (large) PAGE_WIDTH * 4 / 5 else PAGE_WIDTH - 2 * MARGIN
+        val availableHeight = PAGE_HEIGHT - 2 * MARGIN
+        val preferred = if (large) availableWidth else CARD_WIDTH
+        val preferredHeight = (preferred * CARD_HEIGHT.toDouble() / CARD_WIDTH).roundToInt()
+        val singleColumnRows = (availableHeight + gap) / (preferredHeight + gap)
+        val columns = when {
+            count == 1 -> 1
+            stacked && count <= singleColumnRows -> 1
+            else -> 2
+        }
+        val rows = if (stacked && columns == 2) {
+            maxOf(singleColumnRows, (count + 1) / 2)
+        } else {
+            (count + columns - 1) / columns
+        }
+        val fitWidth = (availableWidth - (columns - 1) * gap) / columns
+        val fitHeight = (availableHeight - (rows - 1) * gap) / rows
+        val width = minOf(preferred, fitWidth, fitHeight * CARD_WIDTH / CARD_HEIGHT)
         val height = (width * CARD_HEIGHT.toDouble() / CARD_WIDTH).roundToInt()
-        val first = CardRect(
-            left = (PAGE_WIDTH - if (stacked) width else 2 * width + gap) / 2,
-            top = MARGIN,
-            width = width,
-            height = height,
-        )
-        val second = if (stacked) first.copy(top = first.top + height + gap)
-        else first.copy(left = first.left + width + gap)
-        return if (layout.reversed) second to first else first to second
+        val left = (PAGE_WIDTH - (columns * width + (columns - 1) * gap)) / 2
+        return aspects.mapIndexed { index, aspect ->
+            val placement = if (layout.isFree || count == 1) layout.placementFor(sourceIndices[index]) else null
+            if (placement != null) {
+                placementRect(placement, aspect)
+            } else {
+                val slot = if (layout.reversed && count == 2) 1 - index else index
+                val column = if (stacked) slot / rows else slot % columns
+                val row = if (stacked) slot % rows else slot / columns
+                CardRect(left + column * (width + gap), MARGIN + row * (height + gap), width, height)
+            }
+        }
     }
 
     fun placementRect(placement: CardPlacement, aspect: Float): CardRect {

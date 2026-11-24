@@ -63,25 +63,24 @@ internal fun IdLayoutPreview(
     layout: IdCardLayout,
     enabled: Boolean,
     modifier: Modifier,
+    onSelect: (Int) -> Unit,
     onFinish: (IdCardLayout) -> Unit,
 ) {
     val paths = state.idSourcePaths
-    val cards by produceState<Pair<IdPreviewCard, IdPreviewCard>?>(null, paths) {
-        value = paths?.let { (frontPath, backPath) ->
-            withContext(Dispatchers.IO) {
-                val front = loadCard(frontPath) ?: return@withContext null
-                val back = loadCard(backPath) ?: return@withContext null
-                front to back
-            }
-        }
+    val cards by produceState<List<IdPreviewCard?>?>(null, paths) {
+        value = withContext(Dispatchers.IO) { paths.map { it?.let(::loadCard) } }
     }
-    val sources = cards
+    val indices = state.idSourceOrder()
+    val sources = cards?.let { loaded -> indices.mapNotNull { loaded.getOrNull(it) } }
+        ?.takeIf { it.isNotEmpty() && it.size == indices.size }
     val label = stringResource(R.string.editor_id_layout)
     Box(modifier, contentAlignment = Alignment.Center) {
         if (sources == null) {
             AsyncImage(state.page?.originalPath?.let(::File), label, Modifier.fillMaxSize())
         } else {
-            IdPlacementPage(layout, sources, enabled, label, onFinish)
+            IdPlacementPage(
+                layout, sources, indices, paths.size, state.idSelectedSource, enabled, label, onSelect, onFinish,
+            )
         }
     }
 }
@@ -89,19 +88,24 @@ internal fun IdLayoutPreview(
 @Composable
 private fun IdPlacementPage(
     layout: IdCardLayout,
-    sources: Pair<IdPreviewCard, IdPreviewCard>,
+    sources: List<IdPreviewCard>,
+    indices: List<Int>,
+    sourceCount: Int,
+    selectedSource: Int,
     enabled: Boolean,
     label: String,
+    onSelect: (Int) -> Unit,
     onFinish: (IdCardLayout) -> Unit,
 ) {
-    val (front, back) = sources
     var draft by remember { mutableStateOf<IdCardLayout?>(null) }
-    var selectedFront by remember { mutableStateOf(true) }
     var snap by remember { mutableStateOf<CardSnap?>(null) }
     val finish by rememberUpdatedState(onFinish)
+    val select by rememberUpdatedState(onSelect)
+    val selectedIndex by rememberUpdatedState(indices.indexOf(selectedSource).coerceAtLeast(0))
     val visible = draft ?: layout
-    val (frontRect, backRect) = IdCardComposer.cardRects(visible, front.aspect, back.aspect)
-    val selected = if (selectedFront) frontRect else backRect
+    val aspects = sources.map { it.aspect }
+    val rects = IdCardComposer.cardRects(visible, aspects, indices)
+    val selected = rects[selectedIndex]
     val accent = MaterialTheme.colorScheme.primary
     val targetSize = 48.dp
     val targetPx = with(LocalDensity.current) { targetSize.roundToPx() }
@@ -109,33 +113,29 @@ private fun IdPlacementPage(
     BoxWithConstraints(
         Modifier.aspectRatio(PAGE_WIDTH.toFloat() / PAGE_HEIGHT)
             .semantics { contentDescription = label }
-            .pointerInput(layout, sources, enabled) {
+            .pointerInput(layout, sources, indices, enabled) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     if (size.width == 0 || size.height == 0) return@awaitEachGesture
                     val scale = size.width.toFloat() / PAGE_WIDTH
-                    val (first, second) = IdCardComposer.cardRects(layout, front.aspect, back.aspect)
-                    val previousSelection = selectedFront
-                    val active = if (previousSelection) first else second
+                    val startRects = IdCardComposer.cardRects(layout, aspects, indices)
+                    val previousSelection = selectedIndex
+                    val active = startRects[previousSelection]
                     val origin = active.handleOrigin(scale, size.width, size.height, targetPx)
                     val resize = down.position.x in origin.x.toFloat()..(origin.x + targetPx).toFloat() &&
                         down.position.y in origin.y.toFloat()..(origin.y + targetPx).toFloat()
                     val point = down.position / scale
-                    val hitsFront = first.contains(point)
-                    val hitsBack = second.contains(point)
-                    val isFront = when {
-                        resize -> previousSelection
-                        hitsFront && hitsBack -> previousSelection
-                        hitsBack -> false
-                        hitsFront -> true
-                        else -> return@awaitEachGesture
+                    val hits = startRects.indices.filter { startRects[it].contains(point) }
+                    val index = when {
+                        resize || previousSelection in hits -> previousSelection
+                        else -> hits.lastOrNull() ?: return@awaitEachGesture
                     }
-                    selectedFront = isFront
+                    select(indices[index])
                     down.consume()
-                    val start = if (isFront) first else second
-                    val other = if (isFront) second else first
-                    val aspect = if (isFront) front.aspect else back.aspect
+                    val start = startRects[index]
+                    val others = startRects.filterIndexed { i, _ -> i != index }
+                    val aspect = aspects[index]
                     val startPlacement = start.placement()
                     var pan = Offset.Zero
                     var zoom = 1f
@@ -172,17 +172,23 @@ private fun IdPlacementPage(
                                 )
                             }
                             val rect = IdCardComposer.placementRect(proposed, aspect)
-                            val aligned = if (resizing) null else snapCard(rect, other, 5.dp.toPx() / scale)
+                            val aligned = if (resizing) null else snapCard(rect, others, 5.dp.toPx() / scale)
                             snap = aligned
                             val placement = (aligned?.rect ?: rect).placement()
-                            draft = if (isFront) layout.copy(front = placement, back = other.placement())
-                            else layout.copy(front = other.placement(), back = placement)
+                            val placements = layout.placements(sourceCount).toMutableList()
+                            startRects.forEachIndexed { i, bounds -> placements[indices[i]] = bounds.placement() }
+                            placements[indices[index]] = placement
+                            if (sourceCount == 2 && indices.size == 1) {
+                                val absent = 1 - indices.single()
+                                placements[absent] = placements[absent] ?: startPlacement
+                            }
+                            draft = layout.withPlacements(placements)
                             event.changes.forEach { it.consume() }
                         } while (event.changes.any { it.pressed })
                         if (!cancelled) {
                             draft?.let(finish)
-                            if (!dragging && !resize && hitsFront && hitsBack) {
-                                selectedFront = !isFront
+                            if (!dragging && !resize && hits.size > 1) {
+                                select(indices[hits[(hits.indexOf(index) + 1) % hits.size]])
                             }
                         }
                     } finally {
@@ -197,8 +203,9 @@ private fun IdPlacementPage(
             drawRect(Color.White)
             scale(scale, pivot = Offset.Zero) {
                 drawIntoCanvas {
-                    IdCardComposer.drawCard(it.nativeCanvas, front.bitmap, frontRect, visible.outline)
-                    IdCardComposer.drawCard(it.nativeCanvas, back.bitmap, backRect, visible.outline)
+                    sources.zip(rects).forEach { (source, rect) ->
+                        IdCardComposer.drawCard(it.nativeCanvas, source.bitmap, rect, visible.outline)
+                    }
                 }
             }
             snap?.guideX?.let { x ->
@@ -221,9 +228,11 @@ private fun IdPlacementPage(
         if (enabled) {
             val pageWidth = constraints.maxWidth
             val pageHeight = constraints.maxHeight
-            val description = stringResource(
-                if (selectedFront) R.string.editor_id_resize_front else R.string.editor_id_resize_back,
-            )
+            val description = when {
+                sourceCount > 2 -> stringResource(R.string.editor_id_resize_side, selectedSource + 1)
+                selectedSource == 0 -> stringResource(R.string.editor_id_resize_front)
+                else -> stringResource(R.string.editor_id_resize_back)
+            }
             Box(Modifier.offset {
                 selected.handleOrigin(
                     pageWidth.toFloat() / PAGE_WIDTH, pageWidth, pageHeight, targetPx,

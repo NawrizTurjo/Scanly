@@ -13,6 +13,8 @@ import android.os.SystemClock
 import android.text.format.DateUtils
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.semantics.Role
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -331,9 +333,13 @@ fun CameraScreen(
                     )
                 }
             }
-            if (state.mode == ScanMode.ID_CARD) {
+            if (state.mode == ScanMode.ID_CARD && !state.chooseIdSide) {
                 Text(
-                    stringResource(if (state.idBack) R.string.camera_id_back else R.string.camera_id_front),
+                    when (state.idSideIds.size) {
+                        0 -> stringResource(R.string.camera_id_front)
+                        1 -> stringResource(R.string.camera_id_back)
+                        else -> stringResource(R.string.camera_id_side, state.idSideIds.size + 1)
+                    },
                     Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
                     color = Color.White,
                 )
@@ -404,18 +410,44 @@ fun CameraScreen(
                 val capture = controller
                 val canCapture = allowed && capture != null && state.canEdit
                 val captureLabel = stringResource(R.string.camera_capture)
-                IconButton(
-                    onClick = { capture?.let(model::capture) },
-                    enabled = canCapture,
+                Box(
                     modifier = Modifier.size(76.dp)
                         .border(2.dp, Color.White.copy(alpha = if (canCapture) 1f else 0.4f), CircleShape)
+                        .combinedClickable(
+                            enabled = canCapture,
+                            role = Role.Button,
+                            onClick = { capture?.let(model::capture) },
+                            onLongClickLabel = stringResource(R.string.camera_id_capture_and_finish),
+                            onLongClick = if (state.mode == ScanMode.ID_CARD && state.idBack) {
+                                { capture?.let(model::captureAndFinishId) }
+                            } else null,
+                        )
                         .semantics { contentDescription = captureLabel },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Box(Modifier.size(62.dp).background(Color.White.copy(alpha = if (canCapture) 1f else 0.4f), CircleShape))
                 }
                 ReviewThumbnail(model, state)
             }
         }
+    }
+
+    if (state.chooseIdSide) {
+        val enabled = !state.capturing && !state.importing && !state.closing
+        AlertDialog(
+            onDismissRequest = model::finishId,
+            title = { Text(stringResource(R.string.camera_id_sides_captured, state.idSideIds.size)) },
+            confirmButton = {
+                Button(model::finishId, enabled = enabled) { Text(stringResource(R.string.camera_id_done)) }
+            },
+            dismissButton = {
+                if (state.idSideIds.size < MAX_ID_SIDES) {
+                    TextButton(model::addIdSide, enabled = enabled) {
+                        Text(stringResource(R.string.camera_id_add_side))
+                    }
+                }
+            },
+        )
     }
 
     state.pendingScan?.let { pending ->

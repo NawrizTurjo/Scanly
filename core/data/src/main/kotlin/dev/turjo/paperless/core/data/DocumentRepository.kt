@@ -37,33 +37,42 @@ private const val ID_COMPOSITE_PREFIX = "id-composite-"
 
 val Page.isIdComposite: Boolean get() = id.startsWith(ID_COMPOSITE_PREFIX)
 
-internal fun idCompositeId(backId: String) = ID_COMPOSITE_PREFIX + backId
+internal fun idCompositeId(lastSourceId: String) = ID_COMPOSITE_PREFIX + lastSourceId
 
 data class IdComposite(
     val pageId: String,
-    val frontId: String?,
-    val backId: String,
+    val sourceIds: List<String?>,
     val layout: IdCardLayout,
-)
+) {
+    constructor(pageId: String, frontId: String?, backId: String, layout: IdCardLayout) :
+        this(pageId, listOf(frontId, backId), layout)
+}
+
+internal fun String?.remapIdSources(ids: Map<String, String>): String? =
+    this?.split(',')?.joinToString(",") { ids[it].orEmpty() }
 
 internal fun remapPageIds(pages: List<PageEntity>): Map<String, String> {
     val ids = pages.associate { it.id to UUID.randomUUID().toString() }.toMutableMap()
     for (page in pages) {
         if (page.id.startsWith(ID_COMPOSITE_PREFIX)) {
-            val backId = page.id.removePrefix(ID_COMPOSITE_PREFIX)
-            ids[page.id] = idCompositeId(ids[backId] ?: UUID.randomUUID().toString())
+            val lastSourceId = page.id.removePrefix(ID_COMPOSITE_PREFIX)
+            ids[page.id] = idCompositeId(ids[lastSourceId] ?: UUID.randomUUID().toString())
         }
     }
     return ids
 }
 
+// The composite ID already stores the last source. The existing link column stores the preceding sources.
 private fun PageEntity.toIdComposite() = IdComposite(
-    id, idFrontId, id.removePrefix(ID_COMPOSITE_PREFIX),
+    id,
+    idFrontId?.split(',')?.map { it.ifEmpty { null } }.orEmpty().ifEmpty { listOf(null) } +
+        id.removePrefix(ID_COMPOSITE_PREFIX),
     idLayout?.let(::parseIdCardLayout) ?: IdCardLayout(),
 )
 
 internal fun parseIdCardLayout(encoded: String): IdCardLayout {
-    val fields = encoded.split(',')
+    val sections = encoded.split(';')
+    val fields = sections.first().split(',')
     val (arrangement, size, gap, outline) = fields
     fun placement(start: Int): CardPlacement? {
         val left = fields.getOrNull(start)?.toFloatOrNull() ?: return null
@@ -75,14 +84,19 @@ internal fun parseIdCardLayout(encoded: String): IdCardLayout {
         IdCardLayout.Arrangement.valueOf(arrangement), IdCardLayout.Size.valueOf(size),
         gap.toInt(), outline.toBooleanStrict(), placement(5), placement(8),
         reversed = fields.getOrNull(4)?.toBooleanStrict() ?: false,
+        extraPlacements = (11 until fields.size step 3).map(::placement),
+        order = sections.getOrNull(1)?.split(',')?.map(String::toInt).orEmpty(),
     )
 }
 
 internal fun IdCardLayout.encode(): String {
     val preset = "${arrangement.name},${size.name},$gapMm,$outline"
-    if (!reversed && front == null && back == null) return preset
     fun CardPlacement?.fields() = if (this == null) ",," else "$left,$top,$width"
-    return "$preset,$reversed,${front.fields()},${back.fields()}"
+    val placements = if (reversed || front != null || back != null || extraPlacements.isNotEmpty()) {
+        (listOf(front, back) + extraPlacements).joinToString(",", prefix = ",$reversed,") { it.fields() }
+    } else ""
+    val orderSuffix = if (order.isEmpty()) "" else order.joinToString(",", prefix = ";")
+    return preset + placements + orderSuffix
 }
 
 interface DocumentRepository {
@@ -111,6 +125,8 @@ interface DocumentRepository {
     suspend fun addPage(documentId: String, originalFile: File, width: Int, height: Int, at: Int? = null): Page
     suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int): Page =
         addPage(draftId, originalFile, width, height)
+    suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int, mode: PageMode): Page =
+        addDraftPage(draftId, originalFile, width, height)
     suspend fun addPageCopy(sourcePageId: String, at: Int): Page =
         throw UnsupportedOperationException("Page copying unavailable")
     suspend fun splitBookPage(left: Page, rightQuad: Quad): Page =
@@ -120,6 +136,9 @@ interface DocumentRepository {
         throw UnsupportedOperationException("Page splitting unavailable")
     suspend fun addIdComposite(front: Page, back: Page, original: File, width: Int, height: Int): Page =
         throw UnsupportedOperationException("ID composition unavailable")
+    suspend fun addIdComposite(sources: List<Page>, original: File, width: Int, height: Int): Page =
+        if (sources.size == 2) addIdComposite(sources[0], sources[1], original, width, height)
+        else throw UnsupportedOperationException("Multi-side ID composites unavailable")
     suspend fun idComposite(pageId: String): IdComposite? = null
     suspend fun idCompositesFor(side: Page): List<IdComposite> = emptyList()
     suspend fun replaceIdComposite(composite: IdComposite, original: File): Boolean = false
@@ -234,7 +253,7 @@ class RoomDocumentRepository @Inject constructor(
                     files.thumbFile(page.id).takeIf(File::isFile)?.copyTo(files.thumbFile(pageId))
                     dao.insertPage(page.copy(
                         id = pageId, documentId = copyId, originalPath = original.path,
-                        idFrontId = ids[page.idFrontId],
+                        idFrontId = page.idFrontId.remapIdSources(ids),
                         processedPath = processed?.path, processedHash = page.processedHash.takeIf { processed != null },
                     ))
                     if (page.id == source.coverPageId) coverId = pageId
@@ -321,8 +340,11 @@ class RoomDocumentRepository @Inject constructor(
     override suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int): Page =
         addPage(draftId, originalFile, width, height, null, requireDraft = true)
 
+    override suspend fun addDraftPage(draftId: String, originalFile: File, width: Int, height: Int, mode: PageMode): Page =
+        addPage(draftId, originalFile, width, height, null, requireDraft = true, mode = mode)
+
     private suspend fun addPage(
-        documentId: String, originalFile: File, width: Int, height: Int, at: Int?, requireDraft: Boolean,
+        documentId: String, originalFile: File, width: Int, height: Int, at: Int?, requireDraft: Boolean, mode: PageMode = PageMode.NORMAL,
     ): Page = withContext(Dispatchers.IO) {
         require(width > 0 && height > 0)
         val pageId = UUID.randomUUID().toString()
@@ -330,7 +352,7 @@ class RoomDocumentRepository @Inject constructor(
         // Keep cancellation from splitting file creation and its database transaction.
         withContext(NonCancellable) {
             files.pageCreationLock.withLock {
-                addPageFilesAndRow(documentId, originalFile, width, height, at, pageId, original, requireDraft)
+                addPageFilesAndRow(documentId, originalFile, width, height, at, pageId, original, requireDraft, mode)
             }
         }
     }
@@ -344,6 +366,7 @@ class RoomDocumentRepository @Inject constructor(
         pageId: String,
         original: File,
         requireDraft: Boolean,
+        mode: PageMode,
     ): Page {
         return try {
             originalFile.copyTo(original)
@@ -353,7 +376,7 @@ class RoomDocumentRepository @Inject constructor(
                 check(document.deletedAt == null && (!requireDraft || document.isDraft))
                 val index = insertionIndex(at, dao.pages(documentId).size)
                 val page = Page(
-                    pageId, documentId, index, PageMode.NORMAL, original.path, width, height,
+                    pageId, documentId, index, mode, original.path, width, height,
                     null, 0, PageFilter.ORIGINAL, 0f, 0f, false, false,
                     null, null, false, System.currentTimeMillis(),
                 )
@@ -401,24 +424,29 @@ class RoomDocumentRepository @Inject constructor(
         }
 
     override suspend fun addIdComposite(front: Page, back: Page, original: File, width: Int, height: Int): Page =
-        insertDerivedPage(idCompositeId(back.id), idFrontId = front.id) { id ->
-            val current = requireNotNull(dao.page(back.id)).toModel()
-            check(dao.page(front.id)?.documentId == current.documentId)
+        addIdComposite(listOf(front, back), original, width, height)
+
+    override suspend fun addIdComposite(sources: List<Page>, original: File, width: Int, height: Int): Page {
+        require(sources.size in 2..6 && sources.distinctBy(Page::id).size == sources.size)
+        val last = sources.last()
+        val preceding = sources.dropLast(1)
+        return insertDerivedPage(idCompositeId(last.id), idFrontId = preceding.joinToString(",") { it.id }) { id ->
+            val current = requireNotNull(dao.page(last.id)).toModel()
+            check(preceding.all { dao.page(it.id)?.documentId == current.documentId })
             current.asDerivedPage(id, current.index + 1, original).copy(
                 originalWidth = width, originalHeight = height, mode = PageMode.NORMAL, filter = PageFilter.ORIGINAL,
                 quad = null, rotation = 0, brightness = 0f, contrast = 0f,
                 deskew = false, shadowFix = false, glareFix = false, inkRemoval = null,
             )
         }
+    }
 
     override suspend fun idComposite(pageId: String): IdComposite? =
         if (pageId.startsWith(ID_COMPOSITE_PREFIX)) dao.page(pageId)?.toIdComposite() else null
 
     override suspend fun idCompositesFor(side: Page): List<IdComposite> =
-        dao.pages(side.documentId).filter { page ->
-            page.id.startsWith(ID_COMPOSITE_PREFIX) &&
-                (page.idFrontId == side.id || page.id == idCompositeId(side.id))
-        }.map(PageEntity::toIdComposite)
+        dao.pages(side.documentId).filter { it.id.startsWith(ID_COMPOSITE_PREFIX) }
+            .map(PageEntity::toIdComposite).filter { side.id in it.sourceIds }
 
     override suspend fun replaceIdComposite(composite: IdComposite, original: File): Boolean =
         withContext(Dispatchers.IO + NonCancellable) {
@@ -427,9 +455,7 @@ class RoomDocumentRepository @Inject constructor(
             val replaced = try {
                 database.withTransaction {
                     val page = dao.page(composite.pageId) ?: return@withTransaction false
-                    val front = composite.frontId?.let { dao.page(it) } ?: return@withTransaction false
-                    val back = dao.page(composite.backId) ?: return@withTransaction false
-                    if (front.documentId != page.documentId || back.documentId != page.documentId) {
+                    if (composite.sourceIds.none { it != null && dao.page(it)?.documentId == page.documentId }) {
                         return@withTransaction false
                     }
                     val image = File.createTempFile("id-card-", ".jpg", files.pageDir(page.id))
@@ -442,7 +468,7 @@ class RoomDocumentRepository @Inject constructor(
                         glareWarning = false,
                     )
                     dao.updatePage(clean.copy(processedHash = clean.paramsHash()).toEntity().copy(
-                        idFrontId = front.id, idLayout = composite.layout.encode(),
+                        idFrontId = page.idFrontId, idLayout = composite.layout.encode(),
                     ))
                     touch(requireDocument(page.documentId))
                     thumbnails.make(image, page.id)

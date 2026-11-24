@@ -6,6 +6,42 @@ import org.junit.Test
 
 class IdCardLayoutTest {
     @Test
+    fun presetsFitOneThroughSixCardsAndKeepTheLegacyPairRects() {
+        for (arrangement in IdCardLayout.Arrangement.entries) {
+            for (size in IdCardLayout.Size.entries) {
+                for (gapMm in listOf(0, 6, 15)) {
+                    val layout = IdCardLayout(arrangement, size, gapMm)
+                    for (count in 1..6) {
+                        val rects = IdCardComposer.cardRects(layout, List(count) { 1.586f })
+                        assertEquals(count, rects.size)
+                        rects.forEachIndexed { index, rect ->
+                            assertTrue(rect.left >= 0 && rect.top >= 0)
+                            assertTrue(rect.right <= 2480 && rect.bottom <= 3508)
+                            for (other in rects.drop(index + 1)) {
+                                assertTrue(rect.right <= other.left || other.right <= rect.left ||
+                                    rect.bottom <= other.top || other.bottom <= rect.top)
+                            }
+                        }
+                    }
+                    val gap = IdCardComposer.gapPixels(gapMm)
+                    val stacked = arrangement == IdCardLayout.Arrangement.STACKED
+                    val width = when {
+                        size == IdCardLayout.Size.ACTUAL -> 1011
+                        stacked -> 1984
+                        else -> (1984 - gap) / 2
+                    }
+                    val height = kotlin.math.round(width * 638.0 / 1011).toInt()
+                    val pairWidth = if (stacked) width else width * 2 + gap
+                    val front = CardRect((2480 - pairWidth) / 2, 118, width, height)
+                    val back = if (stacked) front.copy(top = 118 + height + gap)
+                        else front.copy(left = front.left + width + gap)
+                    assertEquals(front to back, IdCardComposer.cardRects(layout))
+                }
+            }
+        }
+    }
+
+    @Test
     fun cardsAreCenteredWithTheRequestedGapAndSize() {
         for (arrangement in IdCardLayout.Arrangement.entries) {
             for (size in IdCardLayout.Size.entries) {
