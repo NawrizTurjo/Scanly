@@ -24,6 +24,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -161,6 +162,34 @@ class RoomRepositoriesTest {
         assertFalse(composite.glareFix)
         assertEquals(composite.originalPath, composite.processedPath)
         assertEquals(composite.paramsHash(), composite.processedHash)
+    }
+
+    @Test
+    fun newPagesUseScanDefaultsAndPreserveModeSpecificFilters() = runBlocking {
+        val id = draft()
+        val modes = listOf(PageMode.NORMAL, PageMode.WHITEBOARD, PageMode.ID_FRONT, PageMode.ID_BACK)
+        val pages = modes.map { add(id) }
+        val settings = MutableStateFlow(UserSettings(defaultScanFilter = PageFilter.GRAY, defaultScanDeskew = false))
+        val processing = QueuedPageProcessing(documents, files, ThumbnailMaker(files), this, settings) { original, _, output ->
+            original.copyTo(output, overwrite = true)
+            ProcessResult(60, 100, glareWarning = false)
+        }
+
+        processing.enqueueNewPage(pages.first().id)
+        processing.awaitIdle(listOf(pages.first().id))
+        settings.value = settings.value.copy(defaultScanDeskew = true)
+
+        for (index in 1 until pages.size) {
+            processing.enqueueNewPage(pages[index].id, modes[index])
+        }
+        processing.awaitIdle(pages.map { it.id })
+
+        val rendered = documents.observeDocument(id).first()!!.pages
+        assertEquals(modes, rendered.map { it.mode })
+        assertEquals(listOf(PageFilter.GRAY, PageFilter.WHITEBOARD, PageFilter.AUTO, PageFilter.AUTO), rendered.map { it.filter })
+        assertEquals(listOf(false, true, true, true), rendered.map { it.glareFix })
+        assertEquals(listOf(false, true, false, false), rendered.map { it.deskew })
+        assertTrue(rendered.all { it.processedHash == it.paramsHash() })
     }
 
     @Test

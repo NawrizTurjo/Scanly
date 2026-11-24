@@ -10,6 +10,7 @@ import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.OcrLanguage
 import dev.turjo.paperless.core.model.UserSettings
+import dev.turjo.paperless.core.model.PageFilter
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +27,14 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = repository.settings
         .map(::SettingsUiState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    fun setDefaultScanFilter(filter: PageFilter) {
+        viewModelScope.launch { repository.setDefaultScanFilter(filter) }
+    }
+
+    fun setDefaultScanDeskew(enabled: Boolean) {
+        viewModelScope.launch { repository.setDefaultScanDeskew(enabled) }
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { repository.setThemeMode(mode) }

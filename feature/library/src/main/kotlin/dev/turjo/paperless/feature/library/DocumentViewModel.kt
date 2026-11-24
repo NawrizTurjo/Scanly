@@ -11,7 +11,9 @@ import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.FolderRepository
 import dev.turjo.paperless.core.data.PageProcessing
+import dev.turjo.paperless.core.data.applyBatchEdits
 import dev.turjo.paperless.core.model.DocumentWithPages
+import dev.turjo.paperless.core.model.PageBatchEdits
 import dev.turjo.paperless.feature.export.ExportRunner
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -32,6 +34,7 @@ internal data class DocumentState(
     val document: DocumentWithPages? = null,
     val error: Boolean = false,
     val sharing: Boolean = false,
+    val applyingBatch: Boolean = false,
     val savingOrder: Boolean = false,
     val orderRevision: Int = 0,
     val duplicationCount: Int = 0,
@@ -97,6 +100,21 @@ internal class DocumentViewModel @AssistedInject constructor(
                 }
             } finally {
                 mutableState.update { it.copy(savingOrder = false, orderRevision = it.orderRevision + 1) }
+            }
+        }
+    }
+
+    fun applyToAllPages(edits: PageBatchEdits) {
+        if (state.value.applyingBatch) return
+        mutableState.update { it.copy(applyingBatch = true) }
+        reportFailure {
+            try {
+                mutations.withLock {
+                    val pages = documents.observeDocument(id).first()?.pages.orEmpty()
+                    processing.applyBatchEdits(documents, pages.map { it.id }, edits)
+                }
+            } finally {
+                mutableState.update { it.copy(applyingBatch = false) }
             }
         }
     }

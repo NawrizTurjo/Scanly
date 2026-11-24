@@ -1,3 +1,19 @@
 <resources>
     <string name="tip_got_it">Got it</string>
+    <string name="page_filter_document">Document</string>
+    <string name="page_filter_colour">Colour</string>
+    <string name="page_filter_original">Original</string>
+    <string name="page_filter_gray">Grayscale</string>
+    <string name="page_filter_bw">Black &amp; white</string>
+    <string name="page_filter_whiteboard">Whiteboard</string>
+    <string name="batch_only_changed">Only settings you change are applied.</string>
+    <string name="batch_filter">Filter</string>
+    <string name="batch_straighten">Straighten</string>
+    <string name="batch_shadow">Shadow fix</string>
+    <string name="batch_glare">Glare fix</string>
+    <string name="batch_crop">Crop</string>
+    <string name="batch_crop_auto">Auto-detect</string>
+    <string name="batch_crop_full">Full photo</string>
+    <string name="batch_apply">Apply</string>
+    <string name="batch_unchanged">Unchanged</string>
 </resources>

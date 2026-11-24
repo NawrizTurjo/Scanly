@@ -16,7 +16,10 @@ import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageBlankInfo
+import dev.turjo.paperless.core.model.BatchCrop
+import dev.turjo.paperless.core.model.PageBatchEdits
 import dev.turjo.paperless.core.model.PageFilter
+import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.splitGroups
@@ -79,16 +82,38 @@ class EditorViewModelTest {
     }
 
     @Test
-    fun filterAllUpdatesEachPageAndEnqueuesItsRender() = runTest(dispatcher) {
+    fun batchEditsPreserveUntouchedFieldsAndRenderOnlyChangedPages() = runTest(dispatcher) {
+        val first = documents.draft.pages.first().copy(quad = Quad.FULL, glareFix = true, rotation = 90)
+        val second = documents.draft.pages.last().copy(filter = PageFilter.WHITEBOARD, deskew = false)
+        documents.replacePage(first)
+        documents.replacePage(second)
         val vm = review()
         runCurrent()
 
-        vm.filterAll(PageFilter.WHITEBOARD)
+        vm.applyToAllPages(PageBatchEdits(filter = PageFilter.WHITEBOARD, deskew = false))
         runCurrent()
 
-        assertEquals(listOf(PageFilter.WHITEBOARD, PageFilter.WHITEBOARD), documents.draft.pages.map { it.filter })
-        assertEquals(listOf("first", "second"), documents.updates.map { it.id })
-        assertEquals(listOf("first", "second"), processing.renderedIds)
+        val edited = first.copy(filter = PageFilter.WHITEBOARD, deskew = false)
+        assertEquals(listOf(edited, second), documents.draft.pages)
+        assertEquals(listOf(edited), documents.updates)
+        assertEquals(listOf("first"), processing.renderedIds)
+        assertEquals(listOf("first"), processing.waits.last())
+    }
+
+    @Test
+    fun batchFullPhotoClearsOnlyActualCrops() = runTest(dispatcher) {
+        val first = documents.draft.pages.first().copy(quad = Quad(1f, 1f, 10f, 1f, 10f, 10f, 1f, 10f))
+        val second = documents.draft.pages.last().copy(quad = Quad.FULL)
+        documents.replacePage(first)
+        documents.replacePage(second)
+        val vm = review()
+        runCurrent()
+
+        vm.applyToAllPages(PageBatchEdits(crop = BatchCrop.FULL_PHOTO))
+        runCurrent()
+
+        assertEquals(listOf(first.copy(quad = null), second), documents.draft.pages)
+        assertEquals(listOf("first"), processing.renderedIds)
     }
 
     @Test

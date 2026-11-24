@@ -16,6 +16,8 @@ enum class AccentColor { BLUE, TEAL, GREEN, ORANGE, ROSE }
 
 enum class OcrLanguage(val code: String) { ENGLISH("eng"), BENGALI("ben"), BOTH("eng+ben") }
 
+val NEW_SCAN_FILTERS = listOf(PageFilter.DOCUMENT, PageFilter.AUTO, PageFilter.ORIGINAL, PageFilter.GRAY, PageFilter.BW)
+
 data class UserSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
@@ -28,6 +30,8 @@ data class UserSettings(
     val accent: AccentColor = AccentColor.BLUE,
     val automaticOcr: Boolean = true,
     val ocrLanguage: OcrLanguage = OcrLanguage.BOTH,
+    val defaultScanFilter: PageFilter = PageFilter.DOCUMENT,
+    val defaultScanDeskew: Boolean = true,
 )
 
 private val autoNameDate = DateTimeFormatter.ofPattern("uuuu-MM-dd", Locale.ROOT)

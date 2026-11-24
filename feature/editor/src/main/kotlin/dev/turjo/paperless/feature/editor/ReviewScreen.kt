@@ -32,6 +32,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.defaultTitle
+import dev.turjo.paperless.core.designsystem.PageBatchSheet
 import dev.turjo.paperless.core.designsystem.sharedPage
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
@@ -54,7 +55,7 @@ fun ReviewScreen(
     var twoSided by rememberSaveable { mutableStateOf(state.duplex) }
     var discard by rememberSaveable { mutableStateOf(false) }
     var save by rememberSaveable { mutableStateOf(false) }
-    var filters by rememberSaveable { mutableStateOf(false) }
+    var batchSheet by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
     val canAct = !state.loading && !state.changing && state.session != null && !state.finishPending
 
@@ -107,8 +108,8 @@ fun ReviewScreen(
             BottomAppBar(
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
-                TextButton({ filters = true }, enabled = canAct && state.pages.any { !it.page.isIdComposite }) {
-                    Text(stringResource(R.string.review_filter_all))
+                TextButton({ batchSheet = true }, enabled = canAct && state.pages.any { !it.page.isIdComposite }) {
+                    Text(stringResource(R.string.review_apply_all))
                 }
                 TextButton(onAddMore, enabled = canAct) { Text(stringResource(R.string.review_add_more)) }
                 Spacer(Modifier.weight(1f))
@@ -211,23 +212,17 @@ fun ReviewScreen(
             },
         )
     }
-    val dropped = state.groups.flatMap { it.dropped }.toSet()
-    val keptPages = state.pages.filterNot { it.page.id in dropped || it.page.isIdComposite }
-    val firstPage = keptPages.firstOrNull()?.page
-    if (filters && firstPage != null) {
-        ModalBottomSheet(onDismissRequest = { filters = false }) {
-            Text(
-                stringResource(R.string.review_filter_all),
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            val selected = firstPage.filter.takeIf { filter -> keptPages.all { it.page.filter == filter } }
-            PresetCarousel(firstPage, selected, canAct, vm::presetPreview) {
-                filters = false
-                vm.filterAll(it)
-            }
-            Spacer(Modifier.height(16.dp))
-        }
+    val editablePages = state.pages.map { it.page }.filterNot { it.isIdComposite }
+    if (batchSheet && editablePages.isNotEmpty()) {
+        PageBatchSheet(
+            title = stringResource(R.string.review_apply_all),
+            pages = editablePages,
+            onDismiss = { batchSheet = false },
+            onApply = {
+                batchSheet = false
+                vm.applyToAllPages(it)
+            },
+        )
     }
 }
 
