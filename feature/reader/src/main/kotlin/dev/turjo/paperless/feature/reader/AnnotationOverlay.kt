@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -62,6 +63,11 @@ internal fun AnnotationToolbar(
     stepHistory: (Boolean) -> Unit,
     done: () -> Unit,
 ) {
+    var picker by remember { mutableStateOf(false) }
+    if (picker) SignaturePicker({ picker = false }) { signature ->
+        update { it.copy(pendingSignature = signature) }
+        picker = false
+    }
     Surface(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.large,
@@ -74,8 +80,13 @@ internal fun AnnotationToolbar(
                     for (tool in AnnotationTool.entries) {
                         FilterChip(
                             selected = layer.tool == tool,
-                            onClick = { update { it.copy(tool = tool) } },
-                            label = { Text(tool.label) },
+                            onClick = {
+                                update { it.copy(tool = tool, pendingSignature = null) }
+                                if (tool == AnnotationTool.SIGNATURE) picker = true
+                            },
+                            label = {
+                                Text(if (tool == AnnotationTool.SIGNATURE) stringResource(R.string.signature_title) else tool.label)
+                            },
                             modifier = Modifier.padding(horizontal = 2.dp),
                         )
                     }
@@ -83,25 +94,34 @@ internal fun AnnotationToolbar(
                 TextButton(done) { Text("Done") }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                for ((name, value) in swatches) {
-                    Surface(
-                        Modifier.size(48.dp).padding(7.dp)
-                            .semantics { contentDescription = name; selected = layer.color == value }
-                            .clickable(role = Role.Button) { update { it.copy(color = value) } },
-                        shape = CircleShape,
-                        color = Color(value),
-                        border = if (layer.color == value) androidx.compose.foundation.BorderStroke(
-                            2.dp, MaterialTheme.colorScheme.onSurface,
-                        ) else null,
-                        content = {},
-                    )
-                }
-                for ((label, width) in listOf("Thin" to 1.5f, "Medium" to 3f, "Thick" to 6f)) {
-                    FilterChip(layer.width == width, { update { it.copy(width = width) } }, { Text(label) },
-                        modifier = Modifier.padding(horizontal = 2.dp))
+                if (layer.tool != AnnotationTool.SIGNATURE) {
+                    for ((name, value) in swatches) {
+                        Surface(
+                            Modifier.size(48.dp).padding(7.dp)
+                                .semantics { contentDescription = name; selected = layer.color == value }
+                                .clickable(role = Role.Button) { update { it.copy(color = value) } },
+                            shape = CircleShape,
+                            color = Color(value),
+                            border = if (layer.color == value) androidx.compose.foundation.BorderStroke(
+                                2.dp, MaterialTheme.colorScheme.onSurface,
+                            ) else null,
+                            content = {},
+                        )
+                    }
+                    for ((label, width) in listOf("Thin" to 1.5f, "Medium" to 3f, "Thick" to 6f)) {
+                        FilterChip(layer.width == width, { update { it.copy(width = width) } }, { Text(label) },
+                            modifier = Modifier.padding(horizontal = 2.dp))
+                    }
                 }
                 TextButton({ stepHistory(false) }, enabled = layer.undo.isNotEmpty()) { Text("Undo") }
                 TextButton({ stepHistory(true) }, enabled = layer.redo.isNotEmpty()) { Text("Redo") }
+            }
+            if (layer.tool == AnnotationTool.SIGNATURE) {
+                Text(
+                    stringResource(if (layer.pendingSignature == null) R.string.signature_edit_hint else R.string.signature_place_hint),
+                    Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }
@@ -148,7 +168,7 @@ internal fun AnnotationOverlay(
 ) {
     val mapping by rememberUpdatedState(transform)
     val commit by rememberUpdatedState(onGesture)
-    val active = layer.editing && !layer.saving && onGesture != null && layer.tool != AnnotationTool.MOVE
+    val active = layer.editing && !layer.saving && onGesture != null && layer.tool != AnnotationTool.MOVE && layer.tool != AnnotationTool.SIGNATURE
     val tool = layer.tool
     val color = layer.color
     val width = if (tool == AnnotationTool.HIGHLIGHTER) layer.width * 4 else layer.width
@@ -188,7 +208,7 @@ internal fun AnnotationOverlay(
     } else Modifier
 
     Canvas(Modifier.fillMaxSize().then(gestures)) {
-        pageMarks.forEach { drawAnnotation(it, transform, night) }
+        pageMarks.filterNot { it.type == AnnotationType.SIGNATURE }.forEach { drawAnnotation(it, transform, night) }
         if (preview.isNotEmpty()) {
             drawAnnotation(Annotation("", PdfKey(""), page, checkNotNull(tool.type), color, width, preview), transform, night)
         }

@@ -41,4 +41,23 @@
     <string name="reader_cancel_link">Cancel</string>
     <string name="reader_tip_lock">Screen locked. Long-press anywhere to unlock.</string>
     <string name="reader_tip_tap">Tap the page to hide or show the bars.</string>
+    <string name="signature_title">Signature</string>
+    <string name="signature_saved">Saved signature %1$d</string>
+    <string name="signature_limit">You can save up to five signatures.</string>
+    <string name="signature_new">New signature…</string>
+    <string name="signature_delete">Delete</string>
+    <string name="signature_delete_saved">Delete this saved signature?</string>
+    <string name="signature_delete_detail">Copies already placed on pages will stay there.</string>
+    <string name="signature_cancel">Cancel</string>
+    <string name="signature_error">Could not load or save signatures.</string>
+    <string name="signature_draw_area">Draw your signature here</string>
+    <string name="signature_thickness">Pen thickness</string>
+    <string name="signature_black">Black</string>
+    <string name="signature_blue">Blue</string>
+    <string name="signature_undo">Undo</string>
+    <string name="signature_clear">Clear</string>
+    <string name="signature_save">Save</string>
+    <string name="signature_remove_placement">Remove signature</string>
+    <string name="signature_edit_hint">Tap a signature to select it. Drag to move or pinch to resize.</string>
+    <string name="signature_place_hint">Tap the page to place the signature.</string>
 </resources>

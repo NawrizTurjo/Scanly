@@ -2,7 +2,7 @@ package dev.turjo.paperless.core.model
 
 import android.graphics.PointF
 
-enum class AnnotationType { INK, HIGHLIGHT, UNDERLINE, STRIKE, NOTE }
+enum class AnnotationType { INK, HIGHLIGHT, UNDERLINE, STRIKE, NOTE, SIGNATURE }
 
 /** Geometry is in displayed PDF points, measured from the top-left after crop and rotation. */
 data class Annotation(
@@ -15,4 +15,5 @@ data class Annotation(
     val points: List<PointF> = emptyList(),
     val rects: List<PageRect> = emptyList(),
     val note: String? = null,
+    val signature: SignaturePlacement? = null,
 )

@@ -1,5 +1,6 @@
 package dev.turjo.paperless.core.data
 
+import dev.turjo.paperless.core.imaging.SignatureInk
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -67,7 +68,7 @@ interface PageProcessing {
 
 /**
  * Full-resolution work runs on one thread of an app-wide scope: pages keep processing after the screen that
- * asked for them closes, and at most one 12 MP page is in memory at a time (PRD §6). Previews use a cached
+ * asked for them closes, and at most one 12 MP page is in memory at a time (PRD Â§6). Previews use a cached
  * downsampled upright copy of the original so editor feedback stays fast.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -310,9 +311,14 @@ class QueuedPageProcessing internal constructor(
         snapToPaper = mode.cardAspect() == null,
         deskew = deskew,
         inkRemoval = inkRemoval?.name,
+        signatures = signatures.map { (id, rect) ->
+            SignatureInk(
+                files.signatureImage(id), rect.left, rect.top, rect.right, rect.bottom,
+            )
+        },
     )
 
-    /** An upright (EXIF applied, tag removed) copy of the original, long side ≤ PREVIEW_SOURCE_SIDE. */
+    /** An upright (EXIF applied, tag removed) copy of the original, long side â‰¤ PREVIEW_SOURCE_SIDE. */
     private fun previewSource(page: Page): Pair<File, PixelSize> {
         val file = File(files.pageDir(page.id), "preview-src.jpg")
         if (!file.isFile) {

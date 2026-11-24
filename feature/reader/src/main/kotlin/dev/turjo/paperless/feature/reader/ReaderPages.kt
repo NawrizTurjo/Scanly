@@ -95,6 +95,7 @@ internal fun ReaderPages(
     onZoom: (Float, Float) -> Unit,
     annotationLayer: AnnotationLayer? = null,
     onAnnotation: AnnotationGesture? = null,
+    onSignature: SignatureGesture? = null,
     immersive: Boolean,
     pagePadding: PaddingValues,
     overlayInsets: WindowInsets,
@@ -149,10 +150,10 @@ internal fun ReaderPages(
             when (tab.viewMode) {
                 ReaderViewMode.CONTINUOUS -> ContinuousPages(
                     document, tab, tone, horizontalOffset, jump, consumed, onPosition, onZoom, search, crop, uniform, onLink,
-                    annotationLayer, onAnnotation, onPageTap, onLockedTap, onSelectionChanged, pagePadding, reportScroll,
+                    annotationLayer, onAnnotation, onSignature, onPageTap, onLockedTap, onSelectionChanged, pagePadding, reportScroll,
                 )
                 ReaderViewMode.SINGLE_PAGE -> SinglePages(
-                    document, tab, tone, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation,
+                    document, tab, tone, jump, consumed, onPosition, search, crop, uniform, onLink, annotationLayer, onAnnotation, onSignature,
                     onPageTap, onLockedTap, onSelectionChanged, pagePadding, reportScroll,
                 )
             }
@@ -218,6 +219,7 @@ private fun ContinuousPages(
     onLink: (Int, PageLink) -> Unit,
     annotationLayer: AnnotationLayer?,
     onAnnotation: AnnotationGesture?,
+    onSignature: SignatureGesture?,
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
@@ -307,10 +309,14 @@ private fun ContinuousPages(
         }
 
         val currentTransform by rememberUpdatedState(::transform)
+        val signing by rememberUpdatedState(
+            annotationLayer?.editing == true && annotationLayer.tool == AnnotationTool.SIGNATURE && onSignature != null,
+        )
         val gestures = Modifier
             .pointerInput(list) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+                    if (signing) return@awaitEachGesture
                     var motion = Offset.Zero
                     var horizontalDrag = false
                     var pinching = false
@@ -367,7 +373,7 @@ private fun ContinuousPages(
                         PageOverlay(
                             document, page, bitmap, tone, geometry,
                             PageTransform(geometry.crop, shownWidth.toFloat(), height.toFloat(), -panX.coerceIn(0f, maxPan)),
-                            search, { onLink(page, it) }, annotationLayer, onAnnotation,
+                            search, { onLink(page, it) }, annotationLayer, onAnnotation, onSignature,
                             onPageTap, onLockedTap, onSelectionChanged,
                         ) { point ->
                             val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }?.offset ?: 0
@@ -396,6 +402,7 @@ private fun SinglePages(
     onLink: (Int, PageLink) -> Unit,
     annotationLayer: AnnotationLayer?,
     onAnnotation: AnnotationGesture?,
+    onSignature: SignatureGesture?,
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
@@ -428,7 +435,7 @@ private fun SinglePages(
                     render.bitmap?.let {
                         PageOverlay(document, page, it, tone, geometry,
                             PageTransform(geometry.crop, width.toFloat(), height.toFloat()),
-                            search, { link -> onLink(page, link) }, annotationLayer, onAnnotation,
+                            search, { link -> onLink(page, link) }, annotationLayer, onAnnotation, onSignature,
                             onPageTap, onLockedTap, onSelectionChanged,
                         )
                     }

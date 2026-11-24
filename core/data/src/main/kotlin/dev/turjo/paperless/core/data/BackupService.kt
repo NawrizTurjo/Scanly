@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.turjo.paperless.core.pdf.PdfExporter
+import dev.turjo.paperless.core.model.AnnotationType
+import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -40,7 +42,7 @@ class BackupService internal constructor(
         @ApplicationContext context: Context,
         files: FileStore,
         processing: PageProcessing,
-    ) : this(database, context, files, scanPdfWriter(database.documentDao(), processing, PdfExporter(context)))
+    ) : this(database, context, files, scanPdfWriter(database.documentDao(), processing, PdfExporter(context), files))
 
     private val documents = database.documentDao()
     private val folders = database.folderDao()
@@ -146,8 +148,13 @@ class BackupService internal constructor(
         result.put(latest.backupJson()
             .put("folderDirectory", folderName)
             .put("documentDirectory", title)
-            .put("pages", JSONArray(pages.map(PageEntity::backupJson)))
-            .put("annotations", JSONArray(annotations.all("doc:${document.id}").map(AnnotationEntity::backupJson))))
+            .put("pages", JSONArray(pages.map { page ->
+                val ink = files.signaturePlacements(page.id).readSignatures()
+                if (ink.isEmpty()) page.backupJson()
+                else page.copy(processedHash = page.toModel().paramsHash()).backupJson()
+            }))
+            .put("annotations", JSONArray(annotations.all("doc:${document.id}")
+                .filterNot { it.type == AnnotationType.SIGNATURE.name }.map(AnnotationEntity::backupJson))))
     }
 
     internal suspend fun restore(tree: BackupTree, progress: (Float) -> Unit): BackupResult =

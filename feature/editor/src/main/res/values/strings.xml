@@ -112,4 +112,8 @@
     <string name="editor_id_outline">Cut outline</string>
     <string name="editor_id_hint">Edit the front or back page to change crop or filter</string>
     <string name="editor_id_missing">Both source pages are needed to change the ID layout</string>
+    <string name="editor_sign">Sign</string>
+    <string name="editor_sign_edit">Tap a signature to select it. Drag to move or pinch to resize.</string>
+    <string name="editor_sign_place">Tap the page to place the signature.</string>
+    <string name="editor_sign_choose">Choose signature</string>
 </resources>

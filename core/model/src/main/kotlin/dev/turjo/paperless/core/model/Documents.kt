@@ -49,6 +49,7 @@ data class Page(
     val createdAt: Long,
     val deskew: Boolean = true,
     val inkRemoval: InkRemoval? = null,
+    val signatures: List<SignaturePlacement> = emptyList(),
 )
 
 fun Page.paramsHash(): String {
@@ -65,7 +66,15 @@ fun Page.paramsHash(): String {
     bytes.put((inkRemoval?.ordinal?.plus(1) ?: 0).toByte())
     val digest = MessageDigest.getInstance("SHA-256")
     digest.update(bytes.array(), 0, bytes.position())
-    return digest.digest(filter.name.toByteArray(Charsets.UTF_8)).toHexString()
+    digest.update(filter.name.toByteArray(Charsets.UTF_8))
+    for ((id, rect) in signatures) {
+        bytes.clear()
+        val key = id.toByteArray(Charsets.UTF_8)
+        bytes.putInt(key.size).putFloat(rect.left).putFloat(rect.top).putFloat(rect.right).putFloat(rect.bottom)
+        digest.update(bytes.array(), 0, bytes.position())
+        digest.update(key)
+    }
+    return digest.digest().toHexString()
 }
 
 data class Document(

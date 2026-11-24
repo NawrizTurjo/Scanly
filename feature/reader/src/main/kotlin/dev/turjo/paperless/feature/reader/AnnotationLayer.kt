@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.reader
 
+import dev.turjo.paperless.core.data.SavedSignature
 import android.graphics.PointF
 import dev.turjo.paperless.core.model.Annotation
 import dev.turjo.paperless.core.model.AnnotationType
@@ -10,7 +11,7 @@ import kotlin.math.hypot
 internal enum class AnnotationTool(val label: String, val type: AnnotationType? = null) {
     MOVE("Navigate"), PEN("Pen", AnnotationType.INK), HIGHLIGHTER("Highlighter", AnnotationType.HIGHLIGHT),
     UNDERLINE("Underline", AnnotationType.UNDERLINE), STRIKE("Strike", AnnotationType.STRIKE),
-    NOTE("Text note", AnnotationType.NOTE), ERASER("Eraser"),
+    NOTE("Text note", AnnotationType.NOTE), ERASER("Eraser"), SIGNATURE(""),
 }
 
 internal data class AnnotationLayer(
@@ -23,6 +24,7 @@ internal data class AnnotationLayer(
     val color: Int = 0xFF215DC8.toInt(),
     val width: Float = 3f,
     val saving: Boolean = false,
+    val pendingSignature: SavedSignature? = null,
 ) {
     val dirty get() = marks != saved
 
@@ -37,7 +39,7 @@ internal data class AnnotationLayer(
         copy(marks = it, redo = redo.dropLast(1), undo = undo + listOf(marks))
     } ?: this
 
-    fun discard() = copy(marks = saved, undo = emptyList(), redo = emptyList(), editing = false)
+    fun discard() = copy(marks = saved, undo = emptyList(), redo = emptyList(), editing = false, pendingSignature = null)
 }
 
 internal data class AnnotationPrompt(val tabId: String, val closing: Boolean)

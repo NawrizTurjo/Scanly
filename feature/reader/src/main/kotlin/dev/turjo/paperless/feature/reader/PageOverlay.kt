@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.reader
 
+import dev.turjo.paperless.core.model.SignaturePlacement
 import androidx.compose.ui.res.stringResource
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -72,6 +73,7 @@ internal fun PageOverlay(
     onLink: (PageLink) -> Unit,
     annotationLayer: AnnotationLayer? = null,
     onAnnotation: AnnotationGesture? = null,
+    onSignature: SignatureGesture? = null,
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
@@ -179,6 +181,21 @@ internal fun PageOverlay(
             if (!locked) selection?.second?.forEach { highlight(it, Color(0x664888FF)) }
         }
         if (annotationLayer != null) AnnotationOverlay(page, transform, annotationLayer, onAnnotation, night = tone == PageTone.NIGHT)
+        if (annotationLayer != null) {
+            val signatures = remember(annotationLayer.marks, page) {
+                annotationLayer.marks.filter { it.page == page && it.signature != null }
+            }
+            val change: ((Int?, SignaturePlacement?) -> Unit)? =
+                if (annotationLayer.editing && !annotationLayer.saving && annotationLayer.tool == AnnotationTool.SIGNATURE &&
+                    onSignature != null
+                ) {
+                    { index, placement -> onSignature(page, index?.let { signatures[it].id }, placement) }
+                } else null
+            SignatureOverlay(
+                signatures.mapNotNull { it.signature }, annotationLayer.pendingSignature, change,
+                Modifier.fillMaxSize(), transform.map(geometry.full), colorFilter,
+            )
+        }
         note?.let { text ->
             AlertDialog(
                 onDismissRequest = { note = null },

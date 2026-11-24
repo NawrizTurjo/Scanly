@@ -1,6 +1,15 @@
 package dev.turjo.paperless.core.imaging
 
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import org.opencv.android.Utils
+import org.opencv.imgproc.Imgproc
+import org.opencv.core.Rect
+import kotlin.math.ceil
+import kotlin.math.floor
 import android.media.ExifInterface
 import org.opencv.core.Core
 import org.opencv.core.Mat
@@ -21,7 +30,10 @@ data class ProcessParams(
     val snapToPaper: Boolean = true,
     val deskew: Boolean = false,
     val inkRemoval: String? = null,
+    val signatures: List<SignatureInk> = emptyList(),
 )
+
+data class SignatureInk(val file: File, val left: Float, val top: Float, val right: Float, val bottom: Float)
 
 data class ProcessResult(val width: Int, val height: Int, val glareWarning: Boolean)
 
@@ -70,10 +82,48 @@ class PageProcessor {
                 180 -> Core.rotate(page, page, Core.ROTATE_180)
                 270 -> replace(newMat { Core.rotate(page, it, Core.ROTATE_90_COUNTERCLOCKWISE) })
             }
+            params.signatures.forEach { drawSignature(page, it) }
             writeJpeg(page, out, jpegQuality)
             return ProcessResult(page.cols(), page.rows(), warning)
         } finally {
             page.release()
+        }
+    }
+
+    private fun drawSignature(page: Mat, ink: SignatureInk) {
+        val image = requireNotNull(BitmapFactory.decodeFile(ink.file.path))
+        try {
+            val bounds = RectF(ink.left * page.cols(), ink.top * page.rows(),
+                ink.right * page.cols(), ink.bottom * page.rows())
+            drawSignatureRegion(page, image, fitSignatureImage(bounds, image.width, image.height))
+        } finally {
+            image.recycle()
+        }
+    }
+
+    private fun drawSignatureRegion(page: Mat, image: Bitmap, bounds: RectF) {
+        val left = bounds.left
+        val top = bounds.top
+        val right = bounds.right
+        val bottom = bounds.bottom
+        val x = floor(left).toInt().coerceIn(0, page.cols())
+        val y = floor(top).toInt().coerceIn(0, page.rows())
+        val width = ceil(right).toInt().coerceIn(x, page.cols()) - x
+        val height = ceil(bottom).toInt().coerceIn(y, page.rows()) - y
+        if (width == 0 || height == 0) return
+        page.submat(Rect(x, y, width, height)).useMat { region ->
+            val pixels = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            try {
+                newMat { Imgproc.cvtColor(region, it, Imgproc.COLOR_BGR2RGBA) }.useMat { rgba ->
+                    Utils.matToBitmap(rgba, pixels)
+                    val target = RectF(left - x, top - y, right - x, bottom - y)
+                    Canvas(pixels).drawBitmap(image, null, target, Paint(Paint.FILTER_BITMAP_FLAG))
+                    Utils.bitmapToMat(pixels, rgba)
+                    Imgproc.cvtColor(rgba, region, Imgproc.COLOR_RGBA2BGR)
+                }
+            } finally {
+                pixels.recycle()
+            }
         }
     }
 
@@ -89,6 +139,14 @@ class PageProcessor {
             temp.delete()
         }
     }
+}
+
+fun fitSignatureImage(bounds: RectF, imageWidth: Int, imageHeight: Int): RectF {
+    val scale = minOf(bounds.width() / imageWidth, bounds.height() / imageHeight)
+    val halfWidth = imageWidth * scale / 2
+    val halfHeight = imageHeight * scale / 2
+    return RectF(bounds.centerX() - halfWidth, bounds.centerY() - halfHeight,
+        bounds.centerX() + halfWidth, bounds.centerY() + halfHeight)
 }
 
 /** Blocking. Returns pixel coordinates in the full-size, EXIF-oriented JPEG. */

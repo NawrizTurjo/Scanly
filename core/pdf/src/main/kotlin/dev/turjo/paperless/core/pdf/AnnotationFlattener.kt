@@ -17,12 +17,18 @@ import com.tom_roush.pdfbox.util.Matrix
 import dev.turjo.paperless.core.model.Annotation
 import dev.turjo.paperless.core.model.AnnotationType
 import java.io.File
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 object AnnotationFlattener {
-    suspend fun flatten(input: File, annotations: List<Annotation>, out: File) = withContext(Dispatchers.IO) {
+    suspend fun flatten(
+        input: File,
+        annotations: List<Annotation>,
+        out: File,
+        signatureFile: (String) -> File = { error("Missing signature image resolver") },
+    ) = withContext(Dispatchers.IO) {
         require(input.canonicalFile != out.canonicalFile)
         require(!out.exists() || out.length() == 0L)
         try {
@@ -32,6 +38,7 @@ object AnnotationFlattener {
                     strokingAlphaConstant = 0.35f
                     blendMode = BlendMode.MULTIPLY
                 }
+                val images = mutableMapOf<String, PDImageXObject>()
                 for ((index, marks) in annotations.groupBy { it.page }) {
                     ensureActive()
                     val page = document.getPage(index)
@@ -45,7 +52,21 @@ object AnnotationFlattener {
                         for (mark in marks) {
                             stream.saveGraphicsState()
                             if (mark.type == AnnotationType.HIGHLIGHT) stream.setGraphicsStateParameters(highlight)
-                            stream.drawMark(document, mark, width, height)
+                            if (mark.type == AnnotationType.SIGNATURE) {
+                                val (id, rect) = requireNotNull(mark.signature)
+                                val image = images.getOrPut(id) {
+                                    val bitmap = requireNotNull(android.graphics.BitmapFactory.decodeFile(signatureFile(id).path))
+                                    try {
+                                        LosslessFactory.createFromImage(document, bitmap)
+                                    } finally {
+                                        bitmap.recycle()
+                                    }
+                                }
+                                stream.drawImage(image, rect.left * width, rect.bottom * height,
+                                    (rect.right - rect.left) * width, (rect.top - rect.bottom) * height)
+                            } else {
+                                stream.drawMark(document, mark, width, height)
+                            }
                             stream.restoreGraphicsState()
                         }
                         stream.restoreGraphicsState()

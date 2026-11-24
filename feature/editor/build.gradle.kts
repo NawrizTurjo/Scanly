@@ -1,6 +1,7 @@
 plugins { id("paperless.android.feature") }
 
 dependencies {
+    implementation(project(":feature:reader"))
     implementation(project(":core:model"))
     implementation(project(":core:data"))
     implementation(project(":core:pdf"))

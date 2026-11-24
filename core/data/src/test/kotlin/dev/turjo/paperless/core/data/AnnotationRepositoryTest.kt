@@ -8,6 +8,7 @@ import dev.turjo.paperless.core.model.Annotation
 import dev.turjo.paperless.core.model.AnnotationType
 import dev.turjo.paperless.core.model.PageRect
 import dev.turjo.paperless.core.model.PdfKey
+import dev.turjo.paperless.core.model.SignaturePlacement
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -30,7 +31,11 @@ class AnnotationRepositoryTest {
             rects = listOf(PageRect(24.5f, 40f, 100f, 51f), PageRect(24f, 52f, 88f, 63f)),
         )
         val note = ink.copy(id = "note", type = AnnotationType.NOTE, note = "Café \"quote\"\nবাংলা")
-        for (mark in listOf(ink, highlight, note)) {
+        val signature = Annotation(
+            "signature", key, 3, AnnotationType.SIGNATURE, 0, 0f,
+            signature = SignaturePlacement("image", PageRect(0.125f, 0.5f, 0.375f, 0.625f)),
+        )
+        for (mark in listOf(ink, highlight, note, signature)) {
             assertEquals(mark, AnnotationPayload.decode(AnnotationPayload.encode(mark, 1)))
         }
     }

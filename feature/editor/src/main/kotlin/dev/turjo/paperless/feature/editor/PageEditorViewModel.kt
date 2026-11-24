@@ -252,7 +252,7 @@ internal class PageEditorViewModel @AssistedInject constructor(
         viewModelScope.launch {
             try {
                 val latest = requireNotNull(documents.getPage(pageId))
-                documents.updatePage(edits.applyTo(latest))
+                documents.updatePageEdits(edits.applyTo(latest))
                 processing.enqueueRender(pageId)
                 mutable.update { it.copy(saved = true, dirty = false) }
             } catch (error: CancellationException) {
@@ -281,5 +281,5 @@ internal class PageEditorViewModel @AssistedInject constructor(
 
 internal fun Page.originalComparison() = copy(
     filter = PageFilter.ORIGINAL, brightness = 0f, contrast = 0f, shadowFix = false, glareFix = false,
-    deskew = false, inkRemoval = null,
+    deskew = false, inkRemoval = null, signatures = emptyList(),
 )
