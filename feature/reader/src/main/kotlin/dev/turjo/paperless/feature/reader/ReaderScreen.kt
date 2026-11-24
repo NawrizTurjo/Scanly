@@ -289,7 +289,7 @@ fun ReaderScreen(
                 )
                 document == null -> CircularProgressIndicator()
                 else -> {
-                    val primary: @Composable () -> Unit = {
+                    val primary: @Composable (((Boolean) -> Unit)?) -> Unit = { onTagScroll ->
                         key(tab.tabId, document) {
                             ReaderPages(
                                 document = document,
@@ -314,6 +314,7 @@ fun ReaderScreen(
                                 onPageTap = onPageTap,
                                 onLockedTap = if (chrome.locked) revealLock else null,
                                 onSelectionChanged = onSelectionChanged,
+                                onTagScroll = onTagScroll,
                             )
                         }
                     }
@@ -322,7 +323,7 @@ fun ReaderScreen(
                             tone, chrome, pagePadding, systemBars.only(WindowInsetsSides.Horizontal),
                             onPageTap, if (chrome.locked) revealLock else null,
                             onSelectionChanged, primary)
-                    } else primary()
+                    } else primary(null)
                 }
             }
         }
@@ -663,10 +664,12 @@ private fun SplitReader(
     onPageTap: () -> Unit,
     onLockedTap: (() -> Unit)?,
     onSelectionChanged: (Boolean) -> Unit,
-    primary: @Composable () -> Unit,
+    primary: @Composable (((Boolean) -> Unit)?) -> Unit,
 ) {
     var fraction by rememberSaveable { mutableFloatStateOf(0.5f) }
     val same = left.pdfKey == right.pdfKey
+    var leftScrolling by remember(left.tabId, right.tabId) { mutableStateOf(false) }
+    var rightScrolling by remember(left.tabId, right.tabId) { mutableStateOf(false) }
     val opened = key(right.pdfKey, same) {
         val other by produceState<Pair<Boolean, PdfDocumentHandle?>>(false to null) {
             if (!same) value = true to viewModel.openPane(right.pdfKey)
@@ -683,7 +686,9 @@ private fun SplitReader(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = with(LocalDensity.current) { maxWidth.toPx().coerceAtLeast(1f) }
         Row(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(fraction).fillMaxHeight()) { primary() }
+            Box(Modifier.weight(fraction).fillMaxHeight()) {
+                primary(if (same) ({ leftScrolling = it }) else null)
+            }
             Box(Modifier.width(12.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant)
                 .pointerInput(width) {
                     detectHorizontalDragGestures { change, pixels ->
@@ -709,6 +714,7 @@ private fun SplitReader(
                         onPageTap = onPageTap,
                         onLockedTap = onLockedTap,
                         onSelectionChanged = onSelectionChanged,
+                        onTagScroll = if (same) ({ rightScrolling = it }) else null,
                         onPosition = { page, offset ->
                             positions[right.tabId] = (positions[right.tabId] ?: pane).copy(page = page, scrollOffsetPx = offset)
                             if (!same) viewModel.updateOtherPosition(right.tabId, document.pageCount, page, offset)
@@ -720,6 +726,15 @@ private fun SplitReader(
                     )
                 }
             }
+        }
+        if (same) {
+            val total = activeDocument.pageCount
+            val first = left.page.coerceIn(0, total - 1) + 1
+            val last = (positions[right.tabId] ?: right).page.coerceIn(0, total - 1) + 1
+            ReaderPageTag(
+                minOf(first, last), maxOf(first, last), total, leftScrolling || rightScrolling,
+                Modifier.align(Alignment.CenterEnd).windowInsetsPadding(overlayInsets),
+            )
         }
     }
 }

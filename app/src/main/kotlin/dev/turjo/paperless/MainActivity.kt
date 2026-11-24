@@ -45,6 +45,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
+import dev.turjo.paperless.feature.settings.UpdatesViewModel
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ViewModelProvider(this)[UpdatesViewModel::class.java].checkOnStartup()
         enableEdgeToEdge()
         setRecentsPreviewAllowed(false)
         val initialStack = startBackStack(intent.getStringExtra(ROUTE_EXTRA))
