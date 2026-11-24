@@ -8,6 +8,7 @@ import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
+import dev.turjo.paperless.core.model.PageFilter
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -67,6 +68,8 @@ class DataStoreSettingsRepositoryTest {
     @Test
     fun preferencesPersistAcrossDataStoreInstances() = runTest {
         val changes: List<Pair<UserSettings, suspend (SettingsRepository) -> Unit>> = listOf(
+            UserSettings(defaultScanFilter = PageFilter.GRAY) to { it.setDefaultScanFilter(PageFilter.GRAY) },
+            UserSettings(defaultScanDeskew = false) to { it.setDefaultScanDeskew(false) },
             UserSettings(amoledBlack = true) to { it.setAmoledBlack(true) },
             UserSettings(accent = AccentColor.ROSE) to { it.setAccent(AccentColor.ROSE) },
             UserSettings(autoNamePattern = "{n} {date}") to { it.setAutoNamePattern("{n} {date}") },

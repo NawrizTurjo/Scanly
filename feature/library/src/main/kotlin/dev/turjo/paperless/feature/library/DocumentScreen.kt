@@ -25,6 +25,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import dev.turjo.paperless.core.data.isIdComposite
+import dev.turjo.paperless.core.designsystem.PageBatchSheet
 import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
@@ -62,6 +64,7 @@ fun DocumentScreen(
             snackbar.showSnackbar(duplicateDone)
         }
     }
+    var batchSheet by rememberSaveable(documentId) { mutableStateOf(false) }
     var rename by rememberSaveable(documentId) { mutableStateOf(false) }
     var pickPosition by rememberSaveable(documentId) { mutableStateOf(false) }
     var deleteDocument by rememberSaveable(documentId) { mutableStateOf(false) }
@@ -77,12 +80,16 @@ fun DocumentScreen(
         }
     }
 
+    LibraryBackHandler(state.applyingBatch) {}
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    GlyphButton(R.string.detail_back_icon, stringResource(R.string.detail_back), onBack)
+                    GlyphButton(
+                        R.string.detail_back_icon, stringResource(R.string.detail_back),
+                        enabled = !state.applyingBatch, onClick = onBack,
+                    )
                 },
                 title = {
                     document?.let {
@@ -105,7 +112,7 @@ fun DocumentScreen(
                             if (it.document.isFavorite) R.string.detail_star_full else R.string.detail_star_empty,
                             label, onClick = { model.favorite() },
                         )
-                        TextButton(enabled = !state.sharing && !state.savingOrder, onClick = {
+                        TextButton(enabled = !state.sharing && !state.savingOrder && !state.applyingBatch, onClick = {
                             model.share { files, mime ->
                                 context.startActivity(ShareIntents.forFiles(context, files, mime))
                             }
@@ -122,7 +129,7 @@ fun DocumentScreen(
                     var addMenu by remember { mutableStateOf(false) }
                     var moreMenu by remember { mutableStateOf(false) }
                     Box {
-                        TextButton(enabled = !state.savingOrder, onClick = { addMenu = true }) {
+                        TextButton(enabled = !state.savingOrder && !state.applyingBatch, onClick = { addMenu = true }) {
                             Text(stringResource(R.string.detail_add_pages))
                         }
                         DropdownMenu(addMenu, { addMenu = false }) {
@@ -136,12 +143,14 @@ fun DocumentScreen(
                             )
                         }
                     }
-                    TextButton(enabled = !state.savingOrder, onClick = { onExport(documentId) }) {
+                    TextButton(enabled = !state.savingOrder && !state.applyingBatch, onClick = { onExport(documentId) }) {
                         Text(stringResource(R.string.detail_export))
                     }
                     Spacer(Modifier.weight(1f))
                     Box {
-                        GlyphButton(R.string.detail_more_icon, stringResource(R.string.detail_more)) { moreMenu = true }
+                        GlyphButton(
+                            R.string.detail_more_icon, stringResource(R.string.detail_more), enabled = !state.applyingBatch,
+                        ) { moreMenu = true }
                         DropdownMenu(moreMenu, { moreMenu = false }) {
                             if (onOpenInReader != null) {
                                 DropdownMenuItem(
@@ -153,6 +162,14 @@ fun DocumentScreen(
                                     },
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.detail_apply_all)) },
+                                enabled = !state.applyingBatch && !state.savingOrder && document.pages.any { !it.isIdComposite },
+                                onClick = {
+                                    moreMenu = false
+                                    batchSheet = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.library_duplicate)) },
                                 onClick = { moreMenu = false; model.duplicate() },
@@ -177,7 +194,7 @@ fun DocumentScreen(
     ) { padding ->
         val content = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
         Column(content) {
-            if (state.sharing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.sharing || state.applyingBatch) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (document != null) {
                 DocumentPages(
                     document, state, busy, model, onViewPage,
@@ -191,6 +208,19 @@ fun DocumentScreen(
                 }
             }
         }
+    }
+
+    val editablePages = document?.pages.orEmpty().filterNot { it.isIdComposite }
+    if (batchSheet && editablePages.isNotEmpty()) {
+        PageBatchSheet(
+            title = stringResource(R.string.detail_apply_all),
+            pages = editablePages,
+            onDismiss = { batchSheet = false },
+            onApply = {
+                batchSheet = false
+                model.applyToAllPages(it)
+            },
+        )
     }
 
     if (editTags && document != null) {
@@ -289,8 +319,9 @@ private fun DocumentPages(
             ReorderableItem(reorderable, key = id) { dragging ->
                 PageCard(
                     page, index + 1, id in busy, dragging, model,
+                    enabled = !state.applyingBatch,
                     dragHandle = Modifier.longPressDraggableHandle(
-                        enabled = !state.savingOrder && !state.sharing,
+                        enabled = !state.savingOrder && !state.sharing && !state.applyingBatch,
                         onDragStopped = {
                             if (order != savedOrder) model.reorder(order)
                         },
@@ -310,6 +341,7 @@ private fun PageCard(
     busy: Boolean,
     dragging: Boolean,
     model: DocumentViewModel,
+    enabled: Boolean,
     dragHandle: Modifier,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
@@ -328,7 +360,7 @@ private fun PageCard(
     var menu by remember { mutableStateOf(false) }
     ElevatedCard(elevation = CardDefaults.elevatedCardElevation(if (dragging) 8.dp else 1.dp)) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(0.85f).clickable(onClickLabel = pageLabel, onClick = onOpen),
+            Modifier.fillMaxWidth().aspectRatio(0.85f).clickable(enabled = enabled, onClickLabel = pageLabel, onClick = onOpen),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
@@ -347,7 +379,7 @@ private fun PageCard(
             }
             Text(number.toString(), Modifier.weight(1f), maxLines = 1)
             Box {
-                GlyphButton(R.string.detail_more_icon, stringResource(R.string.detail_page_actions)) { menu = true }
+                GlyphButton(R.string.detail_more_icon, stringResource(R.string.detail_page_actions), enabled) { menu = true }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.detail_rotate_left)) },
@@ -391,8 +423,8 @@ private fun InsertPositionDialog(count: Int, onDismiss: () -> Unit, onSelect: (I
 }
 
 @Composable
-internal fun GlyphButton(glyph: Int, label: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = label }) {
+internal fun GlyphButton(glyph: Int, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) {
         Text(stringResource(glyph), Modifier.clearAndSetIconText(), style = MaterialTheme.typography.headlineSmall)
     }
 }

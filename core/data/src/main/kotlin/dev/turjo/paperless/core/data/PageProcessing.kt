@@ -21,6 +21,7 @@ import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageBlankInfo
 import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
+import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.Quad
 import dev.turjo.paperless.core.model.paramsHash
 import java.io.File
@@ -31,10 +32,12 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -52,8 +55,8 @@ data class PixelSize(val width: Int, val height: Int)
 
 interface PageProcessing {
     val busyPageIds: StateFlow<Set<String>>
-    fun enqueueNewPage(pageId: String, filter: PageFilter = PageFilter.DOCUMENT)
-    fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter = PageFilter.DOCUMENT) =
+    fun enqueueNewPage(pageId: String, filter: PageFilter)
+    fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) =
         enqueueNewPage(pageId, filter)
     /**
      * [hint] is the quad the live camera overlay held steady at capture (normalized upright TL, TR, BR, BL). Plain
@@ -62,6 +65,9 @@ interface PageProcessing {
     fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) =
         enqueueNewPage(pageId, mode, filter)
     suspend fun createIdComposite(sourceIds: List<String>): Boolean = false
+
+    fun enqueueNewPage(pageId: String, mode: PageMode = PageMode.NORMAL, hint: FloatArray? = null) =
+        enqueueNewPage(pageId, mode, PageFilter.DOCUMENT, hint)
     suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean = false
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
@@ -88,7 +94,8 @@ class QueuedPageProcessing internal constructor(
     private val files: FileStore,
     private val thumbnails: ThumbnailMaker,
     private val scope: CoroutineScope,
-    private val renderPage: ((File, ProcessParams, File) -> ProcessResult)?,
+    private val settings: Flow<UserSettings> = flowOf(UserSettings()),
+    private val renderPage: ((File, ProcessParams, File) -> ProcessResult)? = null,
 ) : PageProcessing {
     @Inject
     constructor(
@@ -96,7 +103,8 @@ class QueuedPageProcessing internal constructor(
         files: FileStore,
         thumbnails: ThumbnailMaker,
         @ApplicationScope scope: CoroutineScope,
-    ) : this(documents, files, thumbnails, scope, null)
+        settings: SettingsRepository,
+    ) : this(documents, files, thumbnails, scope, settings.settings)
 
     // Two pages at a time (a 12 MP page needs ~150 MB of native memory while it renders); one job per page at a time.
     private val worker = Dispatchers.Default.limitedParallelism(PARALLEL_PAGES)
@@ -117,8 +125,15 @@ class QueuedPageProcessing internal constructor(
     override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) =
         enqueueNewPage(pageId, mode, filter, null)
 
-    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) = submit(pageId) {
+    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) =
+        prepareNewPage(pageId, mode, filter, hint)
+
+    override fun enqueueNewPage(pageId: String, mode: PageMode, hint: FloatArray?) =
+        prepareNewPage(pageId, mode, null, hint)
+
+    private fun prepareNewPage(pageId: String, mode: PageMode, filter: PageFilter?, hint: FloatArray?) = submit(pageId) {
         val page = documents.getPage(pageId) ?: return@submit
+        val defaults = settings.first()
         val source = File(page.originalPath)
         val detectStart = System.nanoTime()
         val fromHint = hint?.takeIf { mode == PageMode.NORMAL || mode == PageMode.WHITEBOARD }?.let { start ->
@@ -130,7 +145,20 @@ class QueuedPageProcessing internal constructor(
             .onFailure { Log.w(TAG, "Detection failed for $pageId", it) }
             .getOrNull()
         Log.d(TIMING, "detect ${(System.nanoTime() - detectStart) / 1_000_000} ms")
-        val prepared = page.copy(mode = mode, quad = detected?.let(Quad::fromArray), filter = filter)
+        val isCard = mode.cardAspect() != null
+        val prepared = page.copy(
+            mode = mode,
+            quad = detected?.let(Quad::fromArray),
+            filter = when {
+                isCard -> PageFilter.AUTO
+                mode == PageMode.WHITEBOARD -> PageFilter.WHITEBOARD
+                filter != null -> filter
+                mode == PageMode.NORMAL -> defaults.defaultScanFilter
+                else -> PageFilter.DOCUMENT
+            },
+            glareFix = isCard || mode == PageMode.WHITEBOARD || page.glareFix,
+            deskew = !isCard && defaults.defaultScanDeskew,
+        )
         if (mode == PageMode.BOOK_L) {
             val halves = detected?.let {
                 runCatching { BookSplitter.split(source, it) }
@@ -150,16 +178,7 @@ class QueuedPageProcessing internal constructor(
                 documents.updatePage(prepared.copy(mode = PageMode.NORMAL))
             }
         } else {
-            val glareMode = mode.cardAspect() != null || mode == PageMode.WHITEBOARD
-            documents.updatePage(prepared.copy(
-                filter = when {
-                    mode == PageMode.WHITEBOARD -> PageFilter.WHITEBOARD
-                    mode.cardAspect() != null -> PageFilter.AUTO
-                    else -> filter
-                },
-                glareFix = glareMode || page.glareFix,
-                deskew = !glareMode && page.deskew,
-            ))
+            documents.updatePage(prepared)
         }
         render(pageId)
     }

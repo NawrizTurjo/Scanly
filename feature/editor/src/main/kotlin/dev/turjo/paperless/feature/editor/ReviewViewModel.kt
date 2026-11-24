@@ -1,6 +1,5 @@
 package dev.turjo.paperless.feature.editor
 
-import android.graphics.Bitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,13 +7,14 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.turjo.paperless.core.data.applyBatchEdits
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.FileStore
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.Page
-import dev.turjo.paperless.core.model.PageFilter
+import dev.turjo.paperless.core.model.PageBatchEdits
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.splitGroups
 import java.io.File
@@ -126,15 +126,6 @@ internal class ReviewViewModel(
     }
 
     fun message(resource: Int?) = mutable.update { it.copy(message = resource) }
-
-    suspend fun presetPreview(page: Page, filter: PageFilter): Bitmap? = try {
-        processing.previewBitmap(page.copy(filter = filter), 240)
-    } catch (error: CancellationException) {
-        throw error
-    } catch (_: Exception) {
-        message(R.string.editor_preview_error)
-        null
-    }
 
     private fun setGroups(groups: List<ReviewGroup>) {
         if (state.value.groups == groups) return
@@ -279,16 +270,8 @@ internal class ReviewViewModel(
         documents.deletePage(id)
     }
 
-    fun filterAll(filter: PageFilter) = change {
-        val current = state.value
-        val ids = if (current.groups.isEmpty()) current.pages.map { it.page.id } else current.groups.flatMap { it.kept }
-        for (id in ids) {
-            processing.awaitIdle(listOf(id))
-            val page = documents.getPage(id) ?: continue
-            if (page.isIdComposite) continue
-            documents.updatePage(page.copy(filter = filter))
-            processing.enqueueRender(id)
-        }
+    fun applyToAllPages(edits: PageBatchEdits) = change {
+        processing.applyBatchEdits(documents, state.value.pages.map { it.page.id }, edits)
     }
 
     fun save(title: String) = change {

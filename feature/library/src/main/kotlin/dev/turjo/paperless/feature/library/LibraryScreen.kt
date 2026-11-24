@@ -470,7 +470,7 @@ internal fun UnsavedScanCard(
 }
 
 @Composable
-private fun LibraryBackHandler(enabled: Boolean, onBack: () -> Unit) {
+internal fun LibraryBackHandler(enabled: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val dispatcher = remember(context) { context.findBackDispatcherOwner()?.onBackPressedDispatcher }
     val lifecycle = LocalLifecycleOwner.current
@@ -495,7 +495,7 @@ private tailrec fun Context.findBackDispatcherOwner(): OnBackPressedDispatcherOw
 
 @Composable
 private fun LibraryBackButton(onClick: () -> Unit) {
-    GlyphButton(R.string.detail_back_icon, stringResource(R.string.detail_back), onClick)
+    GlyphButton(R.string.detail_back_icon, stringResource(R.string.detail_back), onClick = onClick)
 }
 
 @Composable

@@ -113,4 +113,7 @@
     <string name="ocr_bengali">Bengali</string>
     <string name="ocr_both">English + Bengali</string>
     <string name="help_ocr_body">Open Text in the page viewer to copy or share words from a scan. Search in the library uses recognised text. After a backup restore, the app recognises the restored pages again when automatic text recognition is on.</string>
+    <string name="new_scans">New scans</string>
+    <string name="default_scan_filter">Default filter</string>
+    <string name="default_scan_deskew">Straighten pages automatically</string>
 </resources>

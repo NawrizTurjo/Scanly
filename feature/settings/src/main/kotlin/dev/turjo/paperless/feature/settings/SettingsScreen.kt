@@ -43,6 +43,8 @@ import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.OcrLanguage
 import dev.turjo.paperless.core.model.formatAutoName
+import dev.turjo.paperless.core.designsystem.pageFilterLabel
+import dev.turjo.paperless.core.model.NEW_SCAN_FILTERS
 import java.time.LocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +109,22 @@ fun SettingsScreen(
                     AutoCaptureSensitivity.HIGH -> R.string.sensitivity_high
                 })
             }
+
+            SettingLabel(R.string.new_scans)
+            SettingChoices(
+                R.string.default_scan_filter,
+                NEW_SCAN_FILTERS,
+                settings.defaultScanFilter,
+                viewModel::setDefaultScanFilter,
+            ) { pageFilterLabel(it) }
+            ListItem(
+                trailingContent = { Switch(checked = settings.defaultScanDeskew, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = settings.defaultScanDeskew,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setDefaultScanDeskew,
+                ),
+            ) { Text(stringResource(R.string.default_scan_deskew)) }
 
             HorizontalDivider()
             SectionHeading(R.string.text_recognition)

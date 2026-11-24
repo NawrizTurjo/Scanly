@@ -112,4 +112,5 @@
     <string name="library_no_tags">No tags yet. Add a tag from a document.</string>
     <string name="library_tag_count">%1$d</string>
     <string name="library_close">Close</string>
+    <string name="detail_apply_all">Apply to all pages</string>
 </resources>

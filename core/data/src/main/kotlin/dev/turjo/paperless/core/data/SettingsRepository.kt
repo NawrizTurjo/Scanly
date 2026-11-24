@@ -14,6 +14,8 @@ import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.OcrLanguage
+import dev.turjo.paperless.core.model.NEW_SCAN_FILTERS
+import dev.turjo.paperless.core.model.PageFilter
 import java.io.IOException
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +35,8 @@ interface SettingsRepository {
     suspend fun setAutoCaptureSensitivity(sensitivity: AutoCaptureSensitivity)
     suspend fun setAutomaticOcr(enabled: Boolean)
     suspend fun setOcrLanguage(language: OcrLanguage)
+    suspend fun setDefaultScanFilter(filter: PageFilter)
+    suspend fun setDefaultScanDeskew(enabled: Boolean)
 }
 
 class DataStoreSettingsRepository @Inject constructor(
@@ -44,6 +48,9 @@ class DataStoreSettingsRepository @Inject constructor(
         }
         .map { preferences ->
             UserSettings(
+                defaultScanFilter = NEW_SCAN_FILTERS.find { it.name == preferences[DEFAULT_SCAN_FILTER] }
+                    ?: defaults.defaultScanFilter,
+                defaultScanDeskew = preferences[DEFAULT_SCAN_DESKEW] ?: defaults.defaultScanDeskew,
                 automaticOcr = preferences[AUTOMATIC_OCR] ?: defaults.automaticOcr,
                 ocrLanguage = OcrLanguage.entries.find { it.name == preferences[OCR_LANGUAGE] } ?: defaults.ocrLanguage,
                 themeMode = ThemeMode.entries.find { it.name == preferences[THEME_MODE] }
@@ -106,7 +113,18 @@ class DataStoreSettingsRepository @Inject constructor(
         dataStore.edit { it[OCR_LANGUAGE] = language.name }
     }
 
+    override suspend fun setDefaultScanFilter(filter: PageFilter) {
+        require(filter in NEW_SCAN_FILTERS)
+        dataStore.edit { it[DEFAULT_SCAN_FILTER] = filter.name }
+    }
+
+    override suspend fun setDefaultScanDeskew(enabled: Boolean) {
+        dataStore.edit { it[DEFAULT_SCAN_DESKEW] = enabled }
+    }
+
     private companion object {
+        val DEFAULT_SCAN_FILTER = stringPreferencesKey("default_scan_filter")
+        val DEFAULT_SCAN_DESKEW = booleanPreferencesKey("default_scan_deskew")
         val AUTOMATIC_OCR = booleanPreferencesKey("automatic_ocr")
         val OCR_LANGUAGE = stringPreferencesKey("ocr_language")
         val defaults = UserSettings()

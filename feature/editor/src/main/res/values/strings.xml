@@ -38,7 +38,7 @@
     <string name="review_discard_all">Discard all</string>
     <string name="review_export">Export as PDF or images…</string>
     <string name="review_discard_body">All pages from this scan will be deleted.</string>
-    <string name="review_filter_all">Filter all</string>
+    <string name="review_apply_all">Apply to all pages</string>
     <string name="review_add_more">Add more</string>
     <string name="review_save">Save</string>
     <string name="review_save_title">Save scan</string>
