@@ -44,16 +44,45 @@ class QuadDetector {
     fun detect(bgr: Mat, refine: Boolean = true, aspectPrior: Float? = null): Detection {
         require(!bgr.empty() && bgr.type() == CvType.CV_8UC3)
         require(aspectPrior == null || (aspectPrior.isFinite() && aspectPrior > 0))
+        val timer = StageTimer()
         val workingScale = imageScale(bgr, 1000)
         val result = withResized(bgr, workingScale) { detectWorking(it, aspectPrior) }
-        var quad = result.quad?.divideByScale(workingScale) ?: return result
+        timer.mark("search")
+        var quad = result.quad?.divideByScale(workingScale) ?: return result.also { timer.log("detect (none)") }
         if (refine) {
             val refineScale = imageScale(bgr, 2000)
             quad = withResized(bgr, refineScale) { big ->
                 refine(big, FloatArray(8) { quad[it] * refineScale.toFloat() })
             }.divideByScale(refineScale)
+            timer.mark("refine")
         }
+        timer.log("detect")
         return Detection(Geometry.orderQuad(quad), result.confidence)
+    }
+
+    /**
+     * Refines [quad] (working-image pixels) against the edges of [bgr]; null when a side doesn't fit or a corner would
+     * move more than the refine step allows, or the quad is too small or not convex to be a page.
+     */
+    internal fun refineHint(bgr: Mat, quad: FloatArray): FloatArray? {
+        val ordered = Geometry.orderQuad(quad)
+        val area = abs(shoelace(ordered))
+        if (area < 0.08 * bgr.cols() * bgr.rows()) return null
+        val first = refine(bgr, ordered)
+        if (first === ordered || first.contentEquals(Geometry.orderQuad(ordered))) return null
+        // The overlay quad can be a few percent off; a second pass starts on the edges and settles there.
+        val start = Geometry.orderQuad(first)
+        val second = refine(bgr, start)
+        return Geometry.orderQuad(if (second === start || second.contentEquals(Geometry.orderQuad(start))) first else second)
+    }
+
+    private fun shoelace(q: FloatArray): Double {
+        var sum = 0.0
+        for (i in 0..3) {
+            val j = (i + 1) % 4
+            sum += q[2 * i].toDouble() * q[2 * j + 1] - q[2 * j].toDouble() * q[2 * i + 1]
+        }
+        return sum / 2
     }
 
     internal fun detectLive(gray: Mat): Detection =

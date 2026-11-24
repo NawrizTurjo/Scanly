@@ -15,6 +15,7 @@ import dev.turjo.paperless.core.imaging.PageTools
 import dev.turjo.paperless.core.imaging.ProcessParams
 import dev.turjo.paperless.core.imaging.ProcessResult
 import dev.turjo.paperless.core.imaging.detectOnFile
+import dev.turjo.paperless.core.imaging.refineOnFile
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.model.PageBlankInfo
 import dev.turjo.paperless.core.model.PageFilter
@@ -36,7 +37,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.Mat
@@ -51,6 +54,12 @@ interface PageProcessing {
     fun enqueueNewPage(pageId: String, filter: PageFilter = PageFilter.DOCUMENT)
     fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter = PageFilter.DOCUMENT) =
         enqueueNewPage(pageId, filter)
+    /**
+     * [hint] is the quad the live camera overlay held steady at capture (normalized upright TL, TR, BR, BL). Plain
+     * pages then only refine it instead of running the full search.
+     */
+    fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) =
+        enqueueNewPage(pageId, mode, filter)
     suspend fun updateIdLayout(pageId: String, layout: IdCardLayout): Boolean = false
     fun enqueueRender(pageId: String)
     suspend fun awaitIdle(pageIds: Collection<String>)
@@ -87,9 +96,12 @@ class QueuedPageProcessing internal constructor(
         @ApplicationScope scope: CoroutineScope,
     ) : this(documents, files, thumbnails, scope, null)
 
-    private val worker = Dispatchers.Default.limitedParallelism(1)
+    // Two pages at a time (a 12 MP page needs ~150 MB of native memory while it renders); one job per page at a time.
+    private val worker = Dispatchers.Default.limitedParallelism(PARALLEL_PAGES)
+    private val slots = Semaphore(PARALLEL_PAGES)
+    private val pageLocks = ConcurrentHashMap<String, Mutex>()
+    private val compositeLock = Mutex()
     private val previewLock = Mutex()
-    private val processingLock = Mutex()
     private val processor = ImagingPageProcessor()
     private val pending = mutableMapOf<String, Int>()
     private val busy = MutableStateFlow<Set<String>>(emptySet())
@@ -100,12 +112,22 @@ class QueuedPageProcessing internal constructor(
     override fun enqueueNewPage(pageId: String, filter: PageFilter) =
         enqueueNewPage(pageId, PageMode.NORMAL, filter)
 
-    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) = submit(pageId) {
+    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter) =
+        enqueueNewPage(pageId, mode, filter, null)
+
+    override fun enqueueNewPage(pageId: String, mode: PageMode, filter: PageFilter, hint: FloatArray?) = submit(pageId) {
         val page = documents.getPage(pageId) ?: return@submit
         val source = File(page.originalPath)
-        val detected = runCatching { detectOnFile(source, aspectPrior = mode.cardAspect()).quad }
+        val detectStart = System.nanoTime()
+        val fromHint = hint?.takeIf { mode == PageMode.NORMAL || mode == PageMode.WHITEBOARD }?.let { start ->
+            runCatching { refineOnFile(source, start) }
+                .onFailure { Log.w(TAG, "Hint refinement failed for $pageId", it) }
+                .getOrNull()
+        }
+        val detected = fromHint ?: runCatching { detectOnFile(source, aspectPrior = mode.cardAspect()).quad }
             .onFailure { Log.w(TAG, "Detection failed for $pageId", it) }
             .getOrNull()
+        Log.d(TIMING, "detect ${(System.nanoTime() - detectStart) / 1_000_000} ms")
         val prepared = page.copy(mode = mode, quad = detected?.let(Quad::fromArray), filter = filter)
         if (mode == PageMode.BOOK_L) {
             val halves = detected?.let {
@@ -156,8 +178,8 @@ class QueuedPageProcessing internal constructor(
         markPending(pageId)
         try {
             return withContext(worker) {
-                processingLock.withLock {
-                    val composite = documents.idComposite(pageId) ?: return@withLock false
+                slots.withPermit {
+                    val composite = documents.idComposite(pageId) ?: return@withPermit false
                     recomposeIdCard(composite.copy(layout = layout))
                 }
             }
@@ -166,7 +188,11 @@ class QueuedPageProcessing internal constructor(
         }
     }
 
-    private suspend fun recomposeIdCard(composite: IdComposite): Boolean {
+    private suspend fun recomposeIdCard(composite: IdComposite): Boolean = compositeLock.withLock {
+        recomposeIdCardLocked(composite)
+    }
+
+    private suspend fun recomposeIdCardLocked(composite: IdComposite): Boolean {
         val front = composite.frontId?.let { documents.getPage(it) } ?: return false
         val back = documents.getPage(composite.backId) ?: return false
         val page = documents.getPage(composite.pageId) ?: return false
@@ -263,7 +289,7 @@ class QueuedPageProcessing internal constructor(
         markPending(pageId)
         scope.launch(worker) {
             try {
-                processingLock.withLock { block() }
+                pageLocks.getOrPut(pageId) { Mutex() }.withLock { slots.withPermit { block() } }
             } catch (error: Exception) {
                 Log.e(TAG, "Processing failed for $pageId", error)
             } finally {
@@ -284,7 +310,9 @@ class QueuedPageProcessing internal constructor(
         val original = File(page.originalPath)
         val params = page.toParams(1f)
         val result = renderPage?.invoke(original, params, processed) ?: processor.process(original, params, processed)
+        val thumbStart = System.nanoTime()
         thumbnails.make(processed, pageId)
+        Log.d(TIMING, "thumbnail ${(System.nanoTime() - thumbStart) / 1_000_000} ms")
         // Re-read: the user may have edited the page while it rendered; keep their params, record what we rendered.
         val latest = documents.getPage(pageId) ?: return
         documents.updatePage(
@@ -372,6 +400,8 @@ class QueuedPageProcessing internal constructor(
 
     private companion object {
         const val TAG = "PageProcessing"
+        const val TIMING = "ScanTiming"
+        const val PARALLEL_PAGES = 2
         const val PREVIEW_SOURCE_SIDE = 1600
     }
 

@@ -17,6 +17,7 @@ import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.data.PixelSize
 import dev.turjo.paperless.core.data.ScanSessionRepository
 import dev.turjo.paperless.core.model.DocumentWithPages
+import dev.turjo.paperless.core.model.PageFilter
 import dev.turjo.paperless.core.model.PageMode
 import dev.turjo.paperless.core.model.ScanSession
 import dev.turjo.paperless.core.model.interleaveDuplex
@@ -291,12 +292,14 @@ internal class CameraViewModel internal constructor(
     fun capture(controller: CaptureController) {
         if (!state.value.canEdit) return
         autoCapture.startCapture(latestQuad)
+        // A quad the overlay held steady is where the page is; processing then skips the full search (~2 s/page).
+        val hint = latestQuad?.takeIf { it.stableForMillis >= HINT_STABLE_MILLIS }?.points?.copyOf()
         mutableState.update { it.copy(capturing = true, autoCaptureProgress = null) }
         viewModelScope.launch {
             var captured = false
             try {
                 captured = reportErrors {
-                    val finished = addPage { file ->
+                    val finished = addPage(hint) { file ->
                         controller.capture(file)
                         eventChannel.trySend(CameraEvent.Captured)
                     }
@@ -482,11 +485,11 @@ internal class CameraViewModel internal constructor(
         }
     }
 
-    private suspend fun addPage(write: suspend (File) -> Unit): Boolean {
+    private suspend fun addPage(hint: FloatArray? = null, write: suspend (File) -> Unit): Boolean {
         val current = state.value
         val mode = if (current.idBack) PageMode.ID_BACK else current.mode.pageMode
         withContext(NonCancellable) {
-            val pageId = persistPage(mode, write)
+            val pageId = persistPage(mode, hint.takeIf { current.duplexPhase == null }, write)
             current.duplexPhase?.let { side ->
                 updateDuplex(duplex.copy(sides = duplex.sides + (pageId to side)))
             }
@@ -499,7 +502,8 @@ internal class CameraViewModel internal constructor(
         return current.singleMode
     }
 
-    private suspend fun persistPage(mode: PageMode, write: suspend (File) -> Unit): String = withContext(io + NonCancellable) {
+    private suspend fun persistPage(mode: PageMode, hint: FloatArray?, write: suspend (File) -> Unit): String =
+        withContext(io + NonCancellable) {
         // A started write can outlive the screen. Keep file cleanup and queue submission together.
         val temp = newTempFile()
         val page = try {
@@ -510,12 +514,13 @@ internal class CameraViewModel internal constructor(
         } finally {
             temp.delete()
         }
-        processing.enqueueNewPage(page.id, mode)
+        processing.enqueueNewPage(page.id, mode, PageFilter.DOCUMENT, hint)
         page.id
     }
 
     private companion object {
         var lastSessionMode: Pair<String, ScanMode>? = null
+        const val HINT_STABLE_MILLIS = 500L
     }
 
     private suspend fun reportErrors(block: suspend () -> Unit): Boolean = try {
