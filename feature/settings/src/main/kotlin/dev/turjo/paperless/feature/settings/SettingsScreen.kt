@@ -41,6 +41,7 @@ import dev.turjo.paperless.core.model.AUTO_CAPTURE_DELAYS_MS
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.ThemeMode
+import dev.turjo.paperless.core.model.OcrLanguage
 import dev.turjo.paperless.core.model.formatAutoName
 import java.time.LocalDateTime
 
@@ -106,6 +107,23 @@ fun SettingsScreen(
                 })
             }
 
+            HorizontalDivider()
+            SectionHeading(R.string.text_recognition)
+            ListItem(
+                trailingContent = { Switch(checked = settings.automaticOcr, onCheckedChange = null) },
+                modifier = Modifier.toggleable(
+                    value = settings.automaticOcr,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setAutomaticOcr,
+                ),
+            ) { Text(stringResource(R.string.automatic_ocr)) }
+            SettingChoices(R.string.ocr_language, OcrLanguage.entries, settings.ocrLanguage, viewModel::setOcrLanguage) {
+                stringResource(when (it) {
+                    OcrLanguage.ENGLISH -> R.string.ocr_english
+                    OcrLanguage.BENGALI -> R.string.ocr_bengali
+                    OcrLanguage.BOTH -> R.string.ocr_both
+                })
+            }
             HorizontalDivider()
             SectionHeading(R.string.security)
             val keyguard = LocalContext.current.getSystemService(KeyguardManager::class.java)

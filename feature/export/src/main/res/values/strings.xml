@@ -62,4 +62,7 @@
     <string name="export_pipeline_order">Runs top to bottom, then password</string>
     <string name="export_top_left">Top left</string>
     <string name="export_top_center">Top center</string>
+    <string name="export_searchable_text">Searchable text</string>
+    <string name="export_searchable_text_hint">Add a text layer so the PDF can be searched and copied. Words the PDF font cannot encode, including Bengali, stay searchable in Scanly.</string>
+    <string name="export_ocr_progress">Recognising text on page %1$d of %2$d…</string>
 </resources>

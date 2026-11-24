@@ -6,6 +6,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.font.PDTrueTypeFont
+import com.tom_roush.pdfbox.pdmodel.font.encoding.WinAnsiEncoding
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import java.io.File
 import java.io.OutputStream
@@ -28,6 +30,11 @@ class PdfExporter(context: Context) {
         PDDocument(scratch).use { document ->
             document.documentInformation.title = title ?: "Scanly"
             document.documentInformation.producer = "Scanly"
+            val textFont by lazy {
+                appContext.assets.open("com/tom_roush/pdfbox/resources/ttf/LiberationSans-Regular.ttf").use {
+                    PDTrueTypeFont.load(document, it, WinAnsiEncoding.INSTANCE)
+                }
+            }
 
             for (source in pages) {
                 ensureActive()
@@ -47,6 +54,7 @@ class PdfExporter(context: Context) {
                     }
                     PDPageContentStream(document, page).use {
                         it.drawImage(image, placement.x, placement.y, placement.w, placement.h)
+                        if (source.words.isNotEmpty()) writeSearchableText(it, source, placement, textFont)
                     }
                 } finally {
                     temp?.delete()

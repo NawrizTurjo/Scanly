@@ -14,6 +14,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class PaperlessDataModule {
     @Binds
+    abstract fun bindScanPageText(repository: ScanTextRepository): ScanPageText
+
+    @Binds
     @Singleton
     abstract fun bindDocumentRepository(repository: RoomDocumentRepository): DocumentRepository
 
@@ -34,7 +37,7 @@ abstract class PaperlessDataModule {
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): PaperlessDatabase =
             Room.databaseBuilder(context, PaperlessDatabase::class.java, "paperless.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
 
         @Provides

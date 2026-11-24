@@ -26,6 +26,7 @@ reorderable = "3.1.0"
 serialization = "1.13.0"
 
 [libraries]
+tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version = "4.9.0" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version = "2.12.0" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }

@@ -14,6 +14,8 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class AccentColor { BLUE, TEAL, GREEN, ORANGE, ROSE }
 
+enum class OcrLanguage(val code: String) { ENGLISH("eng"), BENGALI("ben"), BOTH("eng+ben") }
+
 data class UserSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
@@ -24,6 +26,8 @@ data class UserSettings(
     val autoCaptureSensitivity: AutoCaptureSensitivity = AutoCaptureSensitivity.NORMAL,
     val amoledBlack: Boolean = false,
     val accent: AccentColor = AccentColor.BLUE,
+    val automaticOcr: Boolean = true,
+    val ocrLanguage: OcrLanguage = OcrLanguage.BOTH,
 )
 
 private val autoNameDate = DateTimeFormatter.ofPattern("uuuu-MM-dd", Locale.ROOT)

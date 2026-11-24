@@ -112,4 +112,10 @@
     <string name="editor_id_outline">Cut outline</string>
     <string name="editor_id_hint">Edit the front or back page to change crop or filter</string>
     <string name="editor_id_missing">Both source pages are needed to change the ID layout</string>
+    <string name="viewer_text">Text</string>
+    <string name="viewer_copy_text">Copy all</string>
+    <string name="viewer_no_text">No text found</string>
+    <string name="viewer_recognizing">Recognising text…</string>
+    <string name="viewer_recognize_now">Recognise now</string>
+    <string name="viewer_ocr_failed">Could not recognise text on this page.</string>
 </resources>

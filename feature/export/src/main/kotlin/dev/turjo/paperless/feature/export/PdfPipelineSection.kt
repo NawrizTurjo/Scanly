@@ -55,7 +55,7 @@ internal fun PdfPipelineSection(pipeline: PdfPipeline, enabled: Boolean, model: 
                             modifier = Modifier.size(48.dp)
                                 .semantics { contentDescription = dragLabel }
                                 .pointerInput(kind, enabled, model) {
-                                    if (!enabled) return@pointerInput
+                                    if (!enabled || kind == StepKind.SEARCHABLE_TEXT) return@pointerInput
                                     var rows = mutableListOf<StepKind>()
                                     var offset = 0f
                                     detectDragGesturesAfterLongPress(
@@ -71,7 +71,7 @@ internal fun PdfPipelineSection(pipeline: PdfPipeline, enabled: Boolean, model: 
                                         var by = 0
                                         var to = from + direction
                                         val ownHeight = heights[kind] ?: return@detectDragGesturesAfterLongPress
-                                        while (from >= 0 && to in rows.indices) {
+                                        while (from >= 0 && to in rows.indices && rows[to] != StepKind.SEARCHABLE_TEXT) {
                                             val nextHeight = heights[rows[to]] ?: break
                                             if (abs(offset) < (ownHeight + nextHeight) / 2f) break
                                             offset -= direction * nextHeight
@@ -86,7 +86,7 @@ internal fun PdfPipelineSection(pipeline: PdfPipeline, enabled: Boolean, model: 
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("≡")
+                            if (kind != StepKind.SEARCHABLE_TEXT) Text("≡")
                         }
                         Column(
                             Modifier.weight(1f).heightIn(min = 48.dp)
@@ -113,8 +113,9 @@ internal fun PdfPipelineSection(pipeline: PdfPipeline, enabled: Boolean, model: 
                     }
                     if (expandedStep == kind) {
                         StepOptions(step, enabled, model::updateStep)
-                        Row {
-                            TextButton({ model.moveStep(kind, -1) }, enabled = enabled && index > 0) {
+                        if (kind != StepKind.SEARCHABLE_TEXT) Row {
+                            TextButton({ model.moveStep(kind, -1) }, enabled = enabled && index > 0 &&
+                                steps[index - 1] != PdfStep.SearchableText) {
                                 Text(stringResource(R.string.export_move_up))
                             }
                             TextButton({ model.moveStep(kind, 1) }, enabled = enabled && index < steps.lastIndex) {
@@ -158,6 +159,7 @@ private fun stepSummary(step: PdfStep): String = when (step) {
     )
     is PdfStep.Layout -> stringResource(step.layout.label)
     PdfStep.CleanMetadata -> stringResource(R.string.export_clean_metadata_hint)
+    PdfStep.SearchableText -> stringResource(R.string.export_searchable_text_hint)
 }
 
 @Composable
@@ -234,6 +236,7 @@ private val StepKind.title get() = when (this) {
     StepKind.PAGE_NUMBERS -> R.string.export_page_numbers
     StepKind.LAYOUT -> R.string.export_print_layout
     StepKind.CLEAN_METADATA -> R.string.export_clean_metadata
+    StepKind.SEARCHABLE_TEXT -> R.string.export_searchable_text
 }
 
 internal val QualityPreset.exportLabel get() = when (this) {

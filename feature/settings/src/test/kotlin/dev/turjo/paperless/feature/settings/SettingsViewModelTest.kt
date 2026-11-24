@@ -125,6 +125,8 @@ class SettingsViewModelTest {
     }
 
     private class FakeSettingsRepository : SettingsRepository {
+        override suspend fun setAutomaticOcr(enabled: Boolean) = error("Unused")
+        override suspend fun setOcrLanguage(language: dev.turjo.paperless.core.model.OcrLanguage) = error("Unused")
         override val settings = MutableStateFlow(UserSettings())
 
         override suspend fun setThemeMode(mode: ThemeMode) {

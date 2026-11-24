@@ -4,6 +4,8 @@ import androidx.lifecycle.viewModelScope
 import dev.turjo.paperless.core.data.DocumentRepository
 import dev.turjo.paperless.core.data.PageProcessing
 import dev.turjo.paperless.core.model.*
+import dev.turjo.paperless.core.ocr.RecognizedText
+import dev.turjo.paperless.core.ocr.RecognizedWord
 import dev.turjo.paperless.core.pdf.ExportPage
 import dev.turjo.paperless.core.pdf.QualityPreset
 import java.io.File
@@ -96,6 +98,37 @@ class ExportRunnerTest {
     }
 
     @Test
+    fun searchableExportRecognizesInPageOrderBeforePdfTransforms() = runTest {
+        val ops = RecordingPipelineOps()
+        val visited = mutableListOf<String>()
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val second = repository.pages.getValue("two")
+        repository.pages["two"] = second.copy(processedPath = original.path, processedHash = second.paramsHash())
+        val word = RecognizedWord("Receipt", 98f, 10f, 20f, 40f, 30f)
+        val runner = runner(
+            pipelineOps = ops,
+            recognize = { id, image, hash ->
+                assertEquals(repository.pages.getValue(id).processedPath, image.path)
+                assertEquals(repository.pages.getValue(id).paramsHash(), hash)
+                visited += id
+                RecognizedText(word.text, listOf(word))
+            },
+        ) { pages, _, output, _ ->
+            assertEquals(listOf("one", "two"), visited)
+            assertEquals(listOf(listOf(word), listOf(word)), pages.map(ExportPage::words))
+            assertTrue(pages.all { it.jpeg.parentFile == output.parentFile && it.jpeg.isFile })
+            output.writeText("pdf")
+        }
+        val options = ExportOptions(pipeline = PdfPipeline(listOf(PdfStep.SearchableText, PdfStep.SameWidth)))
+        runner.share(document, options, "Receipt", { done, total -> progress += done to total }) { files, _ ->
+            assertEquals("pdf SAME_WIDTH", files.single().readText())
+            assertEquals(files.toSet(), files.single().parentFile?.listFiles().orEmpty().toSet())
+        }
+        assertEquals(listOf(0 to 2, 1 to 2, 2 to 2), progress)
+        assertEquals(listOf(PdfStep.SameWidth), ops.steps)
+    }
+
+    @Test
     fun dismissClearsPasswordAndKeepsSteps() {
         val preferences = ExportPreferences()
         val model = ExportViewModel("doc", repository, runner(), preferences)
@@ -185,6 +218,7 @@ class ExportRunnerTest {
 
     private fun runner(
         pipelineOps: PipelineOps = RecordingPipelineOps(),
+        recognize: suspend (String, File, String) -> RecognizedText? = { _, _, _ -> error("Unexpected OCR") },
         writePdf: suspend (List<ExportPage>, ExportOptions, File, String) -> Unit =
             { sources, _, file, _ ->
                 pdfSources = sources.map(ExportPage::jpeg)
@@ -199,6 +233,7 @@ class ExportRunnerTest {
         },
         { _, _ -> error("Unexpected MediaStore call") },
         pipelineOps,
+        recognize,
     )
 
     private inner class FakeProcessing : PageProcessing {

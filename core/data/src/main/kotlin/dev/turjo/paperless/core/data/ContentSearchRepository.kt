@@ -19,6 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 
 data class ContentHit(val pdfKey: PdfKey, val title: String, val pageIndex: Int, val snippet: String)
@@ -27,11 +30,15 @@ data class IndexCounts(val pdfs: Int, val pages: Int)
 class ContentSearchRepository @Inject constructor(private val database: PaperlessDatabase) {
     fun observeCounts() = database.pageTextDao().observeCounts()
 
-    suspend fun search(query: String): List<ContentHit> {
-        val match = contentMatch(query) ?: return emptyList()
-        return database.pageTextDao().searchLibrary(match).map {
-            ContentHit(PdfKey(it.pdfKey), it.title, it.pageIndex, it.snippet)
-        }
+    suspend fun search(query: String): List<ContentHit> = observeSearch(query).first()
+
+    fun observeSearch(query: String): kotlinx.coroutines.flow.Flow<List<ContentHit>> {
+        val match = contentMatch(query) ?: return flowOf(emptyList())
+        return combine(database.scanTextDao().search(match), database.pageTextDao().searchLibrary(match)) { scans, pdfs ->
+            (scans + pdfs).distinctBy { it.pdfKey to it.pageIndex }.take(100).map {
+                ContentHit(PdfKey(it.pdfKey), it.title, it.pageIndex, it.snippet)
+            }
+        }.distinctUntilChanged()
     }
 }
 

@@ -24,7 +24,7 @@ data class AnnotationEntity(
     val createdAt: Long,
 )
 
-/** Full-text index of PDFs that have a text layer (DM-10). Scans have no text and are never indexed. */
+/** Full-text index of text layers extracted from PDFs (DM-10). */
 @Fts4
 @Entity(tableName = "page_text")
 data class PageTextEntity(val pdfKey: String, val pageIndex: Int, val text: String)
@@ -91,7 +91,7 @@ interface PageTextDao {
         ORDER BY p.pdfKey, CAST(p.pageIndex AS INTEGER)
         LIMIT 100
     """)
-    suspend fun searchLibrary(query: String): List<TitledTextHit>
+    fun searchLibrary(query: String): Flow<List<TitledTextHit>>
 
     @Query("SELECT id.pdfs, (SELECT COUNT(*) FROM page_text) AS pages FROM (SELECT COUNT(*) AS pdfs FROM indexed_pdfs WHERE hasText = 1) id")
     fun observeCounts(): Flow<IndexCounts>

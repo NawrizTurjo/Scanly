@@ -43,11 +43,16 @@ Rule: the app ships only Apache-2.0 / MIT / BSD code. **Pin exact versions at S1
 | Coil 3 | 3.6.3 | P1 |
 | OpenCV (`org.opencv:opencv`) | 5.1.0 | Same major as the Python lab (opencv-python 5.1) |
 | PdfBox-Android | 2.0.27.0 | **Last release 2023-01**: no newer Apache-licensed alternative on Android, so keep it behind the `core:pdf` interface (R8) |
+| [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android/releases/tag/4.9.0) | 4.9.0 | Apache-2.0. `cz.adaptech.tesseract4android:tesseract4android:4.9.0` from JitPack. Native libraries total 7,514,368 bytes for arm64-v8a and 7,949,472 bytes for x86_64 before APK compression. |
+| [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0) English model | 4.1.0 | Apache-2.0. `eng.traineddata`, 4,113,088 bytes before APK compression. |
+| [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0) Bengali model | 4.1.0 | Apache-2.0. `ben.traineddata`, 855,841 bytes before APK compression. |
 | Reorderable | 3.1.0 | P1 |
 | WorkManager | 2.12.0 | P6/P7b |
 | Biometric | 1.1.0 stable (1.4.0-rc01 newest) | P4: re-check; prefer 1.4.0 once stable |
 | Test: JUnit 4.13.2, Turbine 1.2.1, Robolectric 4.18.1, androidx.test.ext 1.3.0, Espresso 3.7.0 | | |
 | Test (optional): `org.openpnp:opencv` | 4.9.0-0 | **Behind OpenCV 5.1**: JVM parity tests may differ slightly; decide at P2 (instrumented tests on the emulator instead) |
+
+Searchable PDF export embeds the Liberation Sans font already bundled with PdfBox-Android under the [SIL Open Font License](https://github.com/TomRoush/PdfBox-Android/blob/master/LICENSE.txt). Recognised scan text is re-derived after backup restore when automatic recognition is enabled.
 
 Dev-side tools (never shipped): Android Studio, SDK, adb, Gradle, Python 3 + `opencv-python`, `numpy`, `pillow`, `reportlab`/`pypdf` (fixture generation), and scrcpy (screen mirroring, Apache-2.0). All free.
 

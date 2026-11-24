@@ -8,6 +8,7 @@ import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
 import dev.turjo.paperless.core.model.ThemeMode
+import dev.turjo.paperless.core.model.OcrLanguage
 import dev.turjo.paperless.core.model.UserSettings
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { repository.setThemeMode(mode) }
+    }
+
+    fun setAutomaticOcr(enabled: Boolean) {
+        viewModelScope.launch { repository.setAutomaticOcr(enabled) }
+    }
+
+    fun setOcrLanguage(language: OcrLanguage) {
+        viewModelScope.launch { repository.setOcrLanguage(language) }
     }
 
     fun setDynamicColor(enabled: Boolean) {

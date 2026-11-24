@@ -106,4 +106,11 @@
     <string name="update_server_failed">GitHub couldn’t provide the update. Try again later.</string>
     <string name="update_verify_failed">The downloaded APK couldn’t be verified as a newer Scanly build.</string>
     <string name="update_install_failed">Couldn’t open the Android installer for this update.</string>
+    <string name="text_recognition">Text recognition</string>
+    <string name="automatic_ocr">Recognise text automatically</string>
+    <string name="ocr_language">Text language</string>
+    <string name="ocr_english">English</string>
+    <string name="ocr_bengali">Bengali</string>
+    <string name="ocr_both">English + Bengali</string>
+    <string name="help_ocr_body">Open Text in the page viewer to copy or share words from a scan. Search in the library uses recognised text. After a backup restore, the app recognises the restored pages again when automatic text recognition is on.</string>
 </resources>

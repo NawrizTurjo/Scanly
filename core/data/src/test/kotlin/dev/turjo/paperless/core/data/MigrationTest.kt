@@ -28,7 +28,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 1)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {
@@ -45,7 +45,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v2-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 2)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
         try {
             val document = requireNotNull(db.documentDao().document("d1"))
@@ -65,7 +65,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v3-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 3)
         val db = Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
         try {
             db.annotationDao().upsert(listOf(AnnotationEntity("a1", "k", 0, "INK", "[]", 0, 2f, 1)))
@@ -84,7 +84,7 @@ class MigrationTest {
         val file = context.getDatabasePath("migration-v4-test.db").apply { parentFile?.mkdirs(); delete() }
         createDatabase(file, 4)
         Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
             .withDatabase { db ->
                 assertEquals("p1", db.documentDao().pages("d1").single().id)
@@ -111,13 +111,35 @@ class MigrationTest {
             }
         }
         Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
-            .addMigrations(MIGRATION_5_6)
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
             .build()
             .withDatabase { db ->
                 assertNull(db.documentDao().page("p1")?.idFrontId)
                 val composite = requireNotNull(db.documentDao().page("id-composite-back"))
                 assertEquals("p1", composite.idFrontId)
                 assertNull(composite.idLayout)
+            }
+    }
+
+    @Test
+    fun v6ScanTextCanBeSearchedAfterMigration() = runBlocking {
+        val file = context.getDatabasePath("migration-v6-test.db").apply { parentFile?.mkdirs(); delete() }
+        createDatabase(file, 6)
+        Room.databaseBuilder(context, PaperlessDatabase::class.java, file.absolutePath)
+            .addMigrations(MIGRATION_6_7)
+            .build()
+            .withDatabase { db ->
+                val page = requireNotNull(db.documentDao().page("p1"))
+                db.documentDao().updatePage(page.copy(processedHash = "v1", processedPath = "/p.jpg"))
+                db.scanTextDao().put(ScanTextEntity(pageId = "p1", processedHash = "v1",
+                    processedPath = "/p.jpg", language = "eng+ben", text = "Chapter বাংলা", words = "[]"))
+                val search = ContentSearchRepository(db)
+                assertEquals("doc:d1", search.search("chap").single().pdfKey.value)
+                assertEquals(0, search.search("বাংলা").single().pageIndex)
+                db.documentDao().updatePage(page.copy(processedHash = "v2", processedPath = "/p.jpg"))
+                assertEquals(emptyList<ContentHit>(), search.search("chap"))
+                db.documentDao().deletePage("p1")
+                assertNull(db.scanTextDao().get("p1"))
             }
     }
 
