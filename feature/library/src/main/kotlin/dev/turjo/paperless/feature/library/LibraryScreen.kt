@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.library
 
+import androidx.compose.ui.graphics.Color
 import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import dev.turjo.paperless.core.designsystem.glassEdge
 import dev.turjo.paperless.core.designsystem.glassContainer
@@ -165,6 +166,12 @@ fun LibraryScreen(
                 )
                 else -> Column {
                     LargeTopAppBar(
+                        // One flat header: the title bar shows the same colour as the search and
+                        // filter rows under it, scrolled or not (the scaffold paints it, or the glass).
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                        ),
                         title = {
                             Text(
                                 currentFolder?.name ?: stringResource(R.string.library_title),

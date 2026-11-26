@@ -33,7 +33,6 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.designsystem.PageBatchSheet
-import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.DocumentWithPages
 import dev.turjo.paperless.core.model.Page
 import dev.turjo.paperless.core.pdf.ShareIntents
@@ -383,7 +382,7 @@ private fun PageCard(
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
-                request, pageLabel, Modifier.sharedPage("page-${page.id}").fillMaxSize(),
+                request, pageLabel, Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
             if (busy) CircularProgressIndicator(Modifier.size(36.dp))

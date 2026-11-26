@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.toSize
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.turjo.paperless.core.designsystem.FirstRunTip
-import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.imaging.IdCardLayout
 import dev.turjo.paperless.core.model.InkRemoval
 import dev.turjo.paperless.core.model.Page
@@ -321,7 +320,7 @@ private fun FilterPreview(
         if (bitmap != null) {
             Image(
                 bitmap.asImageBitmap(), stringResource(R.string.editor_preview),
-                Modifier.sharedPage("page-${working.id}").fillMaxSize().graphicsLayer {
+                Modifier.fillMaxSize().graphicsLayer {
                     val position = clampPreviewOffset(offset, scale, size, aspect)
                     scaleX = scale
                     scaleY = scale
@@ -364,7 +363,7 @@ private fun ColumnScope.CropPanel(
         if (original != null && size != null && maxWidth > 0.dp && maxHeight > 0.dp) {
             CropCanvas(
                 original, size, state.edits?.quad, enabled,
-                Modifier.sharedPage("page-$pageId").fillMaxSize(), vm::beginGesture, vm::endGesture,
+                Modifier.fillMaxSize(), vm::beginGesture, vm::endGesture,
                 split = state.split, onSplit = vm::moveSplit,
             ) { crop ->
                 val wholeImage = fullCrop(size.width.toFloat(), size.height.toFloat())

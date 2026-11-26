@@ -70,7 +70,6 @@ import coil3.size.Size as CoilSize
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
-import dev.turjo.paperless.core.designsystem.sharedPage
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.pdf.ShareIntents
 import java.io.File
@@ -201,12 +200,7 @@ fun PageViewerScreen(
                         val item = state.pages[index]
                         val active = index == pager.currentPage
                         key(active) {
-                            val imageModifier = if (active && !state.close) {
-                                Modifier.sharedPage("page-${item.page.id}")
-                            } else {
-                                Modifier
-                            }
-                            ViewerImage(item, index + 1, ids.size, active, imageModifier) { if (active) zoomed = it }
+                            ViewerImage(item, index + 1, ids.size, active, Modifier) { if (active) zoomed = it }
                         }
                     }
                 }

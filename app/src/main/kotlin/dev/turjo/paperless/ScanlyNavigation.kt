@@ -5,10 +5,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Box
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -63,10 +63,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
-import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
-import dev.turjo.paperless.core.designsystem.LocalNavAnimatedScope
-import dev.turjo.paperless.core.designsystem.LocalSharedTransitionScope
 import dev.turjo.paperless.core.designsystem.R as DesignR
 import dev.turjo.paperless.core.model.PdfKey
 import dev.turjo.paperless.feature.camera.CameraScreen
@@ -276,16 +273,8 @@ internal fun ScanlyNavigation(
             else -> Modifier.fillMaxSize()
         }
         val bottomInset = if (underGlassBar) padding.calculateBottomPadding() else 0.dp
-        val pageMotionDecorator = remember {
-            NavEntryDecorator<NavKey> { entry ->
-                CompositionLocalProvider(LocalNavAnimatedScope provides LocalNavAnimatedContentScope.current) {
-                    entry.Content()
-                }
-            }
-        }
         CompositionLocalProvider(LocalGlassBottomInset provides bottomInset) {
-        SharedTransitionLayout(modifier = contentModifier) {
-            CompositionLocalProvider(LocalSharedTransitionScope provides this@SharedTransitionLayout) {
+        Box(contentModifier) {
                 NavDisplay(
                     backStack = backStack,
                     onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
@@ -295,11 +284,9 @@ internal fun ScanlyNavigation(
                     predictivePopTransitionSpec = {
                         slideInHorizontally(tween(300)) { -it / 4 } togetherWith slideOutHorizontally(tween(300)) { it }
                     },
-                    sharedTransitionScope = this,
                     entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
-                        pageMotionDecorator,
                     ),
                     entryProvider = entryProvider {
                         entry<HomeRoute> {
@@ -439,7 +426,6 @@ internal fun ScanlyNavigation(
                         }
                     },
                 )
-            }
         }
         }
     }
