@@ -31,6 +31,7 @@ data class UserSettings(
     val automaticOcr: Boolean = true,
     /** Automatic recognition waits until the phone is charging. */
     val ocrOnlyWhileCharging: Boolean = false,
+    val shrinkOriginalsAfterDays: Int? = null,
     val ocrLanguage: OcrLanguage = OcrLanguage.BOTH,
     val defaultScanFilter: PageFilter = PageFilter.DOCUMENT,
     val defaultScanDeskew: Boolean = true,

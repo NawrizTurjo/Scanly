@@ -162,6 +162,8 @@ fun SettingsScreen(
                     })
                 }
             }
+            StorageSettings(settings.shrinkOriginalsAfterDays, viewModel::setShrinkOriginalsAfterDays)
+
             SettingsGroup(R.drawable.ic_group_security, R.string.security) {
                 val keyguard = LocalContext.current.getSystemService(KeyguardManager::class.java)
                 var showCredentialMessage by rememberSaveable { mutableStateOf(false) }
@@ -289,7 +291,7 @@ private fun SettingLabel(label: Int) {
 }
 
 @Composable
-private fun <T> SettingChoices(
+internal fun <T> SettingChoices(
     title: Int,
     choices: List<T>,
     selected: T,

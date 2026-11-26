@@ -246,6 +246,22 @@ class QueuedPageProcessing internal constructor(
     private fun PageMode.cardAspect(): Float? =
         if (this == PageMode.ID_FRONT || this == PageMode.ID_BACK) 1.586f else null
 
+    internal suspend fun shrinkWhileIdle(pageId: String, shrink: suspend () -> Boolean): Boolean {
+        val lock = pageLocks.getOrPut(pageId) { Mutex() }
+        if (!lock.tryLock()) return false
+        try {
+            if (pageId in busyPageIds.value) return false
+            return previewLock.withLock {
+                if (!shrink()) return@withLock false
+                sizes.remove(pageId)
+                File(files.pageDir(pageId), "preview-src.jpg").delete()
+                true
+            }
+        } finally {
+            lock.unlock()
+        }
+    }
+
     override fun enqueueRender(pageId: String) = submit(pageId) { render(pageId) }
 
     override suspend fun awaitIdle(pageIds: Collection<String>) {

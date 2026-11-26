@@ -39,6 +39,17 @@ data class DocumentPagesRow(
 
 @Dao
 interface DocumentDao {
+    @Query(
+        """
+        SELECT p.* FROM pages p JOIN documents d ON d.id = p.documentId
+        WHERE p.createdAt < :cutoff AND d.isDraft = 0 AND d.deletedAt IS NULL
+        """,
+    )
+    suspend fun originalShrinkCandidates(cutoff: Long): List<PageEntity>
+
+    @Query("SELECT COUNT(*) FROM pages WHERE originalPath = :path OR processedPath = :path")
+    suspend fun originalPathReferences(path: String): Int
+
     @Query("SELECT id FROM pages")
     suspend fun pageIds(): List<String>
 
