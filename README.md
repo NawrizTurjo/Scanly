@@ -11,7 +11,7 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.1-5C3EE8?logo=opencv&logoColor=white)
 ![Offline](https://img.shields.io/badge/network-updates%20only-555)
-![Version](https://img.shields.io/badge/version-1.1.4-2E7D32)
+![Version](https://img.shields.io/badge/version-2.0.0--nightly.1-2E7D32)
 
 <img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
 

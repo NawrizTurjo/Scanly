@@ -15,6 +15,15 @@ internal data class WhatsNewRelease(val version: String, val cards: List<WhatsNe
 internal object WhatsNew {
     /** Newest first. */
     private val releases = listOf(
+        WhatsNewRelease("2.0.0", listOf(
+            WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_glass_title, R.string.whats_new_glass_body),
+            WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_settings_title, R.string.whats_new_settings_body),
+            WhatsNewCard(DesignR.drawable.ic_library, R.string.whats_new_viewer_title, R.string.whats_new_viewer_body),
+            WhatsNewCard(R.drawable.ic_zoom_in, R.string.whats_new_tiles_title, R.string.whats_new_tiles_body),
+            WhatsNewCard(DesignR.drawable.ic_reader, R.string.whats_new_charging_title, R.string.whats_new_charging_body),
+            WhatsNewCard(DesignR.drawable.ic_tools, R.string.whats_new_storage_title, R.string.whats_new_storage_body),
+            WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_testbuilds_title, R.string.whats_new_testbuilds_body),
+        )),
         WhatsNewRelease("1.1.4", listOf(
             WhatsNewCard(R.drawable.ic_zoom_in, R.string.whats_new_sharp_title, R.string.whats_new_sharp_body),
             WhatsNewCard(DesignR.drawable.ic_tools, R.string.whats_new_slim_title, R.string.whats_new_slim_body),
