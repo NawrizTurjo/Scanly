@@ -58,6 +58,7 @@ import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.size.Precision
+import coil3.size.Size as CoilSize
 import dev.turjo.paperless.core.data.isIdComposite
 import dev.turjo.paperless.core.designsystem.FirstRunTip
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
@@ -233,21 +234,30 @@ private fun ViewerImage(
         }
     }
     val context = LocalContext.current
-    val request = remember(context, original, processed, page.processedHash) {
+    // Decode for the whole screen, not the first layout pass: the page opens with a shared-element
+    // animation that starts at thumbnail size, and Coil would otherwise keep that small decode.
+    val screen = remember(context) {
+        val metrics = context.resources.displayMetrics
+        CoilSize(metrics.widthPixels, metrics.heightPixels)
+    }
+    val request = remember(context, original, processed, page.processedHash, screen) {
         val rendered = processed
-        ImageRequest.Builder(context).data(rendered?.first ?: original).apply {
-            if (rendered != null) {
-                val cacheKey = "${rendered.first.path}:${page.processedHash}:${rendered.second}"
-                memoryCacheKey(cacheKey)
-                diskCacheKey(cacheKey)
-            }
-        }.build()
+        ImageRequest.Builder(context).data(rendered?.first ?: original)
+            .size(screen)
+            .precision(Precision.INEXACT)
+            .apply {
+                if (rendered != null) {
+                    val cacheKey = "${rendered.first.path}:${page.processedHash}:${rendered.second}:$screen"
+                    memoryCacheKey(cacheKey)
+                    diskCacheKey(cacheKey)
+                }
+            }.build()
     }
     var imageSize by remember(request) { mutableStateOf(Size.Zero) }
     var baseKey by remember(request) { mutableStateOf<MemoryCache.Key?>(null) }
     var scale by remember { mutableStateOf(1f) }
-    // The base image is decoded at screen size, so zooming only stretches it. Once the user
-    // zooms in, load the same file near full resolution on top (active page only).
+    // The base image is screen-sized, so zooming would only stretch it. Once the user zooms in,
+    // load the same file near full resolution on top (active page only).
     var wantFullResolution by remember(request) { mutableStateOf(false) }
     if (!active && wantFullResolution) wantFullResolution = false
     val fullRequest = remember(request, wantFullResolution, baseKey) {
