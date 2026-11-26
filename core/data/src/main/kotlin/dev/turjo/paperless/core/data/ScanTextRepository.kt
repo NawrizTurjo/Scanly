@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -139,6 +140,7 @@ class ScanTextRepository @Inject constructor(
     private val settings: SettingsRepository,
     private val recognizer: TextRecognizer,
     @ApplicationScope private val scope: CoroutineScope,
+    private val power: PowerState = PowerState.ALWAYS_CHARGING,
 ) : ScanPageText {
     private val dao = database.scanTextDao()
     private val lock = Mutex()
@@ -152,7 +154,10 @@ class ScanTextRepository @Inject constructor(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun start() {
         scope.launch {
-            settings.settings.map { it.ocrLanguage.takeIf { _ -> it.automaticOcr } }
+            // With "only while charging", pending pages wait until the phone is plugged in.
+            combine(settings.settings, power.charging) { settings, charging ->
+                settings.ocrLanguage.takeIf { settings.automaticOcr && (charging || !settings.ocrOnlyWhileCharging) }
+            }
                 .distinctUntilChanged()
                 .flatMapLatest { language ->
                     if (language == null) flowOf(emptyList())
@@ -183,7 +188,9 @@ class ScanTextRepository @Inject constructor(
         expected: OcrSource? = null,
     ): RecognizedText? = withContext(Dispatchers.IO) {
         lock.withLock {
-            if (automatic && !settings.settings.first().let { it.automaticOcr && it.ocrLanguage == language }) {
+            if (automatic && !settings.settings.first().let { it.automaticOcr && it.ocrLanguage == language } ||
+                automatic && settings.settings.first().ocrOnlyWhileCharging && !power.charging.first()
+            ) {
                 return@withLock null
             }
             val source = dao.source(pageId)

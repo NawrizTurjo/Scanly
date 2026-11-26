@@ -139,6 +139,10 @@ class SettingsViewModelTest {
             settings.update { it.copy(dynamicColor = enabled) }
         }
 
+        override suspend fun setOcrOnlyWhileCharging(enabled: Boolean) {
+            settings.update { it.copy(ocrOnlyWhileCharging = enabled) }
+        }
+
         override suspend fun setGlass(enabled: Boolean) {
             settings.update { it.copy(glass = enabled) }
         }

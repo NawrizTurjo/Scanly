@@ -142,6 +142,18 @@ fun SettingsScreen(
                         onValueChange = viewModel::setAutomaticOcr,
                     ),
                 ) { Text(stringResource(R.string.automatic_ocr)) }
+                ListItem(
+                    supportingContent = { Text(stringResource(R.string.ocr_only_charging_hint)) },
+                    trailingContent = {
+                        Switch(checked = settings.ocrOnlyWhileCharging, onCheckedChange = null, enabled = settings.automaticOcr)
+                    },
+                    modifier = Modifier.toggleable(
+                        value = settings.ocrOnlyWhileCharging,
+                        enabled = settings.automaticOcr,
+                        role = Role.Switch,
+                        onValueChange = viewModel::setOcrOnlyWhileCharging,
+                    ),
+                ) { Text(stringResource(R.string.ocr_only_charging)) }
                 SettingChoices(R.string.ocr_language, OcrLanguage.entries, settings.ocrLanguage, viewModel::setOcrLanguage) {
                     stringResource(when (it) {
                         OcrLanguage.ENGLISH -> R.string.ocr_english

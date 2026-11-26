@@ -56,6 +56,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAmoledBlack(enabled) }
     }
 
+    fun setOcrOnlyWhileCharging(enabled: Boolean) {
+        viewModelScope.launch { repository.setOcrOnlyWhileCharging(enabled) }
+    }
+
     fun setGlass(enabled: Boolean) {
         viewModelScope.launch { repository.setGlass(enabled) }
     }

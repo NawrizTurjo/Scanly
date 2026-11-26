@@ -17,6 +17,9 @@ abstract class PaperlessDataModule {
     abstract fun bindScanPageText(repository: ScanTextRepository): ScanPageText
 
     @Binds
+    abstract fun bindPowerState(power: AndroidPowerState): PowerState
+
+    @Binds
     @Singleton
     abstract fun bindDocumentRepository(repository: RoomDocumentRepository): DocumentRepository
 

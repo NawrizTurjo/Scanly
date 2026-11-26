@@ -28,6 +28,7 @@ interface SettingsRepository {
     suspend fun setDynamicColor(enabled: Boolean)
     suspend fun setAmoledBlack(enabled: Boolean)
     suspend fun setGlass(enabled: Boolean)
+    suspend fun setOcrOnlyWhileCharging(enabled: Boolean)
     suspend fun setAccent(accent: AccentColor)
     suspend fun setAutoNamePattern(pattern: String)
     suspend fun setAppLock(mode: AppLock)
@@ -53,6 +54,7 @@ class DataStoreSettingsRepository @Inject constructor(
                     ?: defaults.defaultScanFilter,
                 defaultScanDeskew = preferences[DEFAULT_SCAN_DESKEW] ?: defaults.defaultScanDeskew,
                 automaticOcr = preferences[AUTOMATIC_OCR] ?: defaults.automaticOcr,
+                ocrOnlyWhileCharging = preferences[OCR_ONLY_CHARGING] ?: defaults.ocrOnlyWhileCharging,
                 ocrLanguage = OcrLanguage.entries.find { it.name == preferences[OCR_LANGUAGE] } ?: defaults.ocrLanguage,
                 themeMode = ThemeMode.entries.find { it.name == preferences[THEME_MODE] }
                     ?: ThemeMode.SYSTEM,
@@ -81,6 +83,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setAmoledBlack(enabled: Boolean) {
         dataStore.edit { it[AMOLED_BLACK] = enabled }
+    }
+
+    override suspend fun setOcrOnlyWhileCharging(enabled: Boolean) {
+        dataStore.edit { it[OCR_ONLY_CHARGING] = enabled }
     }
 
     override suspend fun setGlass(enabled: Boolean) {
@@ -143,6 +149,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val AMOLED_BLACK = booleanPreferencesKey("amoled_black")
         val GLASS = booleanPreferencesKey("glass")
+        val OCR_ONLY_CHARGING = booleanPreferencesKey("ocr_only_charging")
         val ACCENT = stringPreferencesKey("accent")
     }
 }

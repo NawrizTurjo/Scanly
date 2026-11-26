@@ -72,6 +72,7 @@ class DataStoreSettingsRepositoryTest {
             UserSettings(defaultScanDeskew = false) to { it.setDefaultScanDeskew(false) },
             UserSettings(amoledBlack = true) to { it.setAmoledBlack(true) },
             UserSettings(glass = true) to { it.setGlass(true) },
+            UserSettings(ocrOnlyWhileCharging = true) to { it.setOcrOnlyWhileCharging(true) },
             UserSettings(accent = AccentColor.ROSE) to { it.setAccent(AccentColor.ROSE) },
             UserSettings(autoNamePattern = "{n} {date}") to { it.setAutoNamePattern("{n} {date}") },
             UserSettings(appLock = AppLock.AFTER_MINUTES) to { it.setAppLock(AppLock.AFTER_MINUTES) },
