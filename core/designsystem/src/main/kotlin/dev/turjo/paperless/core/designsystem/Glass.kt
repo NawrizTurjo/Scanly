@@ -95,14 +95,15 @@ fun Modifier.glassSurface(cornerRadius: Dp = 0.dp, state: HazeState? = LocalGlas
     val tint = glassTint()
     val base = if (LocalGlassOnBlack.current) Color.Black else MaterialTheme.colorScheme.background
     val style = remember(cornerRadius, tint, base) {
+        // Colours and shapes scrolling underneath should show through, but not text that competes
+        // with the bar's labels: a 12 dp blur with a thin tint sits between Regular's full diffusion
+        // (content almost hidden) and Clear (titles over readable text).
         GlassStyle.regular.then {
             shape(RoundedCornerShape(cornerRadius))
             // Opaque base: otherwise the sharp content under the glass shows through it.
             backgroundColor(base)
             tint(tint)
-            // Short, wide bars get only a shallow blur by default; text scrolling underneath then
-            // competes with the bar's labels.
-            optics { copy(blurRadius = OpticalSizeValue.Fixed(20.dp)) }
+            optics { copy(blurRadius = OpticalSizeValue.Fixed(12.dp)) }
         }
     }
     return hazeGlass(input = HazeInput.Backdrop(state), style = style)
@@ -114,9 +115,9 @@ fun Modifier.glassSurface(cornerRadius: Dp = 0.dp, state: HazeState? = LocalGlas
 fun glassTint(): Color {
     val colors = MaterialTheme.colorScheme
     return when {
-        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.62f)
-        colors.surface.luminance() > 0.5f -> colors.surface.copy(alpha = 0.55f)
-        else -> colors.surface.copy(alpha = 0.6f)
+        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.3f)
+        colors.surface.luminance() > 0.5f -> colors.surface.copy(alpha = 0.2f)
+        else -> colors.surface.copy(alpha = 0.25f)
     }
 }
 

@@ -73,8 +73,13 @@ fun ScanlyScaffold(
     CompositionLocalProvider(LocalGlassState provides state) {
         Scaffold(
             modifier = modifier,
-            topBar = { GlassBar { topBar() } },
-            bottomBar = { if (bottomBarGlass) GlassBar { bottomBar() } else bottomBar() },
+            // Content runs under the bars, so without glass a bar built from plain layouts (the Files
+            // header with search and filter chips) needs a background of its own.
+            topBar = { GlassBar(if (glass) Modifier else Modifier.background(containerColor)) { topBar() } },
+            bottomBar = {
+                if (bottomBarGlass) GlassBar(if (glass) Modifier else Modifier.background(containerColor)) { bottomBar() }
+                else bottomBar()
+            },
             snackbarHost = { Box(Modifier.padding(bottom = outerBottom)) { snackbarHost() } },
             floatingActionButton = { Box(Modifier.padding(bottom = outerBottom)) { floatingActionButton() } },
             floatingActionButtonPosition = floatingActionButtonPosition,
@@ -91,15 +96,17 @@ fun ScanlyScaffold(
             )
             Box(Modifier.fillMaxSize()) {
                 Box(
+                    // The source must come before the drawing in the chain: a haze source captures
+                    // what is drawn inside it, not modifiers placed ahead of it.
                     Modifier.fillMaxSize()
+                        .glassSource(state, zIndex = 0f)
                         .then(
                             when {
                                 !glass -> Modifier
                                 colourPools -> Modifier.glassBackground(containerColor)
                                 else -> Modifier.background(containerColor)
                             },
-                        )
-                        .glassSource(state, zIndex = 0f),
+                        ),
                 )
                 Box(Modifier.fillMaxSize().glassSource(state, zIndex = 1f)) {
                     CompositionLocalProvider(LocalGlassBottomInset provides 0.dp) { content(combined) }

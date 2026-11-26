@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -287,6 +290,11 @@ internal fun ScanlyNavigation(
                     backStack = backStack,
                     onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
                     modifier = Modifier.fillMaxSize(),
+                    // The default back-gesture preview shrinks the leaving screen into a card over a
+                    // dark backdrop. Slide it away with the finger and bring the previous screen in instead.
+                    predictivePopTransitionSpec = {
+                        slideInHorizontally(tween(300)) { -it / 4 } togetherWith slideOutHorizontally(tween(300)) { it }
+                    },
                     sharedTransitionScope = this,
                     entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
