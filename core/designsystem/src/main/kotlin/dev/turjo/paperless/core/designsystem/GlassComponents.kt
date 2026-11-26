@@ -156,7 +156,10 @@ fun AlertDialog(
     )
 }
 
-/** Material's ModalBottomSheet; with glass on it is see-through over a blurred screen. */
+/**
+ * Material's ModalBottomSheet, solid with or without glass. A blurred screen behind a sheet (or a
+ * menu) read as a glitch: Android applies the window blur late, often only after the first touch.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModalBottomSheet(
@@ -165,20 +168,15 @@ fun ModalBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     M3ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         sheetState = sheetState,
-        containerColor = glassDialogColor(containerColor),
-        tonalElevation = 0.dp,
-    ) {
-        BlurBehindWindow()
-        content()
-    }
+        content = content,
+    )
 }
 
-/** Material's DropdownMenu; with glass on it is see-through over a blurred screen. */
+/** Material's DropdownMenu, solid with or without glass (see [ModalBottomSheet]). */
 @Composable
 fun DropdownMenu(
     expanded: Boolean,
@@ -200,15 +198,13 @@ fun DropdownMenu(
         scrollState = scrollState,
         properties = properties,
         shape = shape,
-        containerColor = glassDialogColor(containerColor),
+        containerColor = containerColor,
         border = border,
-    ) {
-        BlurBehindWindow(radius = 16.dp, dimAmount = 0f)
-        content()
-    }
+        content = content,
+    )
 }
 
-/** A dialog or sheet container: mostly opaque so text stays readable over the blurred screen. */
+/** A dialog container: mostly opaque so text stays readable over the blurred screen. */
 @Composable
 fun glassDialogColor(color: Color): Color =
     if (!LocalGlassEnabled.current) color
