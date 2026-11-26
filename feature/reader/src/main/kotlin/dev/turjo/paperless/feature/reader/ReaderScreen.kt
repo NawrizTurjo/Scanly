@@ -1,5 +1,8 @@
 package dev.turjo.paperless.feature.reader
 
+import dev.turjo.paperless.core.designsystem.glassOverlay
+import dev.turjo.paperless.core.designsystem.glassContent
+import dev.turjo.paperless.core.designsystem.GlassHost
 import android.provider.OpenableColumns
 import android.content.Context
 import android.content.SharedPreferences
@@ -57,10 +60,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import dev.turjo.paperless.core.designsystem.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -267,6 +270,7 @@ fun ReaderScreen(
             ?: state.tabs.firstOrNull { it.tabId != tab.tabId } ?: tab
     } else null
 
+    GlassHost {
     Box(Modifier.fillMaxSize()) {
         val lockedTaps = if (chrome.locked) Modifier.pointerInput(Unit) {
             awaitEachGesture {
@@ -286,7 +290,7 @@ fun ReaderScreen(
         }.pointerInput(Unit) {
             detectTapGestures { revealLock() }
         } else Modifier
-        Box(Modifier.fillMaxSize().then(lockedTaps), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().glassContent().then(lockedTaps), contentAlignment = Alignment.Center) {
             val openError = state.openError
             when {
                 state.restoring -> CircularProgressIndicator()
@@ -346,7 +350,7 @@ fun ReaderScreen(
             Column(
                 Modifier.fillMaxWidth()
                     .onSizeChanged { topOverlayHeight = it.height }
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                    .glassOverlay(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
                     .windowInsetsPadding(systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             ) {
                 if (tab != null && annotationLayer != null && annotating) {
@@ -451,6 +455,7 @@ fun ReaderScreen(
                 .windowInsetsPadding(systemBars.only(WindowInsetsSides.Horizontal))
                 .padding(bottom = if (chrome.immersive) bottomInset else pagePadding.calculateBottomPadding()),
         )
+    }
     }
 }
 

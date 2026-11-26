@@ -36,6 +36,8 @@
     <string name="licences_close">Close</string>
     <string name="amoled_black">AMOLED black</string>
     <string name="amoled_black_hint">Pure black background in dark mode. Saves battery on OLED screens.</string>
+    <string name="glass_effect">Glass effect</string>
+    <string name="glass_effect_hint">See-through bars, cards and dialogs on top of your colours.</string>
     <string name="accent">Accent</string>
     <string name="accent_dynamic_hint">Turn off dynamic colour to pick an accent</string>
     <string name="accent_blue">Blue accent</string>

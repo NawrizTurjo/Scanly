@@ -56,6 +56,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAmoledBlack(enabled) }
     }
 
+    fun setGlass(enabled: Boolean) {
+        viewModelScope.launch { repository.setGlass(enabled) }
+    }
+
     fun setAccent(accent: AccentColor) {
         viewModelScope.launch { repository.setAccent(accent) }
     }

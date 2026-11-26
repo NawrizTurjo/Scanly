@@ -1,5 +1,8 @@
 package dev.turjo.paperless.feature.library
 
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
+import dev.turjo.paperless.core.designsystem.glassEdge
+import dev.turjo.paperless.core.designsystem.glassContainer
 import android.content.Context
 import android.content.ContextWrapper
 import android.text.format.DateUtils
@@ -18,6 +21,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
+import dev.turjo.paperless.core.designsystem.DropdownMenu
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -126,7 +131,7 @@ fun LibraryScreen(
     }
     val appBarState = key(filter.folderId, folderMode, bin) { rememberTopAppBarState() }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(appBarState)
-    Scaffold(
+    ScanlyScaffold(
         modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbar) },
@@ -293,12 +298,13 @@ fun LibraryScreen(
             else -> key(folderMode, filter.folderId, listLayout) {
                 LazyVerticalGrid(
                     columns = if (!folderGrid && listLayout) GridCells.Fixed(1) else GridCells.Adaptive(160.dp),
-                    modifier = content,
+                    // Runs under the (glass) bars; the padding keeps first and last items clear.
+                    modifier = Modifier.fillMaxSize().consumeWindowInsets(padding),
                     contentPadding = PaddingValues(
                         start = 16.dp,
-                        top = 8.dp,
+                        top = padding.calculateTopPadding() + 8.dp,
                         end = 16.dp,
-                        bottom = if (canCreateFolder) 160.dp else 100.dp,
+                        bottom = padding.calculateBottomPadding() + if (canCreateFolder) 160.dp else 100.dp,
                     ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -394,7 +400,7 @@ private fun ChooseScanScreen(
     modifier: Modifier,
 ) {
     val filter by model.filter.collectAsStateWithLifecycle()
-    Scaffold(
+    ScanlyScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
@@ -444,7 +450,10 @@ internal fun UnsavedScanCard(
     val time = DateUtils.getRelativeTimeSpanString(
         scan.startedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
     )
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        Modifier.fillMaxWidth().glassEdge(MaterialTheme.shapes.medium),
+        colors = CardDefaults.cardColors(containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerHighest)),
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 stringResource(R.string.library_unsaved_scan, count, time),
@@ -578,11 +587,12 @@ internal fun DocumentCard(
 
     Card(
         modifier = Modifier.fillMaxWidth()
+            .glassEdge(MaterialTheme.shapes.medium)
             .combinedClickable(onClick = onClick, onLongClickLabel = longClickLabel, onLongClick = {
                 if (selecting) onSelect() else menu = true
             })
             .semantics { this.selected = selected },
-        colors = CardDefaults.cardColors(containerColor = cardColor),
+        colors = CardDefaults.cardColors(containerColor = glassContainer(cardColor)),
     ) {
         val image: @Composable (Modifier) -> Unit = { modifier ->
             AsyncImage(

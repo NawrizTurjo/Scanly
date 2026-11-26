@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.editor
 
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +13,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import dev.turjo.paperless.core.designsystem.DropdownMenu
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -69,7 +72,7 @@ fun ReviewScreen(
     BackHandler(enabled = state.changing) {}
     EditorMessage(state.message, snackbar) { vm.message(null) }
 
-    Scaffold(
+    ScanlyScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(pluralStringResource(R.plurals.review_pages, state.pages.size, state.pages.size)) },

@@ -16,9 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -124,38 +123,38 @@ internal fun BackupSettings() {
         }
     }
 
-    HorizontalDivider()
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(stringResource(R.string.backup_section), style = MaterialTheme.typography.titleMedium)
-        destination?.lastPathSegment?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled = !backup.active, onClick = { chooseDestination.launch(destination) }) {
-                Text(stringResource(R.string.backup_choose_folder))
+    SettingsGroup(R.drawable.ic_group_backup, R.string.backup_section) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            destination?.lastPathSegment?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(enabled = !backup.active, onClick = { chooseDestination.launch(destination) }) {
+                    Text(stringResource(R.string.backup_choose_folder))
+                }
+                TextButton(enabled = !backup.active && destination != null, onClick = { chooseFolders = true }) {
+                    Text(stringResource(R.string.backup_now))
+                }
+                TextButton(enabled = !backup.active, onClick = { chooseBackup.launch(null) }) {
+                    Text(stringResource(R.string.backup_restore))
+                }
             }
-            TextButton(enabled = !backup.active && destination != null, onClick = { chooseFolders = true }) {
-                Text(stringResource(R.string.backup_now))
+            if (backup.active) {
+                LinearProgressIndicator({ (backup.progress ?: 0) / 100f }, Modifier.fillMaxWidth())
+                TextButton(onClick = { LibraryJobs.cancelBackup(context) }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
             }
-            TextButton(enabled = !backup.active, onClick = { chooseBackup.launch(null) }) {
-                Text(stringResource(R.string.backup_restore))
-            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            backup.lastResult?.let { Text(backupResultText(it), style = MaterialTheme.typography.bodyMedium) }
         }
-        if (backup.active) {
-            LinearProgressIndicator({ (backup.progress ?: 0) / 100f }, Modifier.fillMaxWidth())
-            TextButton(onClick = { LibraryJobs.cancelBackup(context) }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        backup.lastResult?.let { Text(backupResultText(it), style = MaterialTheme.typography.bodyMedium) }
     }
 
-    HorizontalDivider()
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(stringResource(R.string.search_index_section), style = MaterialTheme.typography.titleMedium)
-        Text(pluralStringResource(R.plurals.search_index_pdfs, counts.pdfs, counts.pdfs))
-        Text(pluralStringResource(R.plurals.search_index_pages, counts.pages, counts.pages))
-        TextButton(onClick = { LibraryJobs.index(context, rebuild = true) }) {
-            Text(stringResource(R.string.search_index_rebuild))
+    SettingsGroup(R.drawable.ic_group_search, R.string.search_index_section) {
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Text(pluralStringResource(R.plurals.search_index_pdfs, counts.pdfs, counts.pdfs))
+            Text(pluralStringResource(R.plurals.search_index_pages, counts.pages, counts.pages))
+            TextButton(onClick = { LibraryJobs.index(context, rebuild = true) }) {
+                Text(stringResource(R.string.search_index_rebuild))
+            }
         }
     }
 

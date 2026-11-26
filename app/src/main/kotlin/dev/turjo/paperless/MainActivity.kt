@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = settings.dynamicColor,
                 amoledBlack = settings.amoledBlack,
                 accent = settings.accent,
+                glass = settings.glass,
             ) {
                 val lightStatusBar = MaterialTheme.colorScheme.background.luminance() > 0.5f
                 val lightNavBar = NavigationBarDefaults.containerColor.luminance() > 0.5f

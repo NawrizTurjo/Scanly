@@ -126,6 +126,7 @@ fun ScanlyTheme(
     dynamicColor: Boolean,
     amoledBlack: Boolean = false,
     accent: AccentColor = AccentColor.BLUE,
+    glass: Boolean = LocalGlassEnabled.current,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -146,6 +147,5 @@ fun ScanlyTheme(
         motionScheme = MotionScheme.expressive(),
         shapes = scanlyShapes,
         typography = scanlyTypography,
-        content = content,
-    )
+    ) { ProvideGlass(glass, dark, onBlack = dark && amoledBlack, content) }
 }

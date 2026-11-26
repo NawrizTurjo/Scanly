@@ -1,5 +1,6 @@
 package dev.turjo.paperless.feature.editor
 
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -57,7 +58,7 @@ fun PageEditorScreen(pageId: String, onBack: () -> Unit) {
     LaunchedEffect(state.saved) { if (state.saved) onBack() }
     EditorMessage(state.message, snackbar) { vm.message(null) }
 
-    Scaffold(
+    ScanlyScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(if (layout == null) R.string.editor_title else R.string.editor_id_layout)) },

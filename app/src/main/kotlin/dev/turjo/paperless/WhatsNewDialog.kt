@@ -31,6 +31,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import dev.turjo.paperless.core.designsystem.BlurBehindWindow
+import dev.turjo.paperless.core.designsystem.glassDialogColor
+import dev.turjo.paperless.core.designsystem.glassEdge
 import dev.turjo.paperless.feature.settings.R as SettingsR
 import kotlinx.coroutines.launch
 
@@ -41,9 +44,11 @@ internal fun WhatsNewDialog(version: String, release: WhatsNewRelease?, onDismis
     val scope = rememberCoroutineScope()
     val lastPage = cards.isEmpty() || pager.currentPage == cards.lastIndex
     Dialog(onDismissRequest = onDismiss) {
+        BlurBehindWindow()
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().glassEdge(MaterialTheme.shapes.extraLarge),
             shape = MaterialTheme.shapes.extraLarge,
+            color = glassDialogColor(MaterialTheme.colorScheme.surface),
         ) {
             Column(
                 Modifier.heightIn(max = 520.dp).padding(24.dp),

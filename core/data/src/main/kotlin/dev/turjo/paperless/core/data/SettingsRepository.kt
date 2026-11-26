@@ -27,6 +27,7 @@ interface SettingsRepository {
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDynamicColor(enabled: Boolean)
     suspend fun setAmoledBlack(enabled: Boolean)
+    suspend fun setGlass(enabled: Boolean)
     suspend fun setAccent(accent: AccentColor)
     suspend fun setAutoNamePattern(pattern: String)
     suspend fun setAppLock(mode: AppLock)
@@ -57,6 +58,7 @@ class DataStoreSettingsRepository @Inject constructor(
                     ?: ThemeMode.SYSTEM,
                 dynamicColor = preferences[DYNAMIC_COLOR] ?: true,
                 amoledBlack = preferences[AMOLED_BLACK] ?: defaults.amoledBlack,
+                glass = preferences[GLASS] ?: defaults.glass,
                 accent = AccentColor.entries.find { it.name == preferences[ACCENT] } ?: defaults.accent,
                 autoNamePattern = preferences[AUTO_NAME_PATTERN] ?: defaults.autoNamePattern,
                 appLock = AppLock.entries.find { it.name == preferences[APP_LOCK] } ?: defaults.appLock,
@@ -79,6 +81,10 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setAmoledBlack(enabled: Boolean) {
         dataStore.edit { it[AMOLED_BLACK] = enabled }
+    }
+
+    override suspend fun setGlass(enabled: Boolean) {
+        dataStore.edit { it[GLASS] = enabled }
     }
 
     override suspend fun setAccent(accent: AccentColor) {
@@ -136,6 +142,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val AMOLED_BLACK = booleanPreferencesKey("amoled_black")
+        val GLASS = booleanPreferencesKey("glass")
         val ACCENT = stringPreferencesKey("accent")
     }
 }

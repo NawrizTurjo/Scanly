@@ -1,5 +1,9 @@
 package dev.turjo.paperless.feature.library
 
+import dev.turjo.paperless.core.designsystem.LocalGlassEnabled
+import dev.turjo.paperless.core.designsystem.glassEdge
+import dev.turjo.paperless.core.designsystem.glassContainer
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -8,6 +12,8 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import dev.turjo.paperless.core.designsystem.DropdownMenu
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -81,7 +87,7 @@ fun DocumentScreen(
     }
 
     LibraryBackHandler(state.applyingBatch) {}
-    Scaffold(
+    ScanlyScaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
@@ -192,18 +198,21 @@ fun DocumentScreen(
             }
         },
     ) { padding ->
-        val content = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+        // The page grid runs under the (glass) bars; its padding keeps the first and last rows clear.
+        val content = Modifier.fillMaxSize().consumeWindowInsets(padding)
         Column(content) {
-            if (state.sharing || state.applyingBatch) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.sharing || state.applyingBatch) {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = padding.calculateTopPadding()))
+            }
             if (document != null) {
                 DocumentPages(
-                    document, state, busy, model, onViewPage,
+                    document, state, busy, model, onViewPage, padding,
                     onDelete = { id ->
                         if (document.pages.size == 1) deleteLastId = id else model.deletePage(id)
                     },
                 )
             } else if (!state.loaded) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
@@ -292,6 +301,7 @@ private fun DocumentPages(
     busy: Set<String>,
     model: DocumentViewModel,
     onViewPage: (String) -> Unit,
+    barPadding: PaddingValues,
     onDelete: (String) -> Unit,
 ) {
     val pagesById = remember(document.pages) { document.pages.associateBy(Page::id) }
@@ -310,7 +320,12 @@ private fun DocumentPages(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(150.dp),
         state = grid,
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            top = barPadding.calculateTopPadding() + 12.dp,
+            end = 12.dp,
+            bottom = barPadding.calculateBottomPadding() + 12.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -358,7 +373,11 @@ private fun PageCard(
     }
     val pageLabel = stringResource(R.string.detail_page_number, number)
     var menu by remember { mutableStateOf(false) }
-    ElevatedCard(elevation = CardDefaults.elevatedCardElevation(if (dragging) 8.dp else 1.dp)) {
+    ElevatedCard(
+        modifier = Modifier.glassEdge(MaterialTheme.shapes.medium),
+        elevation = CardDefaults.elevatedCardElevation(if (dragging) 8.dp else if (LocalGlassEnabled.current) 0.dp else 1.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerLow)),
+    ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(0.85f).clickable(enabled = enabled, onClickLabel = pageLabel, onClick = onOpen),
             contentAlignment = Alignment.Center,

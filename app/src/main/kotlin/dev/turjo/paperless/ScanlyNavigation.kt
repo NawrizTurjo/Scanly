@@ -31,7 +31,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ShortNavigationBar
 import androidx.compose.material3.ShortNavigationBarItem
-import androidx.compose.material3.Scaffold
+import dev.turjo.paperless.core.designsystem.LocalGlassBottomInset
+import dev.turjo.paperless.core.designsystem.LocalGlassEnabled
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -224,7 +226,11 @@ internal fun ScanlyNavigation(
         canPrompt = canShowWhatsNew,
     )
 
-    Scaffold(
+    val glass = LocalGlassEnabled.current
+    ScanlyScaffold(
+        // Glass captures the content into an offscreen layer; only tab screens sit under the glass
+        // navigation bar, and the camera preview's surface must never be captured.
+        glassSource = currentTab != null,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (currentTab != null) {
@@ -257,11 +263,16 @@ internal fun ScanlyNavigation(
         },
     ) { padding ->
         // Only tab roots sit above the bottom bar; full-screen routes (camera, editor) handle their own insets.
-        val contentModifier = if (currentTab != null && !readerActive) {
-            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
-        } else {
-            Modifier.fillMaxSize()
+        val underGlassBar = glass && currentTab != null && !readerActive
+        val contentModifier = when {
+            // Glass: tab screens draw under the navigation bar and pad their lists instead.
+            underGlassBar -> Modifier.fillMaxSize()
+                .padding(top = padding.calculateTopPadding())
+                .consumeWindowInsets(padding)
+            currentTab != null && !readerActive -> Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+            else -> Modifier.fillMaxSize()
         }
+        val bottomInset = if (underGlassBar) padding.calculateBottomPadding() else 0.dp
         val pageMotionDecorator = remember {
             NavEntryDecorator<NavKey> { entry ->
                 CompositionLocalProvider(LocalNavAnimatedScope provides LocalNavAnimatedContentScope.current) {
@@ -269,6 +280,7 @@ internal fun ScanlyNavigation(
                 }
             }
         }
+        CompositionLocalProvider(LocalGlassBottomInset provides bottomInset) {
         SharedTransitionLayout(modifier = contentModifier) {
             CompositionLocalProvider(LocalSharedTransitionScope provides this@SharedTransitionLayout) {
                 NavDisplay(
@@ -368,15 +380,18 @@ internal fun ScanlyNavigation(
                         }
                         entry<SettingsRoute> { SettingsScreen(onWhatsNew = whatsNew) }
                         entry<CameraRoute> { key ->
-                            CameraScreen(
-                                targetDocumentId = key.targetDocumentId,
-                                insertAt = key.insertAt,
-                                singleMode = key.single,
-                                resumeDraftId = key.resumeDraftId,
-                                startMode = key.startMode,
-                                onReview = { draftId -> backStack.showReview(draftId) },
-                                onClose = { backStack.removeAt(backStack.lastIndex) },
-                            )
+                            // The camera keeps solid controls: no glass over the live preview.
+                            CompositionLocalProvider(LocalGlassEnabled provides false) {
+                                CameraScreen(
+                                    targetDocumentId = key.targetDocumentId,
+                                    insertAt = key.insertAt,
+                                    singleMode = key.single,
+                                    resumeDraftId = key.resumeDraftId,
+                                    startMode = key.startMode,
+                                    onReview = { draftId -> backStack.showReview(draftId) },
+                                    onClose = { backStack.removeAt(backStack.lastIndex) },
+                                )
+                            }
                         }
                         entry<ReviewRoute> { key ->
                             ReviewScreen(
@@ -417,6 +432,7 @@ internal fun ScanlyNavigation(
                     },
                 )
             }
+        }
         }
     }
     if (preparingPdf) {

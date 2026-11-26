@@ -1,5 +1,7 @@
 package dev.turjo.paperless.feature.library
 
+import dev.turjo.paperless.core.designsystem.glassEdge
+import dev.turjo.paperless.core.designsystem.glassContainer
 import android.content.SharedPreferences
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import dev.turjo.paperless.core.designsystem.ModalBottomSheet
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -74,10 +78,11 @@ fun HomeScreen(
     // If the user was at the top, show the card.
     val hasDraft = unsaved != null
     LaunchedEffect(hasDraft) {
-        if (hasDraft && listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
+        // Applied on the next layout pass, so it wins over the list's own anchoring.
+        if (hasDraft && listState.firstVisibleItemIndex <= 1) listState.requestScrollToItem(0)
     }
 
-    Scaffold(
+    ScanlyScaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
@@ -93,9 +98,15 @@ fun HomeScreen(
         floatingActionButton = { ScanButton(scan) },
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+            // The list runs under the (glass) bars; padding keeps the first and last items clear.
+            Modifier.fillMaxSize().consumeWindowInsets(padding),
             state = listState,
-            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 100.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = padding.calculateTopPadding() + 8.dp,
+                end = 16.dp,
+                bottom = padding.calculateBottomPadding() + 100.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             unsaved?.let { draft ->
@@ -213,7 +224,12 @@ private fun ShortcutTile(
         shortcut.id == ALL_TOOLS -> colors.surfaceContainerHigh to colors.onSurface
         else -> colors.secondaryContainer to colors.onSecondaryContainer
     }
-    Surface(modifier, shape = MaterialTheme.shapes.medium, color = container, contentColor = content) {
+    Surface(
+        modifier.glassEdge(MaterialTheme.shapes.medium),
+        shape = MaterialTheme.shapes.medium,
+        color = glassContainer(container),
+        contentColor = content,
+    ) {
         Column(
             Modifier.fillMaxWidth()
                 .heightIn(min = 92.dp)

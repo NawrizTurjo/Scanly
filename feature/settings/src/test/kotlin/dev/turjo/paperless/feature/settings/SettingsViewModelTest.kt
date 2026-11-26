@@ -139,6 +139,10 @@ class SettingsViewModelTest {
             settings.update { it.copy(dynamicColor = enabled) }
         }
 
+        override suspend fun setGlass(enabled: Boolean) {
+            settings.update { it.copy(glass = enabled) }
+        }
+
         override suspend fun setAmoledBlack(enabled: Boolean) {
             settings.update { it.copy(amoledBlack = enabled) }
         }

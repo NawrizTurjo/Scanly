@@ -32,6 +32,8 @@ data class UserSettings(
     val ocrLanguage: OcrLanguage = OcrLanguage.BOTH,
     val defaultScanFilter: PageFilter = PageFilter.DOCUMENT,
     val defaultScanDeskew: Boolean = true,
+    /** Optional glass look on top of the chosen colours. */
+    val glass: Boolean = false,
 )
 
 private val autoNameDate = DateTimeFormatter.ofPattern("uuuu-MM-dd", Locale.ROOT)

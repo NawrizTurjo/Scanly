@@ -36,6 +36,12 @@
     "url": "https://developer.android.com/jetpack/androidx/releases/camera"
   },
   {
+    "name": "Haze and Haze Glass",
+    "version": "2.1.0",
+    "license": "Apache-2.0",
+    "url": "https://github.com/chrisbanes/haze"
+  },
+  {
     "name": "Coil",
     "version": "3.6.3",
     "license": "Apache-2.0",

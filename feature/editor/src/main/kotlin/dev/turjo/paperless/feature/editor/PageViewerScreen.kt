@@ -1,5 +1,16 @@
 package dev.turjo.paperless.feature.editor
 
+import dev.turjo.paperless.core.designsystem.glassOverlay
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -16,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,7 +36,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -121,7 +130,7 @@ fun PageViewerScreen(
             if (showText && current != null) {
                 PageTextSheet(current.page.id, model) { showText = false }
             }
-            Scaffold(
+            ScanlyScaffold(
                 modifier = Modifier.background(MaterialTheme.colorScheme.background).safeDrawingPadding(),
                 topBar = {
                     TopAppBar(
@@ -130,39 +139,45 @@ fun PageViewerScreen(
                                 Text(stringResource(R.string.viewer_page_position, pager.currentPage + 1, ids.size))
                             }
                         },
-                        navigationIcon = { SymbolButton("←", R.string.editor_back, !state.changing, onBack) },
+                        navigationIcon = {
+                            IconButton(onBack, enabled = !state.changing) {
+                                Icon(painterResource(R.drawable.ic_viewer_back), stringResource(R.string.editor_back))
+                            }
+                        },
                         actions = {
                             if (current != null) {
-                                TextButton({ model.exportPage(current.page.id, share = true) }, enabled = canAct) {
-                                    Text(stringResource(R.string.viewer_share))
+                                IconButton({ model.exportPage(current.page.id, share = true) }, enabled = canAct) {
+                                    Icon(painterResource(R.drawable.ic_viewer_share), stringResource(R.string.viewer_share))
                                 }
-                                TextButton({ model.exportPage(current.page.id, share = false) }, enabled = canAct) {
-                                    Text(stringResource(R.string.viewer_save_image))
+                                IconButton({ model.exportPage(current.page.id, share = false) }, enabled = canAct) {
+                                    Icon(painterResource(R.drawable.ic_viewer_save), stringResource(R.string.viewer_save_image))
                                 }
                             }
                         },
                     )
                 },
+                bottomBarGlass = false,
+                colourPools = false,
                 bottomBar = {
                     if (current != null) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Button({ onEdit(current.page.id) }, Modifier.weight(1f), enabled = canAct) {
-                                Text(stringResource(R.string.viewer_edit))
-                            }
-                            TextButton({ showText = true }, enabled = canAct) {
-                                Text(stringResource(R.string.viewer_text))
-                            }
-                            if (!current.page.isIdComposite) {
-                                TextButton({ model.rotate(current.page.id) }, enabled = canAct) {
-                                    Text(stringResource(R.string.viewer_rotate))
+                        // A floating toolbar: icon and label per action, glass when the glass look is on.
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+                            Row(
+                                Modifier.glassOverlay(MaterialTheme.colorScheme.surfaceContainerHigh, cornerRadius = 28.dp)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                ViewerAction(R.drawable.ic_viewer_edit, R.string.viewer_edit, canAct, emphasized = true) {
+                                    onEdit(current.page.id)
                                 }
-                            }
-                            TextButton({ confirmDelete = true }, enabled = canAct) {
-                                Text(stringResource(R.string.editor_delete))
+                                ViewerAction(R.drawable.ic_recognized_text, R.string.viewer_text, canAct) { showText = true }
+                                if (!current.page.isIdComposite) {
+                                    ViewerAction(R.drawable.ic_viewer_rotate, R.string.viewer_rotate, canAct) {
+                                        model.rotate(current.page.id)
+                                    }
+                                }
+                                ViewerAction(R.drawable.ic_viewer_delete, R.string.editor_delete, canAct) { confirmDelete = true }
                             }
                         }
                     }
@@ -376,3 +391,32 @@ private fun ViewerImage(
 
 /** Long-side cap for the zoomed-in image: full camera resolution, still drawable as one bitmap. */
 private const val FULL_RESOLUTION_MAX_SIDE = 4096
+
+/** One toolbar action: an icon over a short label, 48dp+ tall. [emphasized] fills the icon's pill. */
+@Composable
+private fun ViewerAction(icon: Int, label: Int, enabled: Boolean, emphasized: Boolean = false, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier.clip(RoundedCornerShape(20.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .widthIn(min = 64.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .alpha(if (enabled) 1f else 0.38f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Box(
+            Modifier.size(width = 52.dp, height = 30.dp)
+                .background(if (emphasized) colors.primary else Color.Transparent, RoundedCornerShape(15.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(icon),
+                contentDescription = null,
+                tint = if (emphasized) colors.onPrimary else colors.onSurface,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Text(stringResource(label), style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
+    }
+}

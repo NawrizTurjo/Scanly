@@ -1,5 +1,11 @@
 package dev.turjo.paperless.feature.tools
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.WindowInsets
+import dev.turjo.paperless.core.designsystem.ScanlyScaffold
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -15,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -50,18 +57,25 @@ fun ToolsScreen(
     val state by model.state.collectAsStateWithLifecycle()
     val tool = state.tool
     BackHandler(tool != null, model::back)
-    Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(tool?.title ?: R.string.tools_title)) },
-            navigationIcon = {
-                val back = if (tool != null) model::back else onClose
-                if (back != null) TextButton(onClick = back) { Text(stringResource(R.string.tools_back)) }
-            },
-        )
-        if (tool == null) {
-            ToolsLanding(model, onOpenPdf)
-        } else {
-            ToolFlow(tool, state, model, onOpenPdf, onAdjustImages)
+    ScanlyScaffold(
+        Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(tool?.title ?: R.string.tools_title)) },
+                navigationIcon = {
+                    val back = if (tool != null) model::back else onClose
+                    if (back != null) TextButton(onClick = back) { Text(stringResource(R.string.tools_back)) }
+                },
+            )
+        },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+            if (tool == null) {
+                ToolsLanding(model, onOpenPdf)
+            } else {
+                ToolFlow(tool, state, model, onOpenPdf, onAdjustImages)
+            }
         }
     }
 }

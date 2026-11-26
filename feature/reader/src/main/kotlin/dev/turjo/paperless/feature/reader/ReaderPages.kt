@@ -37,7 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import dev.turjo.paperless.core.designsystem.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -193,7 +193,7 @@ internal fun ReaderPages(
             }
         }
         external?.let { ExternalLinkDialog(it, { external = null }, { linkError = true }) }
-        if (linkError) androidx.compose.material3.AlertDialog(
+        if (linkError) dev.turjo.paperless.core.designsystem.AlertDialog(
             onDismissRequest = { linkError = false },
             text = { Text(stringResource(R.string.reader_link_open_failed)) },
             confirmButton = { androidx.compose.material3.TextButton({ linkError = false }) { Text(stringResource(R.string.reader_ok)) } },

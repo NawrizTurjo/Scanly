@@ -21,6 +21,7 @@ test-core = "1.7.0"
 
 room = "2.8.5"
 coil = "3.6.3"
+haze = "2.1.0"
 camerax = "1.7.0"
 reorderable = "3.1.0"
 serialization = "1.13.0"
@@ -33,6 +34,8 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+haze-glass = { module = "dev.chrisbanes.haze:haze-glass", version.ref = "haze" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 test-core = { module = "androidx.test:core", version.ref = "test-core" }
 camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
