@@ -27,6 +27,13 @@ class WhatsNewTest {
         assertTrue(WhatsNew.shouldShow("1.2.0", "1.1.2", previouslyUpdated = true))
     }
 
+    @Test fun nightliesShowTheTourOnceForTheirVersion() {
+        assertTrue(WhatsNew.shouldShow("1.1.4", "2.0.0-nightly.1", previouslyUpdated = true))
+        assertFalse(WhatsNew.shouldShow("2.0.0-nightly.1", "2.0.0-nightly.2", previouslyUpdated = true))
+        assertFalse(WhatsNew.shouldShow("2.0.0-nightly.2", "2.0.0", previouslyUpdated = true))
+        assertEquals(WhatsNew.releaseFor("1.1.4"), WhatsNew.releaseFor("1.1.4-nightly.3"))
+    }
+
     @Test fun releaseLookupUsesTheExactVersion() {
         val release = checkNotNull(WhatsNew.releaseFor("1.1.2"))
         assertEquals("1.1.2", release.version)

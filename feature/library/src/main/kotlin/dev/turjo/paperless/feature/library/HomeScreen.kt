@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -67,6 +68,14 @@ fun HomeScreen(
     var discardId by rememberSaveable { mutableStateOf<String?>(null) }
     val editShortcuts = { if (preferences != null) editing = true }
     val scan = { onShortcut("scan") }
+    val listState = rememberLazyListState()
+    // The unsaved-scan card loads after the rest of Home. A lazy list keeps its first visible item
+    // in place when something appears above it, which left the card half hidden under the title.
+    // If the user was at the top, show the card.
+    val hasDraft = unsaved != null
+    LaunchedEffect(hasDraft) {
+        if (hasDraft && listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -85,6 +94,7 @@ fun HomeScreen(
     ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+            state = listState,
             contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

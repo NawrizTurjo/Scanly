@@ -39,7 +39,8 @@ internal object WhatsNew {
         )),
     )
 
-    fun releaseFor(version: String): WhatsNewRelease? = releases.find { it.version == version }
+    /** Nightlies (`2.0.0-nightly.1`) share the cards of the version they lead up to. */
+    fun releaseFor(version: String): WhatsNewRelease? = releases.find { it.version == baseVersion(version) }
 
     /**
      * The tour after an update: cards from every release newer than [lastVersion] up to
@@ -68,6 +69,9 @@ internal object WhatsNew {
         return 0
     }
 
+    /** Once per version: a nightly and the stable release after it count as the same version. */
     fun shouldShow(lastVersion: String?, currentVersion: String, previouslyUpdated: Boolean): Boolean =
-        lastVersion?.let { it != currentVersion } ?: previouslyUpdated
+        lastVersion?.let { baseVersion(it) != baseVersion(currentVersion) } ?: previouslyUpdated
+
+    private fun baseVersion(version: String) = version.substringBefore('+').substringBefore('-')
 }

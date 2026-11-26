@@ -27,6 +27,27 @@ class UpdateReleaseTest {
     }
 
     @Test
+    fun ordersNightlies() {
+        assertTrue(isNewerVersion("2.0.0-nightly.1", "1.1.4"))
+        assertTrue(isNewerVersion("2.0.0-nightly.2", "2.0.0-nightly.1"))
+        assertTrue(isNewerVersion("2.0.0-nightly.10", "2.0.0-nightly.9"))
+        assertTrue(isNewerVersion("2.0.0", "2.0.0-nightly.3"))
+        assertFalse(isNewerVersion("2.0.0-nightly.3", "2.0.0"))
+        assertFalse(isNewerVersion("2.0.0-nightly.1", "2.0.0-nightly.1"))
+        assertFalse(isNewerVersion("1.1.4", "2.0.0-nightly.1"))
+        assertEquals("2.0.0-nightly.2", tagFromReleaseLocation("https://github.com/o/r/releases/tag/v2.0.0-nightly.2"))
+    }
+
+    @Test
+    fun atomFeedGivesTheNewestTagIncludingNightlies() {
+        val feed = listOf("v1.1.4", "v2.0.0-nightly.2", "v2.0.0-nightly.10", "vbroken").joinToString("") {
+            "<entry><link rel=\"alternate\" href=\"https://github.com/o/r/releases/tag/$it\"/></entry>"
+        }
+        assertEquals("2.0.0-nightly.10", newestTagFromAtom("<feed>$feed</feed>"))
+        assertNull(newestTagFromAtom("<feed/>"))
+    }
+
+    @Test
     fun automaticCheckRequiresTwentyFourHours() {
         val day = 86_400_000L
         assertTrue(shouldAutoCheck(true, null, day))

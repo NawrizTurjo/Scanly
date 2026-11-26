@@ -28,6 +28,8 @@ import kotlinx.coroutines.withContext
 
 internal data class UpdatesState(
     val automatic: Boolean? = null,
+    /** Nightlies and other pre-releases are offered too. */
+    val testBuilds: Boolean? = null,
     val checking: Boolean = false,
     val installedVersion: String? = null,
     val release: UpdateRelease? = null,
@@ -54,7 +56,8 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
         directory.listFiles()?.forEach { it.delete() }
         withContext(preferencesDispatcher) {
             val automatic = preferences.getBoolean("automatic", true)
-            mutableState.update { it.copy(automatic = automatic) }
+            val testBuilds = preferences.getBoolean("test_builds", false)
+            mutableState.update { it.copy(automatic = automatic, testBuilds = testBuilds) }
         }
     }
 
@@ -75,17 +78,26 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
                 }
                 if (!proceed) return@launch
                 mutableState.update { it.copy(checking = true, error = null) }
+                initialize.join()
+                val testBuilds = state.value.testBuilds == true
                 val (installed, newer) = withContext(Dispatchers.IO) {
                     val installed = app.packageManager.getPackageInfo(app.packageName, 0).versionName.orEmpty()
                     val latest = try {
-                        request(RELEASE_URL) { connection ->
-                            parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() }, installed)
+                        if (testBuilds) {
+                            request(RELEASES_URL) { connection ->
+                                parseNewestRelease(connection.inputStream.bufferedReader().use { it.readText() }, installed)
+                            }
+                        } else {
+                            request(RELEASE_URL) { connection ->
+                                parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() }, installed)
+                            }
                         }
                     } catch (limited: UpdateException) {
                         // The API allows 60 anonymous requests an hour per IP, which a shared network (campus Wi-Fi,
-                        // carrier NAT) can use up. The website's /releases/latest redirect has no such limit.
+                        // carrier NAT) can use up. The website has no such limit: /releases/latest redirects to the
+                        // newest stable tag, and releases.atom lists nightlies too.
                         if (limited.messageResource != R.string.update_rate_limited) throw limited
-                        latestFromWebsite(installed)
+                        if (testBuilds) newestFromWebsite(installed) else latestFromWebsite(installed)
                     }
                     installed to latest.takeIf { isNewerVersion(it.version, installed) }
                 }
@@ -116,6 +128,14 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
         mutableState.update { it.copy(automatic = enabled) }
         viewModelScope.launch(preferencesDispatcher) {
             preferences.edit { putBoolean("automatic", enabled) }
+        }
+    }
+
+    internal fun setTestBuilds(enabled: Boolean) {
+        mutableState.update { it.copy(testBuilds = enabled) }
+        viewModelScope.launch {
+            withContext(preferencesDispatcher) { preferences.edit { putBoolean("test_builds", enabled) } }
+            checkForUpdate()
         }
     }
 
@@ -285,6 +305,7 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
 }
 
 private const val RELEASE_URL = "https://api.github.com/repos/NawrizTurjo/Scanly/releases/latest"
+private const val RELEASES_URL = "https://api.github.com/repos/NawrizTurjo/Scanly/releases?per_page=20"
 private const val RELEASES_PAGE = "https://github.com/NawrizTurjo/Scanly/releases"
 
 /** Latest stable release without the API: the tag from the website redirect, the APK by its release file name. */
@@ -301,6 +322,18 @@ private fun latestFromWebsite(installed: String): UpdateRelease {
         connection.disconnect()
     }
     val version = tagFromReleaseLocation(location) ?: throw UpdateException(R.string.update_not_found)
+    return releaseFromWebsite(version, installed)
+}
+
+/** Newest release including nightlies, without the API: the tag list from releases.atom. */
+private fun newestFromWebsite(installed: String): UpdateRelease {
+    val feed = request("$RELEASES_PAGE.atom") { connection -> connection.inputStream.bufferedReader().use { it.readText() } }
+    val version = newestTagFromAtom(feed) ?: throw UpdateException(R.string.update_not_found)
+    return releaseFromWebsite(version, installed)
+}
+
+/** The APK (and a patch from [installed], if published) by their release file names. */
+private fun releaseFromWebsite(version: String, installed: String): UpdateRelease {
     val url = "$RELEASES_PAGE/download/v$version/Scanly-$version-arm64.apk"
     val size = request(url) { it.contentLengthLong }
     if (size <= 0) throw UpdateException(R.string.update_no_asset)

@@ -87,13 +87,15 @@
     <string name="update_current">Up to date (%1$s)</string>
     <string name="update_available">Version %1$s available</string>
     <string name="update_auto">Check automatically</string>
+    <string name="update_test_builds">Get test builds</string>
+    <string name="update_test_builds_summary">Offer nightly versions before they become stable. They may have bugs.</string>
     <string name="update_details">View update</string>
     <string name="update_dismiss">Dismiss</string>
     <string name="update_download">Download and install</string>
     <string name="update_size_patch">%1$s download (full app %2$s)</string>
     <string name="update_later">Later</string>
     <string name="update_skipped">Version %1$s skipped</string>
-    <string name="update_skip">Skip this version</string>
+    <string name="update_skip">Skip</string>
     <string name="update_cancel">Cancel download</string>
     <string name="update_permission_explanation">Allow Scanly to install apps from this source. When you return, Android will ask you to confirm the update.</string>
     <string name="update_permission_open">Open system settings</string>

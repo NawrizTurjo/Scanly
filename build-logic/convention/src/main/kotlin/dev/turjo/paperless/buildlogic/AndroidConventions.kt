@@ -32,6 +32,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 ndk { abiFilters += listOf("arm64-v8a") }
                 signingConfig = releaseSigning(this@with) ?: signingConfigs.getByName("debug")
                 isMinifyEnabled = true
+                isShrinkResources = true
                 proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             }
             lint.checkDependencies = true

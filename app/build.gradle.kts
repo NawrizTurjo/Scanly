@@ -7,6 +7,8 @@ plugins {
 
 android {
     buildFeatures.compose = true
+    // AndroidX ships translations for ~89 languages; Scanly is English (Bengali kept for OCR users).
+    androidResources.localeFilters += listOf("en", "bn")
     packaging {
         resources {
             // BouncyCastle (via PdfBox) ships ~4 MB of post-quantum key tables. R8 strips every

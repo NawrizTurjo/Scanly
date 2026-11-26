@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
@@ -88,6 +89,15 @@ internal fun UpdatesSection(model: UpdatesViewModel) {
         ),
         trailingContent = { Switch(automatic ?: true, null, enabled = automatic != null) },
     ) { Text(stringResource(R.string.update_auto)) }
+    val testBuilds = state.testBuilds
+    ListItem(
+        modifier = Modifier.toggleable(
+            value = testBuilds ?: false, enabled = testBuilds != null && !state.checking,
+            role = Role.Switch, onValueChange = model::setTestBuilds,
+        ),
+        supportingContent = { Text(stringResource(R.string.update_test_builds_summary)) },
+        trailingContent = { Switch(testBuilds ?: false, null, enabled = testBuilds != null && !state.checking) },
+    ) { Text(stringResource(R.string.update_test_builds)) }
 
     val release = state.release ?: return
     if (!state.showDialog) return
@@ -133,16 +143,16 @@ internal fun UpdatesSection(model: UpdatesViewModel) {
                         model.installPermissionUnavailable()
                     }
                 }) { Text(stringResource(R.string.update_permission_open)) }
-                else -> TextButton(onClick = model::startDownload) {
+                else -> Button(onClick = model::startDownload) {
                     Text(stringResource(R.string.update_download))
                 }
             }
         },
         dismissButton = {
             if (progress == null) {
-                Column {
-                    TextButton(onClick = model::dismissDialog) { Text(stringResource(R.string.update_later)) }
+                Row {
                     TextButton(onClick = model::skipRelease) { Text(stringResource(R.string.update_skip)) }
+                    TextButton(onClick = model::dismissDialog) { Text(stringResource(R.string.update_later)) }
                 }
             }
         },
