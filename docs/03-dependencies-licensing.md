@@ -45,7 +45,7 @@ Rule: the app ships only Apache-2.0 / MIT / BSD code. **Pin exact versions at S1
 | Coil 3 | 3.6.3 | P1 |
 | OpenCV (`org.opencv:opencv`) | 5.1.0 | Same major as the Python lab (opencv-python 5.1) |
 | PdfBox-Android | 2.0.27.0 | **Last release 2023-01**: no newer Apache-licensed alternative on Android, so keep it behind the `core:pdf` interface (R8) |
-| [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android/releases/tag/4.9.0) | 4.9.0 | Apache-2.0. `cz.adaptech.tesseract4android:tesseract4android:4.9.0` from JitPack. Native libraries total 7,514,368 bytes for arm64-v8a and 7,949,472 bytes for x86_64 before APK compression. |
+| [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android/releases/tag/4.9.0) | 4.9.0 | Apache-2.0. Built locally in `third_party/tesseract` with Tesseract 5.5.1 and Leptonica 1.85.0 (BSD-2-Clause). The slim build uses LSTM OCR from bitmaps and shares OpenCV's NDK runtime. See the module README for rebuild instructions and native sizes. |
 | [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0) English model | 4.1.0 | Apache-2.0. `eng.traineddata`, 4,113,088 bytes before APK compression. |
 | [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/4.1.0) Bengali model | 4.1.0 | Apache-2.0. `ben.traineddata`, 855,841 bytes before APK compression. |
 | Reorderable | 3.1.0 | P1 |

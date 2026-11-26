@@ -132,10 +132,16 @@
     "url": "https://developer.android.com/jetpack/androidx/releases/work"
   },
   {
-    "name": "Tesseract4Android",
+    "name": "Tesseract4Android (slim, with Tesseract 5.5.1)",
     "version": "4.9.0",
     "license": "Apache-2.0",
     "url": "https://github.com/adaptech-cz/Tesseract4Android"
+  },
+  {
+    "name": "Leptonica (bundled with Tesseract4Android)",
+    "version": "1.85.0",
+    "license": "BSD-2-Clause",
+    "url": "https://github.com/DanBloomberg/leptonica"
   },
   {
     "name": "tessdata_fast (English and Bengali)",
