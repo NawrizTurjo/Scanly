@@ -30,7 +30,7 @@ import org.json.JSONException
 
 private data class Dependency(val name: String, val version: String, val licence: String, val url: String)
 
-private val licenceIds = listOf("Apache-2.0", "MIT", "BSD-3-Clause")
+private val licenceIds = listOf("Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause")
 
 @Composable
 internal fun OpenSourceLicences(onDismiss: () -> Unit) {

@@ -12,9 +12,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io") {
-            content { includeGroup("cz.adaptech.tesseract4android") }
-        }
     }
 }
 
@@ -35,4 +32,5 @@ include(
     ":feature:tools",
     ":feature:settings",
     ":third_party:opencv",
+    ":third_party:tesseract",
 )

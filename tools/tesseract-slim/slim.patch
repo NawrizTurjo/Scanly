@@ -1,0 +1,173 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -28,7 +28,5 @@
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ 
+ # Adds the CMakeLists.txt file located in the specified directory as a build dependency.
+-add_subdirectory(libjpeg)
+-add_subdirectory(libpng)
+ add_subdirectory(leptonica)
+ add_subdirectory(tesseract)
+--- a/leptonica/CMakeLists.txt
++++ b/leptonica/CMakeLists.txt
+@@ -27,8 +27,6 @@
+ # Gradle automatically packages shared libraries with your APK.
+ 
+ set(LEPT_PATH "src/src/")
+-set(JPEG_PATH "../libjpeg/src/")
+-set(PNG_PATH "../libpng/src/")
+ 
+ # Avoid race-conditions in parallel builds, since we are writing into a shared source directory
+ file(LOCK ${CMAKE_CURRENT_SOURCE_DIR}/cmake.lock GUARD PROCESS TIMEOUT 30)
+@@ -65,13 +63,9 @@
+ 
+ # Specifies a path to native header files.
+ include_directories(${LEPT_PATH})
+-include_directories(${JPEG_PATH})
+-include_directories(${PNG_PATH})
+ 
+ # Define preprocessor constants
+ add_definitions(-DANDROID_BUILD)
+-add_definitions(-DHAVE_LIBJPEG=1)
+-add_definitions(-DHAVE_LIBPNG=1)
+ add_definitions(-DHAVE_LIBZ=1)
+ #TODO: Enable this when we use minSdkVersion 23 or higher
+ #add_definitions(-DHAVE_FMEMOPEN=1)
+@@ -90,6 +84,4 @@
+         log
+         jnigraphics
+         z
+-        jpeg
+-        pngx
+         )
+--- a/leptonica/src/src/environ.h
++++ b/leptonica/src/src/environ.h
+@@ -168,8 +168,8 @@
+ #define  USE_BMPIO        1
+ #define  USE_PNMIO        1
+ #define  USE_JP2KHEADER   1
+-#define  USE_PDFIO        1
+-#define  USE_PSIO         1
++#define  USE_PDFIO        0
++#define  USE_PSIO         0
+ 
+ 
+ /*-------------------------------------------------------------------------*
+--- a/leptonica/src/src/pdfappstub.c
++++ b/leptonica/src/src/pdfappstub.c
+@@ -53,7 +53,8 @@
+ /* ----------------------------------------------------------------------*/
+ 
+ l_ok cropFilesToPdf(SARRAY *sa, l_int32 lr_clear, l_int32 tb_clear,
+-                    l_int32 edgeclean, l_int32 lr_add, l_int32 tb_add,
++                    l_int32 edgeclean, l_int32 lr_border, l_int32 tb_border,
++                    l_float32 maxwiden, l_int32 printwiden,
+                     const char *title, const char *fileout)
+ {
+     return ERROR_INT("function not present", __func__, 1);
+--- a/tesseract/src/src/api/baseapi.cpp
++++ b/tesseract/src/src/api/baseapi.cpp
+@@ -476,7 +476,6 @@
+   return GetUTF8Text();
+ }
+ 
+-#ifndef DISABLED_LEGACY_ENGINE
+ /**
+  * Call between pages or documents etc to free up memory and forget
+  * adaptive data.
+@@ -485,10 +484,11 @@
+   if (tesseract_ == nullptr) {
+     return;
+   }
++#ifndef DISABLED_LEGACY_ENGINE
+   tesseract_->ResetAdaptiveClassifier();
++#endif
+   tesseract_->ResetDocumentDictionary();
+ }
+-#endif // ndef DISABLED_LEGACY_ENGINE
+ 
+ /**
+  * Provide an image for Tesseract to recognize. Format is as
+--- a/tesseract/CMakeLists.txt
++++ b/tesseract/CMakeLists.txt
+@@ -74,6 +74,72 @@
+         ${TESS_PATH}wordrec/*.cpp
+         )
+ 
++# Same legacy-only sources as Tesseract's own CMake build.
++list(REMOVE_ITEM tesseract_src
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/adaptions.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/docqual.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/equationdetect.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/fixspace.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/fixxht.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/osdetect.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/par_control.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/recogtraining.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/superscript.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/tessbox.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccmain/tfacepp.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccstruct/fontinfo.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccstruct/params_training_featdef.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccutil/ambigs.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccutil/bitvector.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/ccutil/indexmapbidi.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/adaptive.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/adaptmatch.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/blobclass.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/cluster.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/clusttool.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/cutoffs.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/featdefs.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/float2int.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/fpoint.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/intfeaturespace.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/intfx.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/intmatcher.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/intproto.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/kdtree.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/mf.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/mfoutline.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/mfx.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/normfeat.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/normmatch.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/ocrfeatures.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/outfeat.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/picofeat.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/protos.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/shapeclassifier.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/shapetable.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/tessclassifier.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/classify/trainingsample.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/dict/permdawg.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/dict/hyphen.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/associate.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/chop.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/chopper.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/drawfx.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/findseam.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/gradechop.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/language_model.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/lm_consistency.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/lm_pain_points.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/lm_state.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/outlines.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/params_model.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/pieces.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/plotedges.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/render.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/segsearch.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/src/src/wordrec/wordclass.cpp
++)
++
+ list(APPEND arch_files
+         ${TESS_PATH}arch/dotproduct.cpp
+         ${TESS_PATH}arch/simddetect.cpp
+@@ -152,6 +218,7 @@
+ add_definitions(-DHAVE_CONFIG_H)
+ add_definitions(-DGRAPHICS_DISABLED)
+ add_definitions(-DFAST_FLOAT)
++add_definitions(-DDISABLED_LEGACY_ENGINE)
+ 
+ # Ignore some warnings during build
+ target_compile_options(tesseract PRIVATE "-Wno-null-dereference")

@@ -20,6 +20,7 @@ __pycache__/
 test-data/scanner/real/
 work/
 shots/
+/_src/
 
 # Signing
 *.keystore
