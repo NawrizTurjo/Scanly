@@ -64,7 +64,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.size.Precision
 import coil3.size.Size as CoilSize
@@ -269,23 +268,7 @@ private fun ViewerImage(
             }.build()
     }
     var imageSize by remember(request) { mutableStateOf(Size.Zero) }
-    var baseKey by remember(request) { mutableStateOf<MemoryCache.Key?>(null) }
     var scale by remember { mutableStateOf(1f) }
-    // The base image is screen-sized, so zooming would only stretch it. Once the user zooms in,
-    // load the same file near full resolution on top (active page only).
-    var wantFullResolution by remember(request) { mutableStateOf(false) }
-    if (!active && wantFullResolution) wantFullResolution = false
-    val fullRequest = remember(request, wantFullResolution, baseKey) {
-        if (!wantFullResolution) return@remember null
-        request.newBuilder()
-            .size(FULL_RESOLUTION_MAX_SIDE)
-            .precision(Precision.INEXACT)
-            .apply {
-                request.memoryCacheKey?.let { memoryCacheKey("$it:full") }
-                placeholderMemoryCacheKey(baseKey)
-            }
-            .build()
-    }
     var translation by remember { mutableStateOf(Offset.Zero) }
     val reportZoom by rememberUpdatedState(onZoomed)
 
@@ -299,7 +282,6 @@ private fun ViewerImage(
         val target = fromCenter + (translation - fromCenter) * (next / scale) + pan
         translation = Offset(target.x.coerceIn(-maxX, maxX), target.y.coerceIn(-maxY, maxY))
         scale = next
-        if (next > 1.05f) wantFullResolution = true
         reportZoom(next > 1f)
     }
 
@@ -356,24 +338,11 @@ private fun ViewerImage(
                 translationY = translation.y
             },
             contentScale = ContentScale.Fit,
-            onSuccess = {
-                imageSize = it.painter.intrinsicSize
-                baseKey = it.result.memoryCacheKey
-            },
+            onSuccess = { imageSize = it.painter.intrinsicSize },
         )
-        if (fullRequest != null) {
-            AsyncImage(
-                model = fullRequest,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = translation.x
-                    translationY = translation.y
-                },
-                contentScale = ContentScale.Fit,
-            )
-        }
+        // The base image is screen-sized, so zooming would only stretch it: once zoomed in, the
+        // visible part of the processed page is decoded at the zoom's resolution and drawn on top.
+        ZoomTileLayer(processed?.first, active, scale = { scale }, translation = { translation })
         if (item.busy || processed == null) {
             Box(Modifier.align(Alignment.TopCenter).padding(12.dp)) { EditorProgress() }
         }
@@ -388,9 +357,6 @@ private fun ViewerImage(
         }
     }
 }
-
-/** Long-side cap for the zoomed-in image: full camera resolution, still drawable as one bitmap. */
-private const val FULL_RESOLUTION_MAX_SIDE = 4096
 
 /** One toolbar action: an icon over a short label, 48dp+ tall. [emphasized] fills the icon's pill. */
 @Composable
