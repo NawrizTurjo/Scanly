@@ -375,7 +375,10 @@ private fun PageCard(
     ElevatedCard(
         modifier = Modifier.glassEdge(MaterialTheme.shapes.medium),
         elevation = CardDefaults.elevatedCardElevation(if (dragging) 8.dp else if (LocalGlassEnabled.current) 0.dp else 1.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerLow)),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerLow),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(0.85f).clickable(enabled = enabled, onClickLabel = pageLabel, onClick = onOpen),

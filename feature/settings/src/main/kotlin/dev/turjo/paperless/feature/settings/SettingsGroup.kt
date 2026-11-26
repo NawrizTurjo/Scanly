@@ -37,6 +37,7 @@ internal fun SettingsGroup(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).glassEdge(shape),
         shape = shape,
         color = glassContainer(MaterialTheme.colorScheme.surfaceContainerLow),
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Row(

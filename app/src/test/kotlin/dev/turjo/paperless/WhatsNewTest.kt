@@ -61,7 +61,7 @@ class WhatsNewTest {
 
     @Test fun nightlyShowsTheCardsOfTheReleaseItLeadsTo() {
         val tour = checkNotNull(WhatsNew.tourFor("1.1.4", "2.0.0-nightly.1"))
-        assertEquals(7, tour.cards.size)
+        assertEquals(8, tour.cards.size)
         assertEquals(R.string.whats_new_glass_title, tour.cards.first().title)
     }
 

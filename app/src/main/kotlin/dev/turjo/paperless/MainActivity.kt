@@ -43,6 +43,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.turjo.paperless.core.designsystem.ScanlyTheme
+import dev.turjo.paperless.core.designsystem.SeedColor
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.feature.settings.UpdatesViewModel
@@ -74,6 +75,7 @@ class MainActivity : ComponentActivity() {
                 amoledBlack = settings.amoledBlack,
                 accent = settings.accent,
                 glass = settings.glass,
+                customAccent = SeedColor(settings.customAccentHue, settings.customAccentChroma),
             ) {
                 val lightStatusBar = MaterialTheme.colorScheme.background.luminance() > 0.5f
                 val lightNavBar = NavigationBarDefaults.containerColor.luminance() > 0.5f

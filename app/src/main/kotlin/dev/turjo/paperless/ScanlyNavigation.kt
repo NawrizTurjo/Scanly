@@ -1,6 +1,7 @@
 package dev.turjo.paperless
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -226,6 +227,11 @@ internal fun ScanlyNavigation(
         canPrompt = canShowWhatsNew,
     )
 
+    // Files, Reader and Settings replace the whole stack, so back from them has nothing to pop
+    // and would close the app. Go Home instead; back on Home closes the app as usual.
+    BackHandler(enabled = backStack.size == 1 && currentTab != null && top != HomeRoute) {
+        backStack.replaceAll(HomeRoute)
+    }
     val glass = LocalGlassEnabled.current
     ScanlyScaffold(
         // Glass captures the content into an offscreen layer; only tab screens sit under the glass

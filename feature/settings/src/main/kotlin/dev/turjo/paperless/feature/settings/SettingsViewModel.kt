@@ -72,6 +72,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAccent(accent) }
     }
 
+    fun setCustomAccent(hue: Float, chroma: Float) {
+        viewModelScope.launch { repository.setCustomAccent(hue, chroma) }
+    }
+
     fun setAutoNamePattern(pattern: String) {
         viewModelScope.launch { repository.setAutoNamePattern(pattern) }
     }

@@ -459,7 +459,10 @@ internal fun UnsavedScanCard(
     )
     Card(
         Modifier.fillMaxWidth().glassEdge(MaterialTheme.shapes.medium),
-        colors = CardDefaults.cardColors(containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerHighest)),
+        colors = CardDefaults.cardColors(
+            containerColor = glassContainer(MaterialTheme.colorScheme.surfaceContainerHighest),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -599,7 +602,10 @@ internal fun DocumentCard(
                 if (selecting) onSelect() else menu = true
             })
             .semantics { this.selected = selected },
-        colors = CardDefaults.cardColors(containerColor = glassContainer(cardColor)),
+        colors = CardDefaults.cardColors(
+            containerColor = glassContainer(cardColor),
+            contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         val image: @Composable (Modifier) -> Unit = { modifier ->
             AsyncImage(

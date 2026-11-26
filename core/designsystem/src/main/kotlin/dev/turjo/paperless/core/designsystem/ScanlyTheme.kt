@@ -89,8 +89,13 @@ internal val DarkColors = darkColorScheme(
     surfaceDim = Color(0xFF111318),
 )
 
-fun colorSchemeFor(dark: Boolean, accent: AccentColor, amoled: Boolean): ColorScheme {
-    val colors = accentPalette(dark, accent)
+fun colorSchemeFor(
+    dark: Boolean,
+    accent: AccentColor,
+    amoled: Boolean,
+    custom: SeedColor = DEFAULT_CUSTOM_ACCENT,
+): ColorScheme {
+    val colors = accentPalette(dark, accent, custom)
     return if (dark && amoled) colors.withAmoledBlack() else colors
 }
 
@@ -127,6 +132,7 @@ fun ScanlyTheme(
     amoledBlack: Boolean = false,
     accent: AccentColor = AccentColor.BLUE,
     glass: Boolean = LocalGlassEnabled.current,
+    customAccent: SeedColor = DEFAULT_CUSTOM_ACCENT,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeMode) {
@@ -140,7 +146,7 @@ fun ScanlyTheme(
             if (amoledBlack) it.withAmoledBlack() else it
         }
         dynamicColor -> dynamicLightColorScheme(context)
-        else -> colorSchemeFor(dark, accent, amoledBlack)
+        else -> colorSchemeFor(dark, accent, amoledBlack, customAccent)
     }
     MaterialExpressiveTheme(
         colorScheme = colors,
@@ -149,3 +155,5 @@ fun ScanlyTheme(
         typography = scanlyTypography,
     ) { ProvideGlass(glass, dark, onBlack = dark && amoledBlack, content) }
 }
+
+val DEFAULT_CUSTOM_ACCENT = SeedColor(hue = 300f, chroma = 48f)

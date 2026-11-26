@@ -32,10 +32,15 @@ class AccentPalettesTest {
     @Test
     fun amoledLeavesLightSchemesUnchanged() {
         AccentColor.entries.forEach { accent ->
-            assertSame(
-                colorSchemeFor(dark = false, accent, amoled = false),
-                colorSchemeFor(dark = false, accent, amoled = true),
-            )
+            val normal = colorSchemeFor(dark = false, accent, amoled = false)
+            val amoled = colorSchemeFor(dark = false, accent, amoled = true)
+            if (accent == AccentColor.CUSTOM) {
+                // Generated on each call, so compare colours rather than instances.
+                assertEquals(normal.surface, amoled.surface)
+                assertEquals(normal.primary, amoled.primary)
+            } else {
+                assertSame(normal, amoled)
+            }
         }
     }
 

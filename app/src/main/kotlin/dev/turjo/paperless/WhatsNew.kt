@@ -17,6 +17,7 @@ internal object WhatsNew {
     private val releases = listOf(
         WhatsNewRelease("2.0.0", listOf(
             WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_glass_title, R.string.whats_new_glass_body),
+            WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_colour_title, R.string.whats_new_colour_body),
             WhatsNewCard(DesignR.drawable.ic_settings, R.string.whats_new_settings_title, R.string.whats_new_settings_body),
             WhatsNewCard(DesignR.drawable.ic_library, R.string.whats_new_viewer_title, R.string.whats_new_viewer_body),
             WhatsNewCard(R.drawable.ic_zoom_in, R.string.whats_new_tiles_title, R.string.whats_new_tiles_body),

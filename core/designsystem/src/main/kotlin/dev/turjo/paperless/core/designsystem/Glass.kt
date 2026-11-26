@@ -104,6 +104,11 @@ fun Modifier.glassSurface(cornerRadius: Dp = 0.dp, state: HazeState? = LocalGlas
             backgroundColor(base)
             tint(tint)
             optics { copy(blurRadius = OpticalSizeValue.Fixed(12.dp)) }
+            // Neutral tone. Regular lifts the light response (whitePoint 0.55) and darkens the dark
+            // one (-0.22), which drew a visible band between an empty bar and the page under it.
+            whitePoint(0f)
+            contrast(0f)
+            chromaMultiplier(1f)
         }
     }
     return hazeGlass(input = HazeInput.Backdrop(state), style = style)
@@ -115,9 +120,11 @@ fun Modifier.glassSurface(cornerRadius: Dp = 0.dp, state: HazeState? = LocalGlas
 fun glassTint(): Color {
     val colors = MaterialTheme.colorScheme
     return when {
-        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.3f)
-        colors.surface.luminance() > 0.5f -> colors.surface.copy(alpha = 0.2f)
-        else -> colors.surface.copy(alpha = 0.25f)
+        // Kept thin: a heavier tint gave the bars a visible colour band over the page even with
+        // nothing scrolled under them. The blur does the work of keeping labels readable.
+        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.15f)
+        colors.surface.luminance() > 0.5f -> colors.surface.copy(alpha = 0.08f)
+        else -> colors.surface.copy(alpha = 0.1f)
     }
 }
 

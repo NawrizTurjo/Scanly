@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -37,6 +38,7 @@ interface SettingsRepository {
     suspend fun setShrinkOriginalsAfterDays(days: Int?)
     suspend fun setOcrOnlyWhileCharging(enabled: Boolean)
     suspend fun setAccent(accent: AccentColor)
+    suspend fun setCustomAccent(hue: Float, chroma: Float)
     suspend fun setAutoNamePattern(pattern: String)
     suspend fun setAppLock(mode: AppLock)
     suspend fun setLockAfterMinutes(minutes: Int)
@@ -80,6 +82,8 @@ class DataStoreSettingsRepository internal constructor(
                 amoledBlack = preferences[AMOLED_BLACK] ?: defaults.amoledBlack,
                 glass = preferences[GLASS] ?: defaults.glass,
                 accent = AccentColor.entries.find { it.name == preferences[ACCENT] } ?: defaults.accent,
+                customAccentHue = preferences[CUSTOM_ACCENT_HUE] ?: defaults.customAccentHue,
+                customAccentChroma = preferences[CUSTOM_ACCENT_CHROMA] ?: defaults.customAccentChroma,
                 autoNamePattern = preferences[AUTO_NAME_PATTERN] ?: defaults.autoNamePattern,
                 appLock = AppLock.entries.find { it.name == preferences[APP_LOCK] } ?: defaults.appLock,
                 lockAfterMinutes = preferences[LOCK_AFTER_MINUTES]?.takeIf { it > 0 } ?: defaults.lockAfterMinutes,
@@ -122,6 +126,14 @@ class DataStoreSettingsRepository internal constructor(
 
     override suspend fun setGlass(enabled: Boolean) {
         dataStore.edit { it[GLASS] = enabled }
+    }
+
+    override suspend fun setCustomAccent(hue: Float, chroma: Float) {
+        dataStore.edit {
+            it[CUSTOM_ACCENT_HUE] = hue
+            it[CUSTOM_ACCENT_CHROMA] = chroma
+            it[ACCENT] = AccentColor.CUSTOM.name
+        }
     }
 
     override suspend fun setAccent(accent: AccentColor) {
@@ -184,5 +196,7 @@ class DataStoreSettingsRepository internal constructor(
         val SHRINK_ORIGINALS_AFTER_DAYS = intPreferencesKey("shrink_originals_after_days")
         val OCR_ONLY_CHARGING = booleanPreferencesKey("ocr_only_charging")
         val ACCENT = stringPreferencesKey("accent")
+        val CUSTOM_ACCENT_HUE = floatPreferencesKey("custom_accent_hue")
+        val CUSTOM_ACCENT_CHROMA = floatPreferencesKey("custom_accent_chroma")
     }
 }

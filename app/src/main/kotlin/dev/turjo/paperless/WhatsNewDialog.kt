@@ -49,6 +49,9 @@ internal fun WhatsNewDialog(version: String, release: WhatsNewRelease?, onDismis
             modifier = Modifier.fillMaxWidth().glassEdge(MaterialTheme.shapes.extraLarge),
             shape = MaterialTheme.shapes.extraLarge,
             color = glassDialogColor(MaterialTheme.colorScheme.surface),
+            // A see-through colour matches no scheme colour, so name the text colour: otherwise it
+            // falls back to the dialog window's default (black).
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Column(
                 Modifier.heightIn(max = 520.dp).padding(24.dp),
