@@ -1,6 +1,6 @@
 # Scanly documentation
 
-<img src="images/screens-scan.jpg" alt="Scanly scan flow" width="100%">
+<img src="images/screens-scan.png" alt="Scanly scan flow" width="100%">
 
 ## Start here
 

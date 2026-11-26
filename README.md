@@ -4,7 +4,7 @@
 
 **An offline document scanner and PDF toolkit for Android.**
 
-No account, no cloud, no ads, no watermark. Your pages stay on your phone.
+Your pages stay on your phone. Scanly needs no account and adds no watermark.
 
 ![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
@@ -13,7 +13,7 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 ![Offline](https://img.shields.io/badge/network-updates%20only-555)
 ![Version](https://img.shields.io/badge/version-2.0.0-2E7D32)
 
-<img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
+<img src="docs/images/screens-scan.png" alt="Scanly with an orange and teal theme: Home, review grid, crop editor, filter tab" width="100%">
 
 </div>
 
@@ -31,16 +31,18 @@ Scanly turns phone photos of paper into clean, flat pages, keeps them in a local
 | **Library** | Folders, tags, favourites, search by name, folder, tag, date and text inside PDFs and scans, swipe to share or delete (with Undo), recycle bin, app lock, plain-file backup and restore |
 | **Reader** | Tabs, search, select and copy, links, bookmarks with chapter suggestions, crop margins, side-by-side pages, pen and highlighter annotations, signatures (draw once, place anywhere, also on scanned pages), a page tag while scrolling, full-screen lock, page tones (Night, Sepia, Warm) |
 | **Export** | PDF, JPG or PNG for a whole document; stack steps in any order on the way out (same width, grayscale, compress, page numbers, print layout, clean metadata, searchable text), then an optional password; Share or Save image for one enhanced page |
-| **Look** | Material 3 Expressive; light, dark or system theme, AMOLED black, Material You colours or one of five accents, in-app Help, one-time tips |
+| **Look** | Material 3 Expressive; light, dark or system theme, AMOLED black, Material You colours, five accents or your own theme of up to three colours, an optional glass effect on bars and dialogs, in-app Help, one-time tips |
 | **Tools** | Merge, split, page edits, compress, same page width, print layouts (N-up, booklet, duplex cut orders), page numbers, password, metadata, sanitize, grayscale, images ↔ PDF, batch runs; grouped, searchable, pinnable, with recent outputs |
 
 ## Screenshots
 
-<img src="docs/images/screens-library.jpg" alt="Library, document, export sheet and reader" width="100%">
+A custom orange and teal theme with the glass effect on. Files, a saved scan, the export sheet with two stacked steps, and the reader:
 
-Tools, splitting a two-page photo by hand, tools stacked onto an export, the reader in Sepia, and AMOLED black with a teal accent:
+<img src="docs/images/screens-library.png" alt="Files, a saved document, export sheet with stacked steps, reader" width="100%">
 
-<img src="docs/images/screens-v1.jpg" alt="Tools page, Split in two, export tool stack, reader page tone, appearance settings" width="100%">
+The same theme in dark mode with AMOLED black: Home, Tools, the reader under glass bars, Appearance settings and the colour picker.
+
+<img src="docs/images/screens-dark.png" alt="Dark AMOLED theme with glass: Home, Tools, reader, Appearance settings, custom colour picker" width="100%">
 
 ## Page detection
 
@@ -68,7 +70,7 @@ With an open notebook, Scanly crops the whole spread when both pages are in the 
 
 Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
 
-Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library. From 1.1.0, Settings → Updates checks for a new version and installs it for you. From 1.1.4 an update downloads only what changed when the release has a patch for your version (usually 1 to 5 MB).
+Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library. From 1.1.0, Settings → Updates checks for a new version and installs it for you. From 1.1.4 an update downloads only what changed when the release has a patch for your version (usually 1 to 3 MB). Turn on Settings → Updates → Get test builds to receive nightly builds before a stable release.
 
 ## Privacy
 
@@ -87,7 +89,7 @@ You need JDK 21, the Android SDK (platform 37.1) and NDK 30.0.16248370.
 bash tools/check.sh                 # full gate: build, tests, lint, imaging regressions, network guard
 ```
 
-Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 36 MB. OpenCV comes from a slim build in `third_party/opencv` (see its README).
+Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 33 MB. OpenCV comes from a slim build in `third_party/opencv` (see its README).
 
 ## Project layout
 
