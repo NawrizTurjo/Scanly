@@ -71,6 +71,7 @@ class DataStoreSettingsRepositoryTest {
             UserSettings(defaultScanFilter = PageFilter.GRAY) to { it.setDefaultScanFilter(PageFilter.GRAY) },
             UserSettings(defaultScanDeskew = false) to { it.setDefaultScanDeskew(false) },
             UserSettings(amoledBlack = true) to { it.setAmoledBlack(true) },
+            UserSettings(shrinkOriginalsAfterDays = 90) to { it.setShrinkOriginalsAfterDays(90) },
             UserSettings(glass = true) to { it.setGlass(true) },
             UserSettings(ocrOnlyWhileCharging = true) to { it.setOcrOnlyWhileCharging(true) },
             UserSettings(accent = AccentColor.ROSE) to { it.setAccent(AccentColor.ROSE) },

@@ -123,4 +123,19 @@
     <string name="new_scans">New scans</string>
     <string name="default_scan_filter">Default filter</string>
     <string name="default_scan_deskew">Straighten pages automatically</string>
+    <string name="storage_group">Storage</string>
+    <string name="shrink_old_photos">Shrink old photos</string>
+    <string name="shrink_age_off">Off</string>
+    <string name="shrink_age_30">30 days</string>
+    <string name="shrink_age_90">90 days</string>
+    <string name="shrink_age_365">1 year</string>
+    <string name="shrink_explanation">Keeps your scans and their text. Old photos shrink to 2400 px, so re-editing them later uses a smaller photo.</string>
+    <string name="shrink_now">Shrink now</string>
+    <string name="shrink_running">Shrinking photos…</string>
+    <string name="shrink_empty">Nothing to shrink</string>
+    <string name="shrink_error">Couldn’t shrink photos</string>
+    <plurals name="shrink_saved">
+        <item quantity="one">Saved %1$s from %2$d page</item>
+        <item quantity="other">Saved %1$s from %2$d pages</item>
+    </plurals>
 </resources>

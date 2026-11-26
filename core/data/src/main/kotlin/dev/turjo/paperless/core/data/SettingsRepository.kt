@@ -1,5 +1,11 @@
 package dev.turjo.paperless.core.data
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -28,6 +34,7 @@ interface SettingsRepository {
     suspend fun setDynamicColor(enabled: Boolean)
     suspend fun setAmoledBlack(enabled: Boolean)
     suspend fun setGlass(enabled: Boolean)
+    suspend fun setShrinkOriginalsAfterDays(days: Int?)
     suspend fun setOcrOnlyWhileCharging(enabled: Boolean)
     suspend fun setAccent(accent: AccentColor)
     suspend fun setAutoNamePattern(pattern: String)
@@ -41,9 +48,19 @@ interface SettingsRepository {
     suspend fun setDefaultScanDeskew(enabled: Boolean)
 }
 
-class DataStoreSettingsRepository @Inject constructor(
+@javax.inject.Singleton
+class DataStoreSettingsRepository internal constructor(
     private val dataStore: DataStore<Preferences>,
+    private val shrinkWorkContext: Context? = null,
 ) : SettingsRepository {
+    @Inject
+    constructor(
+        @ApplicationContext context: Context,
+        dataStore: DataStore<Preferences>,
+    ) : this(dataStore, context)
+
+    private val shrinkSettingLock = Mutex()
+
     override val settings: Flow<UserSettings> = dataStore.data
         .catch { error ->
             if (error is IOException) emit(emptyPreferences()) else throw error
@@ -54,6 +71,7 @@ class DataStoreSettingsRepository @Inject constructor(
                     ?: defaults.defaultScanFilter,
                 defaultScanDeskew = preferences[DEFAULT_SCAN_DESKEW] ?: defaults.defaultScanDeskew,
                 automaticOcr = preferences[AUTOMATIC_OCR] ?: defaults.automaticOcr,
+                shrinkOriginalsAfterDays = preferences[SHRINK_ORIGINALS_AFTER_DAYS]?.takeIf { it in shrinkAges },
                 ocrOnlyWhileCharging = preferences[OCR_ONLY_CHARGING] ?: defaults.ocrOnlyWhileCharging,
                 ocrLanguage = OcrLanguage.entries.find { it.name == preferences[OCR_LANGUAGE] } ?: defaults.ocrLanguage,
                 themeMode = ThemeMode.entries.find { it.name == preferences[THEME_MODE] }
@@ -83,6 +101,19 @@ class DataStoreSettingsRepository @Inject constructor(
 
     override suspend fun setAmoledBlack(enabled: Boolean) {
         dataStore.edit { it[AMOLED_BLACK] = enabled }
+    }
+
+    override suspend fun setShrinkOriginalsAfterDays(days: Int?) {
+        require(days == null || days in shrinkAges)
+        shrinkSettingLock.withLock {
+            withContext(NonCancellable) {
+                dataStore.edit {
+                    if (days == null) it.remove(SHRINK_ORIGINALS_AFTER_DAYS)
+                    else it[SHRINK_ORIGINALS_AFTER_DAYS] = days
+                }
+                shrinkWorkContext?.let { scheduleOriginalShrink(it, enabled = days != null) }
+            }
+        }
     }
 
     override suspend fun setOcrOnlyWhileCharging(enabled: Boolean) {
@@ -149,6 +180,8 @@ class DataStoreSettingsRepository @Inject constructor(
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val AMOLED_BLACK = booleanPreferencesKey("amoled_black")
         val GLASS = booleanPreferencesKey("glass")
+        val shrinkAges = setOf(30, 90, 365)
+        val SHRINK_ORIGINALS_AFTER_DAYS = intPreferencesKey("shrink_originals_after_days")
         val OCR_ONLY_CHARGING = booleanPreferencesKey("ocr_only_charging")
         val ACCENT = stringPreferencesKey("accent")
     }

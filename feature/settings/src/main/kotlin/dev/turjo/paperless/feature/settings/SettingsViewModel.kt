@@ -56,6 +56,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAmoledBlack(enabled) }
     }
 
+    fun setShrinkOriginalsAfterDays(days: Int?) {
+        viewModelScope.launch { repository.setShrinkOriginalsAfterDays(days) }
+    }
+
     fun setOcrOnlyWhileCharging(enabled: Boolean) {
         viewModelScope.launch { repository.setOcrOnlyWhileCharging(enabled) }
     }

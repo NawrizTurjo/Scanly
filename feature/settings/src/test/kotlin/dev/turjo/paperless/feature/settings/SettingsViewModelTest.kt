@@ -139,6 +139,10 @@ class SettingsViewModelTest {
             settings.update { it.copy(dynamicColor = enabled) }
         }
 
+        override suspend fun setShrinkOriginalsAfterDays(days: Int?) {
+            settings.update { it.copy(shrinkOriginalsAfterDays = days) }
+        }
+
         override suspend fun setOcrOnlyWhileCharging(enabled: Boolean) {
             settings.update { it.copy(ocrOnlyWhileCharging = enabled) }
         }

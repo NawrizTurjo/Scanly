@@ -83,6 +83,12 @@ internal interface ScanTextDao {
     """)
     fun observe(id: String, language: String): Flow<String?>
 
+    @Query("""
+        UPDATE scan_text SET processedHash = :newHash
+        WHERE pageId = :pageId AND processedHash = :oldHash AND processedPath = :path
+    """)
+    suspend fun rekeyProcessedHash(pageId: String, oldHash: String, newHash: String, path: String)
+
     @Upsert
     suspend fun put(row: ScanTextEntity)
 

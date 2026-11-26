@@ -133,7 +133,7 @@ Digital signature, cloud backup/sync, PDF → Word/Excel, collaboration, editing
 ## 6. Non-functional requirements
 - Capture-to-thumbnail latency < 1 s; full enhancement of one 12 MP page < 1.5 s on the test phone (background thread).
 - A 50-page batch shouldn't crash or exhaust memory. Process pages through a bounded queue and never hold more than about 3 full-resolution bitmaps at once.
-- Storage: originals are JPEG q95 in app-private storage; processed pages are cached and can be regenerated.
+- Storage: originals are JPEG q95 in app-private storage; processed pages are cached and can be regenerated. Settings → Storage lets users opt in to shrinking old originals to 2400 px on the long side.
 - APK size target < 60 MB (arm64 only for release).
 - Process death and rotation never lose a scan session (the session is persisted to Room as pages arrive).
 - Any tool that writes a PDF must keep everything it doesn't touch. Bookmarks, links, annotations, text layer and metadata survive merge, split, page edits, numbering, password and same-width (checked by the tests in `06`).

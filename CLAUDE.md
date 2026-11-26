@@ -9,7 +9,7 @@ A personal, offline-only native Android app for one phone. It combines a CamScan
 - Offline-first. The only network use is the built-in updater (user decision, 2026-11-25): it asks GitHub's releases API for a newer stable version and downloads the APK, and the user can switch the automatic check off. No other network code anywhere (`tools/check.sh` fails on any outside `UpdatesViewModel`). No backend, accounts, analytics, ads, or AI/LLM APIs.
 - No watermark or branding of any kind on exported images or PDFs.
 - Free, permissively licensed dependencies only (Apache-2.0, MIT, BSD). **No AGPL/GPL** (iText, MuPDF) and **no commercial SDKs** (Scanbot, Dynamsoft, Nutrient/PSPDFKit, Apryse). Every new dependency gets a row in `docs/03-dependencies-licensing.md` before it's added.
-- Originals are immutable. Enhancement and cropping write processed copies plus parameters, so any page can be reprocessed later.
+- Originals are immutable. Enhancement and cropping write processed copies plus parameters, so any page can be reprocessed later. Users can opt in to shrinking originals older than N days in Settings → Storage.
 - Scanned documents are stored as page collections. A PDF is an export, never the source of truth.
 - No heavy image work on the main thread. Use coroutines on `Dispatchers.Default`.
 - Don't over-engineer. This is a single-user utility app: no microservices, no remote DB, no feature flags framework.
