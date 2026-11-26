@@ -5,7 +5,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-android { buildFeatures.compose = true }
+android {
+    buildFeatures.compose = true
+    packaging {
+        resources {
+            // BouncyCastle (via PdfBox) ships ~4 MB of post-quantum key tables. R8 strips every
+            // org.bouncycastle.pqc class, so these data files are never read.
+            excludes += "org/bouncycastle/pqc/**"
+        }
+    }
+}
 
 dependencies {
     implementation(project(":core:model"))

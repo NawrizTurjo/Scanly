@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
@@ -106,7 +107,7 @@ internal fun UpdatesSection(model: UpdatesViewModel) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(Formatter.formatFileSize(context, release.size))
                 if (release.notes.isNotBlank()) {
-                    Text(release.notes, Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()))
+                    ReleaseNotes(release.notes, Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()))
                 }
                 state.error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
                 if (state.awaitingPermission) Text(stringResource(R.string.update_permission_explanation))
@@ -141,4 +142,35 @@ internal fun UpdatesSection(model: UpdatesViewModel) {
             }
         },
     )
+}
+
+@Composable
+private fun ReleaseNotes(markdown: String, modifier: Modifier = Modifier) {
+    val blocks = remember(markdown) { releaseNotesMarkdown(markdown) }
+    Column(modifier) {
+        blocks.forEachIndexed { index, block ->
+            val top = when {
+                index == 0 -> 0.dp
+                block is NotesBlock.Heading -> 12.dp
+                block.gapBefore -> 8.dp
+                block is NotesBlock.Item -> 4.dp
+                else -> 0.dp
+            }
+            when (block) {
+                is NotesBlock.Heading -> Text(
+                    block.text,
+                    Modifier.padding(top = top),
+                    style = if (block.level <= 2) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                is NotesBlock.Item -> Row(Modifier.padding(top = top)) {
+                    Text(block.marker, Modifier.width(18.dp), style = MaterialTheme.typography.bodyMedium)
+                    Text(block.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                }
+                is NotesBlock.Paragraph -> Text(
+                    block.text, Modifier.padding(top = top), style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
 }

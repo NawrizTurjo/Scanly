@@ -34,4 +34,28 @@ class WhatsNewTest {
         assertNull(WhatsNew.releaseFor("1.1.1"))
         assertNull(WhatsNew.releaseFor("1.2.0"))
     }
+
+    @Test fun tourCoversEveryReleaseSinceTheLastOne() {
+        val tour = checkNotNull(WhatsNew.tourFor("1.0.0", "1.1.3"))
+        assertEquals("1.1.3", tour.version)
+        assertEquals(13, tour.cards.size)
+        assertEquals(R.string.whats_new_zoom_title, tour.cards.first().title)
+    }
+
+    @Test fun tourAfterOneStepShowsOnlyTheNewRelease() {
+        assertEquals(checkNotNull(WhatsNew.releaseFor("1.1.3")).cards, WhatsNew.tourFor("1.1.2", "1.1.3")?.cards)
+    }
+
+    @Test fun tourWithoutAPreviousVersionShowsEverything() {
+        assertEquals(13, WhatsNew.tourFor(null, "1.1.3")?.cards?.size)
+    }
+
+    @Test fun tourSkipsReleasesNewerThanTheApp() {
+        assertEquals(10, WhatsNew.tourFor("1.0.0", "1.1.2")?.cards?.size)
+    }
+
+    @Test fun tourFallsBackToTheCurrentReleaseOnDowngrade() {
+        assertEquals(10, WhatsNew.tourFor("1.1.3", "1.1.2")?.cards?.size)
+        assertNull(WhatsNew.tourFor("1.2.0", "1.0.5"))
+    }
 }

@@ -25,4 +25,10 @@
     <string name="whats_new_defaults_body">Choose a default filter and straightening setting in Settings. In review, use Apply to all pages to make the same change across a scan.</string>
     <string name="whats_new_updates_title">Get new versions</string>
     <string name="whats_new_updates_body">Open Updates in Settings to install a new version of Scanly.</string>
+    <string name="whats_new_zoom_title">Sharp zoom</string>
+    <string name="whats_new_zoom_body">Zoom into a scanned page and Scanly loads it at full resolution, so small print stays crisp.</string>
+    <string name="whats_new_notes_title">Readable update notes</string>
+    <string name="whats_new_notes_body">The update dialog formats headings, lists and bold text.</string>
+    <string name="whats_new_size_title">Smaller download</string>
+    <string name="whats_new_size_body">Scanly takes 4 MB less to download and install.</string>
 </resources>

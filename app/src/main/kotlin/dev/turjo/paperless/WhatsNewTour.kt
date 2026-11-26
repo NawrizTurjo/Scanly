@@ -17,10 +17,13 @@ private const val LAST_VERSION = "last_version"
 
 private class TourState(
     val version: String,
+    lastVersion: String?,
     private val preferences: SharedPreferences,
     pending: Boolean,
 ) {
-    val release = WhatsNew.releaseFor(version)
+    /** After an update: everything since the last tour. From Settings: this version's changes. */
+    val updateRelease = WhatsNew.tourFor(lastVersion, version)
+    val release = WhatsNew.releaseFor(version) ?: updateRelease
     var pending by mutableStateOf(pending)
         private set
 
@@ -37,7 +40,7 @@ private fun loadTour(context: Context): TourState {
     val lastVersion = preferences.getString(LAST_VERSION, null)
     // Installs that predate the tour have no preference yet.
     val pending = WhatsNew.shouldShow(lastVersion, version, info.lastUpdateTime > info.firstInstallTime)
-    return TourState(version, preferences, pending).also {
+    return TourState(version, lastVersion, preferences, pending).also {
         if (lastVersion == null && !pending) it.markShown()
     }
 }
@@ -58,15 +61,15 @@ internal fun rememberWhatsNewTour(
 
     val tour = state
     if (tour != null) {
-        val automatic = homeVisible && canPrompt && tour.release != null &&
+        val automatic = homeVisible && canPrompt && tour.updateRelease != null &&
             (autoVersion == tour.version || tour.pending)
         val manual = settingsVisible && openedFromSettings
         if (automatic || manual) {
             LaunchedEffect(tour, automatic) {
                 if (automatic) autoVersion = tour.version
-                if (tour.pending && tour.release != null) tour.markShown()
+                if (tour.pending && tour.updateRelease != null) tour.markShown()
             }
-            WhatsNewDialog(tour.version, tour.release) {
+            WhatsNewDialog(tour.version, if (manual && !automatic) tour.release else tour.updateRelease) {
                 autoVersion = null
                 openedFromSettings = false
             }
