@@ -22,8 +22,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             defaultConfig {
                 applicationId = "dev.turjo.paperless"
                 targetSdk = 37
-                versionCode = 16
-                versionName = "2.0.0-nightly.4"
+                versionCode = 17
+                versionName = "2.0.0"
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
             // The emulator needs x86_64; phones only need arm64 (keeps the release APK small: OpenCV is 15 MB on arm64).

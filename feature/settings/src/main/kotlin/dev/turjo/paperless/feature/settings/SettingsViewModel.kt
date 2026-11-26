@@ -7,6 +7,7 @@ import dev.turjo.paperless.core.data.SettingsRepository
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
+import dev.turjo.paperless.core.model.CustomTheme
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.OcrLanguage
 import dev.turjo.paperless.core.model.UserSettings
@@ -72,8 +73,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAccent(accent) }
     }
 
-    fun setCustomAccent(hue: Float, chroma: Float) {
-        viewModelScope.launch { repository.setCustomAccent(hue, chroma) }
+    fun setCustomTheme(theme: CustomTheme) {
+        viewModelScope.launch { repository.setCustomTheme(theme) }
     }
 
     fun setAutoNamePattern(pattern: String) {

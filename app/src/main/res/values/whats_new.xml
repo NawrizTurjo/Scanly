@@ -49,8 +49,8 @@
     <string name="whats_new_charging_body">Text recognition can wait for the charger, to save battery on long scan sessions.</string>
     <string name="whats_new_storage_title">Free up space</string>
     <string name="whats_new_storage_body">Settings → Storage shrinks photos older than 30 days, 90 days or a year. Your scans and their text stay as they are.</string>
-    <string name="whats_new_colour_title">Your own colour</string>
-    <string name="whats_new_colour_body">Settings → Appearance → Accent → Your colour. Pick a hue and how vivid it is, or type a hex code, and the whole app follows.</string>
+    <string name="whats_new_colour_title">Your own colours</string>
+    <string name="whats_new_colour_body">Settings → Appearance → Accent → Your colours. Pick a main colour, and a second and third if you like, by hue, vividness or hex code. The whole app follows.</string>
     <string name="whats_new_testbuilds_title">Get test builds</string>
     <string name="whats_new_testbuilds_body">Settings → Updates → Get test builds brings new versions early, before they become stable.</string>
 </resources>

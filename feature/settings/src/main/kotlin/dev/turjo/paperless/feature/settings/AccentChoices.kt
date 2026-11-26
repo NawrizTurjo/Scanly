@@ -1,7 +1,16 @@
 package dev.turjo.paperless.feature.settings
 
+import dev.turjo.paperless.core.model.ThemeColor
+import dev.turjo.paperless.core.model.CustomTheme
+import dev.turjo.paperless.core.designsystem.toThemeColor
+import dev.turjo.paperless.core.designsystem.toSeed
+import dev.turjo.paperless.core.designsystem.customColorScheme
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import dev.turjo.paperless.core.designsystem.tone
-import dev.turjo.paperless.core.designsystem.seedColorScheme
 import dev.turjo.paperless.core.designsystem.SeedColor
 import dev.turjo.paperless.core.designsystem.AlertDialog
 import androidx.compose.ui.graphics.toArgb
@@ -52,16 +61,16 @@ import dev.turjo.paperless.core.model.AccentColor
 @Composable
 internal fun AccentChoices(
     selected: AccentColor,
-    custom: SeedColor,
+    custom: CustomTheme,
     enabled: Boolean,
     onSelect: (AccentColor) -> Unit,
-    onCustom: (hue: Float, chroma: Float) -> Unit,
+    onCustom: (CustomTheme) -> Unit,
 ) {
     var editing by remember { mutableStateOf(false) }
     if (editing) {
         CustomAccentDialog(custom, onDismiss = { editing = false }) {
             editing = false
-            onCustom(it.hue, it.chroma)
+            onCustom(it)
         }
     }
     ListItem(
@@ -120,76 +129,105 @@ internal fun AccentChoices(
     }
 }
 
-/** Pick a custom accent: hue and vividness set the whole scheme; a hex colour fills both in. */
+/**
+ * Pick a custom theme: the main colour, and optionally the second and third colours (otherwise
+ * derived from the main one). Each has a hue, a vividness (0 is grey) and a hex code.
+ */
 @Composable
-private fun CustomAccentDialog(initial: SeedColor, onDismiss: () -> Unit, onSave: (SeedColor) -> Unit) {
-    var hue by remember { mutableFloatStateOf(initial.hue) }
-    var chroma by remember { mutableFloatStateOf(initial.chroma.coerceIn(MIN_CHROMA, MAX_CHROMA)) }
-    var hex by remember { mutableStateOf(hexOf(SeedColor(hue, chroma).toColor())) }
-    val seed = SeedColor(hue, chroma)
+private fun CustomAccentDialog(initial: CustomTheme, onDismiss: () -> Unit, onSave: (CustomTheme) -> Unit) {
+    var main by remember { mutableStateOf(initial.main) }
+    var second by remember { mutableStateOf(initial.second) }
+    var third by remember { mutableStateOf(initial.third) }
+    var role by remember { mutableIntStateOf(0) }
+    val theme = CustomTheme(main, second, third)
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val preview = remember(seed, dark) { seedColorScheme(seed, dark) }
+    val preview = remember(theme, dark) { customColorScheme(theme, dark) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.custom_accent_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (color in listOf(preview.primary, preview.primaryContainer, preview.secondary, preview.tertiary)) {
                         Box(Modifier.size(40.dp).background(color, CircleShape))
                     }
                 }
-                Text(stringResource(R.string.custom_accent_hue), style = MaterialTheme.typography.labelLarge)
-                val rainbow = remember(chroma) {
-                    Brush.horizontalGradient((0..12).map { SeedColor(it * 30f, chroma).tone(55) })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val labels = listOf(R.string.custom_theme_main, R.string.custom_theme_second, R.string.custom_theme_third)
+                    labels.forEachIndexed { index, label ->
+                        FilterChip(role == index, { role = index }, { Text(stringResource(label)) })
+                    }
                 }
-                Box(contentAlignment = Alignment.Center) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(10.dp).clip(CircleShape).background(rainbow))
-                    Slider(
-                        value = hue,
-                        onValueChange = {
-                            hue = it
-                            hex = hexOf(SeedColor(hue, chroma).toColor())
-                        },
-                        valueRange = 0f..360f,
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = Color.Transparent,
-                            inactiveTrackColor = Color.Transparent,
-                            thumbColor = preview.primary,
-                        ),
-                    )
-                }
-                Text(stringResource(R.string.custom_accent_vividness), style = MaterialTheme.typography.labelLarge)
-                Slider(
-                    value = chroma,
-                    onValueChange = {
-                        chroma = it
-                        hex = hexOf(SeedColor(hue, chroma).toColor())
-                    },
-                    valueRange = MIN_CHROMA..MAX_CHROMA,
-                )
-                OutlinedTextField(
-                    value = hex,
-                    onValueChange = { text ->
-                        hex = text
-                        parseHex(text)?.let { color ->
-                            val picked = SeedColor.of(color)
-                            hue = picked.hue
-                            chroma = picked.chroma.coerceIn(MIN_CHROMA, MAX_CHROMA)
+                when (role) {
+                    0 -> ColourEditor(main, preview.primary) { main = it }
+                    else -> {
+                        val current = if (role == 1) second else third
+                        val derived = if (role == 1) preview.secondary else preview.tertiary
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.custom_theme_match), Modifier.weight(1f))
+                            Switch(
+                                checked = current == null,
+                                onCheckedChange = { match ->
+                                    val value = if (match) null else SeedColor.of(derived).toThemeColor()
+                                    if (role == 1) second = value else third = value
+                                },
+                            )
                         }
-                    },
-                    label = { Text(stringResource(R.string.custom_accent_hex)) },
-                    singleLine = true,
-                )
+                        if (current != null) {
+                            ColourEditor(current, derived) { if (role == 1) second = it else third = it }
+                        }
+                    }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(seed) }) { Text(stringResource(R.string.custom_accent_use)) } },
+        confirmButton = { TextButton(onClick = { onSave(theme) }) { Text(stringResource(R.string.custom_accent_use)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
     )
 }
 
-private const val MIN_CHROMA = 16f
-private const val MAX_CHROMA = 70f
+/** Hue and vividness sliders plus a hex field for one colour of the theme. */
+@Composable
+private fun ColourEditor(color: ThemeColor, shown: Color, onChange: (ThemeColor) -> Unit) {
+    var hex by remember(color) { mutableStateOf(hexOf(color.toSeed().toColor())) }
+    Text(stringResource(R.string.custom_accent_hue), style = MaterialTheme.typography.labelLarge)
+    val rainbow = remember(color.vividness) {
+        Brush.horizontalGradient((0..12).map { SeedColor(it * 30f, color.vividness.coerceAtLeast(30f)).tone(55) })
+    }
+    Box(contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(10.dp).clip(CircleShape).background(rainbow))
+        Slider(
+            value = color.hue,
+            onValueChange = { onChange(color.copy(hue = it)) },
+            valueRange = 0f..360f,
+            colors = SliderDefaults.colors(
+                activeTrackColor = Color.Transparent,
+                inactiveTrackColor = Color.Transparent,
+                thumbColor = shown,
+            ),
+        )
+    }
+    Text(stringResource(R.string.custom_accent_vividness), style = MaterialTheme.typography.labelLarge)
+    Slider(
+        value = color.vividness,
+        onValueChange = { onChange(color.copy(vividness = it)) },
+        valueRange = MIN_CHROMA..MAX_CHROMA,
+    )
+    OutlinedTextField(
+        value = hex,
+        onValueChange = { text ->
+            hex = text
+            parseHex(text)?.let { picked ->
+                val seed = SeedColor.of(picked)
+                onChange(ThemeColor(seed.hue, seed.chroma.coerceIn(MIN_CHROMA, MAX_CHROMA)))
+            }
+        },
+        label = { Text(stringResource(R.string.custom_accent_hex)) },
+        singleLine = true,
+    )
+}
+
+private const val MIN_CHROMA = 0f
+private const val MAX_CHROMA = 100f
 
 private fun hexOf(color: Color): String = "#%06X".format(color.toArgb() and 0xFFFFFF)
 

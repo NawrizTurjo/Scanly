@@ -13,12 +13,14 @@ class SeedSchemeTest {
     }
 
     @Test fun rolesHaveReadableContrastForManySeeds() {
-        for (hue in 0 until 360 step 30) for (chroma in listOf(16f, 40f, 70f)) for (dark in listOf(false, true)) {
-            val s = seedColorScheme(SeedColor(hue.toFloat(), chroma), dark)
+        for (hue in 0 until 360 step 30) for (chroma in listOf(0f, 16f, 40f, 70f, 100f)) for (dark in listOf(false, true)) {
+            val s = seedColorScheme(SeedColor(hue.toFloat(), chroma), dark, SeedColor(360f - hue, 100f - chroma), SeedColor(hue / 2f, chroma))
             val label = "hue $hue chroma $chroma dark $dark"
             assertTrue(label, contrast(s.primary, s.onPrimary) >= 4.5f)
             assertTrue(label, contrast(s.primaryContainer, s.onPrimaryContainer) >= 4.5f)
             assertTrue(label, contrast(s.surface, s.onSurface) >= 7f)
+            assertTrue(label, contrast(s.secondaryContainer, s.onSecondaryContainer) >= 4.5f)
+            assertTrue(label, contrast(s.tertiary, s.onTertiary) >= 4.5f)
             assertTrue(label, contrast(s.surfaceContainerHighest, s.onSurfaceVariant) >= 4.5f)
         }
     }

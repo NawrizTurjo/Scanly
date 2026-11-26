@@ -4,6 +4,8 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import dev.turjo.paperless.core.model.CustomTheme
+import dev.turjo.paperless.core.model.ThemeColor
 import kotlin.math.atan2
 import kotlin.math.cbrt
 import kotlin.math.cos
@@ -30,11 +32,13 @@ data class SeedColor(val hue: Float, val chroma: Float) {
  * refer to) and mapped to roles with Material's tone table. Out-of-gamut colours lose chroma, not
  * lightness, so every tone keeps its contrast.
  */
-fun seedColorScheme(seed: SeedColor, dark: Boolean): ColorScheme {
-    val vivid = seed.chroma.coerceIn(16f, 70f)
+fun seedColorScheme(seed: SeedColor, dark: Boolean, second: SeedColor? = null, third: SeedColor? = null): ColorScheme {
+    val vivid = seed.chroma.coerceIn(0f, 100f)
     val primary = Palette(seed.hue, vivid)
-    val secondary = Palette(seed.hue, (vivid / 3f).coerceIn(8f, 18f))
-    val tertiary = Palette((seed.hue + 60f) % 360f, (vivid * 0.6f).coerceIn(16f, 36f))
+    val secondary = second?.let { Palette(it.hue, it.chroma.coerceIn(0f, 100f)) }
+        ?: Palette(seed.hue, (vivid / 3f).coerceAtMost(18f))
+    val tertiary = third?.let { Palette(it.hue, it.chroma.coerceIn(0f, 100f)) }
+        ?: Palette((seed.hue + 60f) % 360f, (vivid * 0.6f).coerceAtMost(36f))
     val neutral = Palette(seed.hue, 4f)
     val variant = Palette(seed.hue, 8f)
     val error = Palette(25f, 60f)
@@ -146,3 +150,12 @@ internal fun colorToLch(color: Color): Triple<Float, Float, Float> {
 
 /** The seed's palette colour at a Material tone (0 black .. 100 white), e.g. for a hue slider's track. */
 fun SeedColor.tone(tone: Int): Color = lchColor(tone.toFloat(), chroma, hue)
+
+/** The scheme for a user's custom theme. */
+fun customColorScheme(theme: CustomTheme, dark: Boolean): ColorScheme = seedColorScheme(
+    theme.main.toSeed(), dark, theme.second?.toSeed(), theme.third?.toSeed(),
+)
+
+fun ThemeColor.toSeed() = SeedColor(hue, vividness)
+
+fun SeedColor.toThemeColor() = ThemeColor(hue, chroma)

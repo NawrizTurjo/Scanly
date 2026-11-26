@@ -5,14 +5,15 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import dev.turjo.paperless.core.model.AccentColor
+import dev.turjo.paperless.core.model.CustomTheme
 
-internal fun accentPalette(dark: Boolean, accent: AccentColor, custom: SeedColor): ColorScheme = when (accent) {
+internal fun accentPalette(dark: Boolean, accent: AccentColor, custom: CustomTheme): ColorScheme = when (accent) {
     AccentColor.BLUE -> if (dark) DarkColors else LightColors
     AccentColor.TEAL -> if (dark) DarkTeal else LightTeal
     AccentColor.GREEN -> if (dark) DarkGreen else LightGreen
     AccentColor.ORANGE -> if (dark) DarkOrange else LightOrange
     AccentColor.ROSE -> if (dark) DarkRose else LightRose
-    AccentColor.CUSTOM -> seedColorScheme(custom, dark)
+    AccentColor.CUSTOM -> customColorScheme(custom, dark)
 }
 
 private val LightTeal = lightColorScheme(

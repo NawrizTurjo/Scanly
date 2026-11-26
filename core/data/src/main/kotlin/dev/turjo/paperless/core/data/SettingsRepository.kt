@@ -18,6 +18,8 @@ import dev.turjo.paperless.core.model.AUTO_CAPTURE_DELAYS_MS
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
+import dev.turjo.paperless.core.model.CustomTheme
+import dev.turjo.paperless.core.model.ThemeColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.OcrLanguage
@@ -38,7 +40,7 @@ interface SettingsRepository {
     suspend fun setShrinkOriginalsAfterDays(days: Int?)
     suspend fun setOcrOnlyWhileCharging(enabled: Boolean)
     suspend fun setAccent(accent: AccentColor)
-    suspend fun setCustomAccent(hue: Float, chroma: Float)
+    suspend fun setCustomTheme(theme: CustomTheme)
     suspend fun setAutoNamePattern(pattern: String)
     suspend fun setAppLock(mode: AppLock)
     suspend fun setLockAfterMinutes(minutes: Int)
@@ -82,8 +84,14 @@ class DataStoreSettingsRepository internal constructor(
                 amoledBlack = preferences[AMOLED_BLACK] ?: defaults.amoledBlack,
                 glass = preferences[GLASS] ?: defaults.glass,
                 accent = AccentColor.entries.find { it.name == preferences[ACCENT] } ?: defaults.accent,
-                customAccentHue = preferences[CUSTOM_ACCENT_HUE] ?: defaults.customAccentHue,
-                customAccentChroma = preferences[CUSTOM_ACCENT_CHROMA] ?: defaults.customAccentChroma,
+                customTheme = CustomTheme(
+                    main = ThemeColor(
+                        preferences[CUSTOM_ACCENT_HUE] ?: defaults.customTheme.main.hue,
+                        preferences[CUSTOM_ACCENT_CHROMA] ?: defaults.customTheme.main.vividness,
+                    ),
+                    second = themeColor(preferences[CUSTOM_SECOND_HUE], preferences[CUSTOM_SECOND_CHROMA]),
+                    third = themeColor(preferences[CUSTOM_THIRD_HUE], preferences[CUSTOM_THIRD_CHROMA]),
+                ),
                 autoNamePattern = preferences[AUTO_NAME_PATTERN] ?: defaults.autoNamePattern,
                 appLock = AppLock.entries.find { it.name == preferences[APP_LOCK] } ?: defaults.appLock,
                 lockAfterMinutes = preferences[LOCK_AFTER_MINUTES]?.takeIf { it > 0 } ?: defaults.lockAfterMinutes,
@@ -128,10 +136,15 @@ class DataStoreSettingsRepository internal constructor(
         dataStore.edit { it[GLASS] = enabled }
     }
 
-    override suspend fun setCustomAccent(hue: Float, chroma: Float) {
+    override suspend fun setCustomTheme(theme: CustomTheme) {
         dataStore.edit {
-            it[CUSTOM_ACCENT_HUE] = hue
-            it[CUSTOM_ACCENT_CHROMA] = chroma
+            it[CUSTOM_ACCENT_HUE] = theme.main.hue
+            it[CUSTOM_ACCENT_CHROMA] = theme.main.vividness
+            // A negative hue means "derive from the main colour".
+            it[CUSTOM_SECOND_HUE] = theme.second?.hue ?: -1f
+            it[CUSTOM_SECOND_CHROMA] = theme.second?.vividness ?: 0f
+            it[CUSTOM_THIRD_HUE] = theme.third?.hue ?: -1f
+            it[CUSTOM_THIRD_CHROMA] = theme.third?.vividness ?: 0f
             it[ACCENT] = AccentColor.CUSTOM.name
         }
     }
@@ -198,5 +211,12 @@ class DataStoreSettingsRepository internal constructor(
         val ACCENT = stringPreferencesKey("accent")
         val CUSTOM_ACCENT_HUE = floatPreferencesKey("custom_accent_hue")
         val CUSTOM_ACCENT_CHROMA = floatPreferencesKey("custom_accent_chroma")
+        val CUSTOM_SECOND_HUE = floatPreferencesKey("custom_second_hue")
+        val CUSTOM_SECOND_CHROMA = floatPreferencesKey("custom_second_chroma")
+        val CUSTOM_THIRD_HUE = floatPreferencesKey("custom_third_hue")
+        val CUSTOM_THIRD_CHROMA = floatPreferencesKey("custom_third_chroma")
     }
 }
+
+private fun themeColor(hue: Float?, vividness: Float?): ThemeColor? =
+    if (hue == null || hue < 0f) null else ThemeColor(hue, vividness ?: 0f)

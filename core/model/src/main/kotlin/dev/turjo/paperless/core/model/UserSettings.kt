@@ -12,6 +12,16 @@ val AUTO_CAPTURE_DELAYS_MS = listOf(400, 700, 1200)
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** One colour as perceptual hue (degrees) and vividness (0 grey .. 100). */
+data class ThemeColor(val hue: Float, val vividness: Float)
+
+/** A custom theme: the main colour, plus optional second and third colours (null = derived from the main one). */
+data class CustomTheme(
+    val main: ThemeColor = ThemeColor(300f, 48f),
+    val second: ThemeColor? = null,
+    val third: ThemeColor? = null,
+)
+
 enum class AccentColor { BLUE, TEAL, GREEN, ORANGE, ROSE, CUSTOM }
 
 enum class OcrLanguage(val code: String) { ENGLISH("eng"), BENGALI("ben"), BOTH("eng+ben") }
@@ -28,9 +38,8 @@ data class UserSettings(
     val autoCaptureSensitivity: AutoCaptureSensitivity = AutoCaptureSensitivity.NORMAL,
     val amoledBlack: Boolean = false,
     val accent: AccentColor = AccentColor.BLUE,
-    /** The custom accent (AccentColor.CUSTOM) as a perceptual hue (degrees) and vividness. */
-    val customAccentHue: Float = 300f,
-    val customAccentChroma: Float = 48f,
+    /** Colours of the custom accent (AccentColor.CUSTOM). */
+    val customTheme: CustomTheme = CustomTheme(),
     val automaticOcr: Boolean = true,
     /** Automatic recognition waits until the phone is charging. */
     val ocrOnlyWhileCharging: Boolean = false,

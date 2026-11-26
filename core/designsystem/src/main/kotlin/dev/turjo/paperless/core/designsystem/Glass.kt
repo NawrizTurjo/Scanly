@@ -120,11 +120,10 @@ fun Modifier.glassSurface(cornerRadius: Dp = 0.dp, state: HazeState? = LocalGlas
 fun glassTint(): Color {
     val colors = MaterialTheme.colorScheme
     return when {
-        // Kept thin: a heavier tint gave the bars a visible colour band over the page even with
-        // nothing scrolled under them. The blur does the work of keeping labels readable.
-        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.15f)
-        colors.surface.luminance() > 0.5f -> colors.surface.copy(alpha = 0.08f)
-        else -> colors.surface.copy(alpha = 0.1f)
+        // The page's own colour: an empty bar then blends into the page (no band), while scans
+        // scrolled underneath are muted enough for the labels to stay readable.
+        LocalGlassOnBlack.current -> Color.Black.copy(alpha = 0.62f)
+        else -> colors.background.copy(alpha = 0.62f)
     }
 }
 

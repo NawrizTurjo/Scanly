@@ -147,8 +147,8 @@ class SettingsViewModelTest {
             settings.update { it.copy(ocrOnlyWhileCharging = enabled) }
         }
 
-        override suspend fun setCustomAccent(hue: Float, chroma: Float) {
-            settings.update { it.copy(accent = AccentColor.CUSTOM, customAccentHue = hue, customAccentChroma = chroma) }
+        override suspend fun setCustomTheme(theme: dev.turjo.paperless.core.model.CustomTheme) {
+            settings.update { it.copy(accent = AccentColor.CUSTOM, customTheme = theme) }
         }
 
         override suspend fun setGlass(enabled: Boolean) {

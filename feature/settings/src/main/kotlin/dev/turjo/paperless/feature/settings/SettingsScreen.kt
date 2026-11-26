@@ -1,6 +1,5 @@
 package dev.turjo.paperless.feature.settings
 
-import dev.turjo.paperless.core.designsystem.SeedColor
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.WindowInsets
 import dev.turjo.paperless.core.designsystem.ScanlyScaffold
@@ -256,10 +255,10 @@ fun SettingsScreen(
                 ) { Text(stringResource(R.string.dynamic_color)) }
                 AccentChoices(
                     settings.accent,
-                    custom = SeedColor(settings.customAccentHue, settings.customAccentChroma),
+                    custom = settings.customTheme,
                     enabled = !settings.dynamicColor,
                     onSelect = viewModel::setAccent,
-                    onCustom = viewModel::setCustomAccent,
+                    onCustom = viewModel::setCustomTheme,
                 )
             }
             SettingsGroup(R.drawable.ic_group_about, R.string.about) {

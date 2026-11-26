@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import dev.turjo.paperless.core.model.AppLock
 import dev.turjo.paperless.core.model.AutoCaptureSensitivity
 import dev.turjo.paperless.core.model.AccentColor
+import dev.turjo.paperless.core.model.CustomTheme
+import dev.turjo.paperless.core.model.ThemeColor
 import dev.turjo.paperless.core.model.ThemeMode
 import dev.turjo.paperless.core.model.UserSettings
 import dev.turjo.paperless.core.model.PageFilter
@@ -75,8 +77,9 @@ class DataStoreSettingsRepositoryTest {
             UserSettings(glass = true) to { it.setGlass(true) },
             UserSettings(ocrOnlyWhileCharging = true) to { it.setOcrOnlyWhileCharging(true) },
             UserSettings(accent = AccentColor.ROSE) to { it.setAccent(AccentColor.ROSE) },
-            UserSettings(accent = AccentColor.CUSTOM, customAccentHue = 120f, customAccentChroma = 30f) to
-                { it.setCustomAccent(120f, 30f) },
+            CustomTheme(ThemeColor(120f, 30f), second = ThemeColor(10f, 0f), third = null).let { theme ->
+                UserSettings(accent = AccentColor.CUSTOM, customTheme = theme) to { it.setCustomTheme(theme) }
+            },
             UserSettings(autoNamePattern = "{n} {date}") to { it.setAutoNamePattern("{n} {date}") },
             UserSettings(appLock = AppLock.AFTER_MINUTES) to { it.setAppLock(AppLock.AFTER_MINUTES) },
             UserSettings(lockAfterMinutes = 12) to { it.setLockAfterMinutes(12) },
