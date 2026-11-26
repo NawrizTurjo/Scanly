@@ -96,7 +96,7 @@
     "url": "https://developer.android.com/jetpack/androidx/releases/navigation3"
   },
   {
-    "name": "OpenCV Android",
+    "name": "OpenCV (core, imgproc, imgcodecs, photo, geometry, flann; with TBB, libjpeg-turbo, libpng, zlib, KleidiCV, Carotene)",
     "version": "5.1.0",
     "license": "Apache-2.0",
     "url": "https://opencv.org/"

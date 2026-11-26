@@ -12,7 +12,7 @@ Rule: the app ships only Apache-2.0 / MIT / BSD code. **Pin exact versions at S1
 | Navigation 3 | Screen navigation | Apache-2.0 | |
 | AndroidX Activity, Core, and Lifecycle | Compose activity, window insets, and ViewModels | Apache-2.0 | |
 | CameraX (core, camera2, lifecycle, view) | Preview, ImageAnalysis, ImageCapture | Apache-2.0 | |
-| OpenCV Android (`org.opencv:opencv` on Maven Central) | Detection, warp, enhancement | Apache-2.0 (4.5+) | Use `abiFilters` to keep the APK small |
+| OpenCV 5.1.0, slim build (`third_party/opencv`) | Detection, warp, enhancement | Apache-2.0 (4.5+) | Since 1.1.4 built from the 5.1.0 source by `tools/opencv-slim/build.sh` with only core, flann, geometry, imgproc, imgcodecs (JPEG, PNG) and photo; same NDK 27.2, TBB and Carotene/KleidiCV HALs as the official AAR. Bundled 3rd-party code: TBB (Apache-2.0), libjpeg-turbo (BSD/IJG), libpng (libpng license), zlib, KleidiCV (Apache-2.0), Carotene (BSD-3) |
 | Room + KSP | Local DB | Apache-2.0 | |
 | DataStore (Preferences) | Settings | Apache-2.0 | |
 | Dagger Hilt and AndroidX Hilt | DI and Compose ViewModel integration | Apache-2.0 | |
@@ -22,6 +22,7 @@ Rule: the app ships only Apache-2.0 / MIT / BSD code. **Pin exact versions at S1
 | Reorderable (`sh.calvin.reorderable`) | Drag-to-reorder in Compose lists/grids | Apache-2.0 | Or a hand-written version if it's small |
 | Test: JUnit, Turbine, Robolectric, Compose UI test, Espresso | Tests | EPL-1.0 (JUnit 4, test-only) / Apache-2.0 | Test-only, never shipped |
 | Test (optional): `org.openpnp:opencv` | OpenCV on the desktop JVM for unit tests | BSD/Apache | Test-only |
+| Release tool: `bsdiff4` (Python) | Writes delta-update patches (`tools/apk-patch/make_patch.py`) | BSD-2-Clause | Release-side only, never shipped; the app applies patches with `java.util.zip` |
 
 ## Pinned at S1 (2026-11-22, latest stable from Google Maven / Maven Central)
 

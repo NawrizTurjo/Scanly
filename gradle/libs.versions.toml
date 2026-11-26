@@ -41,7 +41,6 @@ camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = 
 camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
-opencv = { module = "org.opencv:opencv", version = "5.1.0" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }

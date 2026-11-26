@@ -34,4 +34,5 @@ include(
     ":feature:reader",
     ":feature:tools",
     ":feature:settings",
+    ":third_party:opencv",
 )

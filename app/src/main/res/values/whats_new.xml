@@ -31,4 +31,10 @@
     <string name="whats_new_notes_body">The update dialog formats headings, lists and bold text.</string>
     <string name="whats_new_size_title">Smaller download</string>
     <string name="whats_new_size_body">Scanly takes 4 MB less to download and install.</string>
+    <string name="whats_new_sharp_title">Sharp from the first look</string>
+    <string name="whats_new_sharp_body">Open a scanned page and it shows at full screen resolution right away. Before, it stayed blurry until you pinched.</string>
+    <string name="whats_new_slim_title">A third smaller</string>
+    <string name="whats_new_slim_body">Scanly takes 36 MB, down from 53 MB. It now carries only the image tools it uses, and your scans come out exactly the same.</string>
+    <string name="whats_new_patch_title">Small updates</string>
+    <string name="whats_new_patch_body">From the next version, Settings → Updates downloads only what changed, usually 1 to 5 MB, and rebuilds the full app on your phone.</string>
 </resources>

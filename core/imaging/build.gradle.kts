@@ -9,7 +9,7 @@ android {
 }
 
 dependencies {
-    api(libs.opencv)
+    api(project(":third_party:opencv"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.test.junit)
     androidTestImplementation(libs.espresso.core)

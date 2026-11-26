@@ -2,27 +2,45 @@ package dev.turjo.paperless.feature.settings
 
 import org.json.JSONObject
 
-internal data class UpdateRelease(val version: String, val notes: String, val url: String, val size: Long)
+internal data class UpdateRelease(
+    val version: String,
+    val notes: String,
+    val url: String,
+    val size: Long,
+    /** A delta patch from the installed version, when the release has one. */
+    val patch: UpdatePatch? = null,
+)
+
+internal data class UpdatePatch(val url: String, val size: Long)
+
+/** Release file name of the patch that turns [installed] into [version]. */
+internal fun patchAssetName(version: String, installed: String) = "Scanly-$version-from-$installed.patch"
 
 internal class UpdateException(val messageResource: Int) : Exception()
 
-internal fun parseUpdateRelease(json: String): UpdateRelease {
+internal fun parseUpdateRelease(json: String, installed: String? = null): UpdateRelease {
     val release = JSONObject(json)
     val version = release.getString("tag_name").removePrefix("v")
     require(versionParts(version) != null)
     val assets = release.getJSONArray("assets")
+    val patchName = installed?.let { patchAssetName(version, it) }
+    var apk: UpdateRelease? = null
+    var patch: UpdatePatch? = null
     for (index in 0 until assets.length()) {
         val asset = assets.getJSONObject(index)
-        if (asset.getString("name").endsWith("-arm64.apk")) {
-            val size = asset.getLong("size")
+        val name = asset.getString("name")
+        val size = asset.getLong("size")
+        if (apk == null && name.endsWith("-arm64.apk")) {
             require(size > 0)
-            return UpdateRelease(
+            apk = UpdateRelease(
                 version, if (release.isNull("body")) "" else release.getString("body"),
                 asset.getString("browser_download_url"), size,
             )
+        } else if (name == patchName && size > 0) {
+            patch = UpdatePatch(asset.getString("browser_download_url"), size)
         }
     }
-    throw UpdateException(R.string.update_no_asset)
+    return apk?.copy(patch = patch) ?: throw UpdateException(R.string.update_no_asset)
 }
 
 /** "https://github.com/o/r/releases/tag/v1.2.3" -> "1.2.3"; null for anything else. */

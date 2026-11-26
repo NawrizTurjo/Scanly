@@ -42,6 +42,12 @@ class WhatsNewTest {
         assertEquals(R.string.whats_new_zoom_title, tour.cards.first().title)
     }
 
+    @Test fun tourFromTwoVersionsBackJoinsBothReleases() {
+        val tour = checkNotNull(WhatsNew.tourFor("1.1.2", "1.1.4"))
+        assertEquals(6, tour.cards.size)
+        assertEquals(R.string.whats_new_sharp_title, tour.cards.first().title)
+    }
+
     @Test fun tourAfterOneStepShowsOnlyTheNewRelease() {
         assertEquals(checkNotNull(WhatsNew.releaseFor("1.1.3")).cards, WhatsNew.tourFor("1.1.2", "1.1.3")?.cards)
     }

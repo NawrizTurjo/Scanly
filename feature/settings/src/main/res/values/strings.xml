@@ -90,6 +90,7 @@
     <string name="update_details">View update</string>
     <string name="update_dismiss">Dismiss</string>
     <string name="update_download">Download and install</string>
+    <string name="update_size_patch">%1$s download (full app %2$s)</string>
     <string name="update_later">Later</string>
     <string name="update_skipped">Version %1$s skipped</string>
     <string name="update_skip">Skip this version</string>

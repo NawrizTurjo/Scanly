@@ -79,13 +79,13 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
                     val installed = app.packageManager.getPackageInfo(app.packageName, 0).versionName.orEmpty()
                     val latest = try {
                         request(RELEASE_URL) { connection ->
-                            parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() })
+                            parseUpdateRelease(connection.inputStream.bufferedReader().use { it.readText() }, installed)
                         }
                     } catch (limited: UpdateException) {
                         // The API allows 60 anonymous requests an hour per IP, which a shared network (campus Wi-Fi,
                         // carrier NAT) can use up. The website's /releases/latest redirect has no such limit.
                         if (limited.messageResource != R.string.update_rate_limited) throw limited
-                        latestFromWebsite()
+                        latestFromWebsite(installed)
                     }
                     installed to latest.takeIf { isNewerVersion(it.version, installed) }
                 }
@@ -155,28 +155,25 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
                     directory.mkdirs()
                     val file = File.createTempFile("scanly-", ".apk", directory)
                     temporaryFile = file
-                    request(release.url) { connection ->
-                        connection.inputStream.use { input ->
-                            file.outputStream().buffered().use { output ->
-                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                                var bytes = 0L
-                                var percent = 0
-                                while (true) {
-                                    ensureActive()
-                                    val count = input.read(buffer)
-                                    if (count == -1) break
-                                    bytes += count
-                                    if (bytes > release.size) throw UpdateException(R.string.update_verify_failed)
-                                    output.write(buffer, 0, count)
-                                    val nextPercent = (100.0 * bytes / release.size).toInt()
-                                    if (nextPercent != percent) {
-                                        percent = nextPercent
-                                        mutableState.update { it.copy(progress = percent / 100f) }
-                                    }
-                                }
-                            }
+                    // A patch rebuilds the APK from the installed one, so only the changes download.
+                    // Anything wrong with it (missing, damaged, different installed build) falls back
+                    // to the full APK.
+                    val patched = release.patch?.let { patch ->
+                        val patchFile = File.createTempFile("scanly-", ".patch", directory)
+                        try {
+                            download(patch.url, patchFile, patch.size)
+                            ApkPatch.apply(File(app.applicationInfo.sourceDir), patchFile, file) { ensureActive() }
+                            true
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            mutableState.update { it.copy(progress = 0f) }
+                            false
+                        } finally {
+                            patchFile.delete()
                         }
-                    }
+                    } ?: false
+                    if (!patched) download(release.url, file, release.size)
                     val manager = app.packageManager
                     val archive = manager.getPackageArchiveInfo(file.path, 0)
                     val installed = manager.getPackageInfo(app.packageName, 0)
@@ -195,6 +192,33 @@ class UpdatesViewModel(private val app: Application) : AndroidViewModel(app) {
                 mutableState.update { it.copy(progress = null) }
             }
         }
+    }
+
+    /** Streams [url] into [file], reporting progress against the expected [size]. */
+    private suspend fun download(url: String, file: File, size: Long) = withContext(Dispatchers.IO) {
+        request(url) { connection ->
+            connection.inputStream.use { input ->
+                file.outputStream().buffered().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var bytes = 0L
+                    var percent = 0
+                    while (true) {
+                        ensureActive()
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        bytes += count
+                        if (bytes > size) throw UpdateException(R.string.update_verify_failed)
+                        output.write(buffer, 0, count)
+                        val nextPercent = (100.0 * bytes / size).toInt()
+                        if (nextPercent != percent) {
+                            percent = nextPercent
+                            mutableState.update { it.copy(progress = percent / 100f) }
+                        }
+                    }
+                }
+            }
+        }
+        if (file.length() != size) throw UpdateException(R.string.update_verify_failed)
     }
 
     internal fun cancelDownload() = download?.cancel()
@@ -264,7 +288,7 @@ private const val RELEASE_URL = "https://api.github.com/repos/NawrizTurjo/Scanly
 private const val RELEASES_PAGE = "https://github.com/NawrizTurjo/Scanly/releases"
 
 /** Latest stable release without the API: the tag from the website redirect, the APK by its release file name. */
-private fun latestFromWebsite(): UpdateRelease {
+private fun latestFromWebsite(installed: String): UpdateRelease {
     val connection = URL("$RELEASES_PAGE/latest").openConnection() as HttpURLConnection
     val location = try {
         connection.connectTimeout = 10_000
@@ -280,7 +304,13 @@ private fun latestFromWebsite(): UpdateRelease {
     val url = "$RELEASES_PAGE/download/v$version/Scanly-$version-arm64.apk"
     val size = request(url) { it.contentLengthLong }
     if (size <= 0) throw UpdateException(R.string.update_no_asset)
-    return UpdateRelease(version, "", url, size)
+    val patchUrl = "$RELEASES_PAGE/download/v$version/${patchAssetName(version, installed)}"
+    val patch = try {
+        request(patchUrl) { it.contentLengthLong }.takeIf { it > 0 }?.let { UpdatePatch(patchUrl, it) }
+    } catch (_: Exception) {
+        null // No patch for this installed version (or GitHub hiccuped): download the full APK.
+    }
+    return UpdateRelease(version, "", url, size, patch)
 }
 
 private inline fun <T> request(url: String, read: (HttpURLConnection) -> T): T {

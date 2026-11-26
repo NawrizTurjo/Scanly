@@ -22,11 +22,11 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             defaultConfig {
                 applicationId = "dev.turjo.paperless"
                 targetSdk = 37
-                versionCode = 11
-                versionName = "1.1.3"
+                versionCode = 12
+                versionName = "1.1.4"
                 testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             }
-            // The emulator needs x86_64; phones only need arm64 (keeps the release APK small: OpenCV is ~33 MB per ABI).
+            // The emulator needs x86_64; phones only need arm64 (keeps the release APK small: OpenCV is 15 MB on arm64).
             buildTypes.named("debug") { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } }
             buildTypes.named("release") {
                 ndk { abiFilters += listOf("arm64-v8a") }
@@ -101,7 +101,7 @@ private fun CommonExtension.configureAndroid(project: Project) {
     // Compose 1.13 (BOM 2026.11.01) AARs require compile SDK 37.1.
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "37.0.0"
-    ndkVersion = "30.0.16248370" // lets AGP strip native libs (OpenCV ships unstripped)
+    ndkVersion = "30.0.16248370" // lets AGP strip native libs
     defaultConfig.minSdk = 31
     compileOptions.apply {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -11,7 +11,7 @@ No account, no cloud, no ads, no watermark. Your pages stay on your phone.
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.1-5C3EE8?logo=opencv&logoColor=white)
 ![Offline](https://img.shields.io/badge/network-updates%20only-555)
-![Version](https://img.shields.io/badge/version-1.1.3-2E7D32)
+![Version](https://img.shields.io/badge/version-1.1.4-2E7D32)
 
 <img src="docs/images/screens-scan.jpg" alt="Scanly scan flow: camera, review grid, page viewer, crop editor" width="100%">
 
@@ -68,7 +68,7 @@ With an open notebook, Scanly crops the whole spread when both pages are in the 
 
 Scanly isn't on the Play Store. Download the APK from [Releases](../../releases) and open it on the phone. Android asks you to allow installs from that app once.
 
-Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library. From 1.1.0, Settings → Updates checks for a new version and installs it for you.
+Versions 0.1 to 0.4 were pre-releases tested on a real phone. 1.0.0 is the first stable release. Each update installs over the last one and keeps your library. From 1.1.0, Settings → Updates checks for a new version and installs it for you. From 1.1.4 an update downloads only what changed when the release has a patch for your version (usually 1 to 5 MB).
 
 ## Privacy
 
@@ -87,7 +87,7 @@ You need JDK 21, the Android SDK (platform 37.1) and NDK 30.0.16248370.
 bash tools/check.sh                 # full gate: build, tests, lint, imaging regressions, network guard
 ```
 
-Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 46 MB.
+Release builds read signing details from a local `keystore.properties` (not in the repository) and produce an arm64-only APK of about 36 MB. OpenCV comes from a slim build in `third_party/opencv` (see its README).
 
 ## Project layout
 

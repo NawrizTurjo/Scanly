@@ -105,7 +105,12 @@ internal fun UpdatesSection(model: UpdatesViewModel) {
         title = { Text(stringResource(R.string.update_available, release.version)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(Formatter.formatFileSize(context, release.size))
+                val fullSize = Formatter.formatFileSize(context, release.size)
+                Text(
+                    release.patch?.let {
+                        stringResource(R.string.update_size_patch, Formatter.formatFileSize(context, it.size), fullSize)
+                    } ?: fullSize,
+                )
                 if (release.notes.isNotBlank()) {
                     ReleaseNotes(release.notes, Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()))
                 }

@@ -23,7 +23,7 @@ import kotlin.math.abs
 class ScanModesTest {
     @get:Rule val temporary = TemporaryFolder()
 
-    @Test fun idCompositeCentersTrueSizeCardsOnA4() {
+    @Test fun idCompositeDrawsTrueSizeCardsWhereTheLayoutPutsThem() {
         val front = solidCard("front.jpg", Color.RED)
         val back = solidCard("back.jpg", Color.BLUE)
         val output = temporary.newFile("composite.jpg")
@@ -32,19 +32,25 @@ class ScanModesTest {
         assertEquals(300.0, exif.getAttributeDouble(ExifInterface.TAG_X_RESOLUTION, 0.0), 0.0)
         assertEquals(300.0, exif.getAttributeDouble(ExifInterface.TAG_Y_RESOLUTION, 0.0), 0.0)
         assertEquals(2, exif.getAttributeInt(ExifInterface.TAG_RESOLUTION_UNIT, 0))
+        val (frontRect, backRect) = IdCardComposer.cardRects(IdCardLayout())
         val page = requireNotNull(BitmapFactory.decodeFile(output.path))
         try {
-            assertEquals(2480, page.width)
-            assertEquals(3508, page.height)
-            for ((centerY, color) in listOf(877 to Color.RED, 2631 to Color.BLUE)) {
+            assertEquals(IdCardComposer.PAGE_WIDTH, page.width)
+            assertEquals(IdCardComposer.PAGE_HEIGHT, page.height)
+            for ((rect, color) in listOf(frontRect to Color.RED, backRect to Color.BLUE)) {
+                // True size: a 85.6 x 53.98 mm card at 300 dpi.
+                assertEquals(1011, rect.width)
+                assertEquals(638, rect.height)
+                val centerX = rect.left + rect.width / 2
+                val centerY = rect.top + rect.height / 2
                 val horizontal = (0 until page.width).filter { matches(page.getPixel(it, centerY), color) }
-                val vertical = (0 until page.height).filter { matches(page.getPixel(1240, it), color) }
-                assertEquals(734, horizontal.first())
-                assertEquals(1011, horizontal.size)
-                assertEquals(centerY - 319, vertical.first())
-                assertEquals(638, vertical.size)
+                val vertical = (0 until page.height).filter { matches(page.getPixel(centerX, it), color) }
+                assertEquals(rect.left.toFloat(), horizontal.first().toFloat(), 2f)
+                assertEquals(rect.width.toFloat(), horizontal.size.toFloat(), 3f)
+                assertEquals(rect.top.toFloat(), vertical.first().toFloat(), 2f)
+                assertEquals(rect.height.toFloat(), vertical.size.toFloat(), 3f)
             }
-            assertEquals(Color.WHITE, page.getPixel(1240, 1754))
+            assertEquals(Color.WHITE, page.getPixel(page.width / 2, (frontRect.bottom + backRect.top) / 2))
         } finally {
             page.recycle()
         }

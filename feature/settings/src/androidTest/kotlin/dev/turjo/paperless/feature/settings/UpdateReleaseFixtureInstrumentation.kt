@@ -19,6 +19,15 @@ class UpdateReleaseFixtureInstrumentation : Instrumentation() {
             """.trimIndent()
             val release = parseUpdateRelease("""{"tag_name":"v1.2.3","body":"First\nSecond","assets":[$assets]}""")
             check(release == UpdateRelease("1.2.3", "First\nSecond", "https://github.com/right", 123))
+            val withPatches = """
+                $assets,
+                {"name":"Scanly-1.2.3-from-1.2.1.patch","browser_download_url":"https://github.com/old","size":7},
+                {"name":"Scanly-1.2.3-from-1.2.2.patch","browser_download_url":"https://github.com/patch","size":9}
+            """.trimIndent()
+            val json = """{"tag_name":"v1.2.3","body":"","assets":[$withPatches]}"""
+            check(parseUpdateRelease(json, installed = "1.2.2").patch == UpdatePatch("https://github.com/patch", 9))
+            check(parseUpdateRelease(json, installed = "1.2.0").patch == null)
+            check(parseUpdateRelease(json).patch == null)
             val missing = runCatching {
                 parseUpdateRelease("""{"tag_name":"v1.2.3","body":null,"assets":[]}""")
             }.exceptionOrNull()
